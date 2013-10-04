@@ -309,11 +309,11 @@ namespace mongo {
                             ServerStatusClient::DUR, "dur.timeMs.remapPrivateView", VT_INT32));
                 v.push_back(new ServerStatusCallback("extraInfoNote", "1,10,1",
                             ServerStatusClient::EXTRA_INFO, "extra_info.note", VT_STRING));
-				{
-				    ServerStatusCallback* sscb = 
-				        new ServerStatusCallback("extraInfoHeapUsageBytes", "1,10,2",
-				                                ServerStatusClient::EXTRA_INFO,
-				                                "extra_info.heap_usage_bytes", VT_INT32);
+                {
+                    ServerStatusCallback* sscb = 
+                        new ServerStatusCallback("extraInfoHeapUsageBytes", "1,10,2",
+                                                ServerStatusClient::EXTRA_INFO,
+                                                "extra_info.heap_usage_bytes", VT_INT32);
                     sscb->_linuxOnly = true;
                     v.push_back(sscb);
                 }
@@ -445,11 +445,11 @@ namespace mongo {
                             VT_CNT64));
                 v.push_back(new ServerStatusCallback("metricsTtlPasses", "1,15,7,2",
                             ServerStatusClient::METRICS, "metrics.ttl.passes", VT_CNT64));
-				{
-				    ServerStatusCallback* sscb = 
-				        new ServerStatusCallback("replSetName", "1,16,1",
-				                        ServerStatusClient::REPL, "repl.setName", VT_STRING);
-				    sscb->_replicaSetOnly = true; 
+                {
+                    ServerStatusCallback* sscb = 
+                        new ServerStatusCallback("replSetName", "1,16,1",
+                                        ServerStatusClient::REPL, "repl.setName", VT_STRING);
+                    sscb->_replicaSetOnly = true; 
                     v.push_back(sscb);
                     
                     sscb =  new ServerStatusCallback("replSetVersion", "1,16,2",
