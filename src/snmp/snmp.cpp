@@ -246,14 +246,14 @@ namespace mongo {
                             ServerStatusClient::OPCOUNTERS_REPL,
                             "opcountersRepl.command", VT_CNT32));
                 v.push_back(new ServerStatusCallback("connectionsCurrent", "1,5,1",
-							ServerStatusClient::CONNECTIONS,
-							"connections.current", VT_INT32));
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.current", VT_INT32));
                 v.push_back(new ServerStatusCallback("connectionsAvailable", "1,5,2",
-							ServerStatusClient::CONNECTIONS,
-							"connections.available", VT_INT32));
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.available", VT_INT32));
                 v.push_back(new ServerStatusCallback("connectionsTotalCreated", "1,5,3",
-							ServerStatusClient::CONNECTIONS,
-							"connections.totalCreated", VT_CNT64));
+                            ServerStatusClient::CONNECTIONS,
+                            "connections.totalCreated", VT_CNT64));
                 v.push_back(new ServerStatusCallback("flushCount", "1,7,1", 
                             ServerStatusClient::BACKGROUND_FLUSHING, 
                             "backgroundFlushing.flushes", VT_CNT32));
