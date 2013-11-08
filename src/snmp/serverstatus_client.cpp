@@ -5,6 +5,7 @@
 #include "serverstatus_client.h"
 
 #include <algorithm>
+#include <limits>
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsontypes.h"
