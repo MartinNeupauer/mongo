@@ -37,7 +37,8 @@ constexpr Variables::Id Variables::kRootId;
 constexpr Variables::Id Variables::kRemoveId;
 
 const StringMap<Variables::Id> Variables::kBuiltinVarNameToId = {{"ROOT"_sd, kRootId},
-                                                                 {"REMOVE"_sd, kRemoveId}};
+                                                                 {"REMOVE"_sd, kRemoveId},
+                                                                 {"USER"_sd, kUserId}};
 
 void Variables::uassertValidNameForUserWrite(StringData varName) {
     // System variables users allowed to write to (currently just one)
@@ -116,6 +117,8 @@ Value Variables::getValue(Id id, const Document& root) const {
             case Variables::kRootId:
                 return Value(root);
             case Variables::kRemoveId:
+                return Value();
+            case Variables::kUserId:
                 return Value();
             default:
                 MONGO_UNREACHABLE;
