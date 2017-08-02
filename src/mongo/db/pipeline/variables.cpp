@@ -27,6 +27,7 @@
  */
 
 #include "mongo/platform/basic.h"
+#include "mongo/db/auth/authorization_session.h"
 
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/util/mongoutils/str.h"
@@ -38,7 +39,8 @@ constexpr Variables::Id Variables::kRemoveId;
 
 const StringMap<Variables::Id> Variables::kBuiltinVarNameToId = {{"ROOT"_sd, kRootId},
                                                                  {"REMOVE"_sd, kRemoveId},
-                                                                 {"USER"_sd, kUserId}};
+                                                                 {"USER"_sd, kUserId},
+                                                                 {"ROLES"_sd, kRolesId}};
 
 void Variables::uassertValidNameForUserWrite(StringData varName) {
     // System variables users allowed to write to (currently just one)
@@ -119,7 +121,30 @@ Value Variables::getValue(Id id, const Document& root) const {
             case Variables::kRemoveId:
                 return Value();
             case Variables::kUserId:
+                {
+                auto authSession = AuthorizationSession::get(Client::getCurrent());
+                if (authSession) {
+                    auto nameIter = authSession->getAuthenticatedUserNames();
+                    if (nameIter.more()) {
+                        return Value(nameIter->getUser());
+                    }
+                }
                 return Value();
+                }
+            case Variables::kRolesId:
+                {
+                auto authSession = AuthorizationSession::get(Client::getCurrent());
+                if (authSession) {
+                    auto rolesIter = authSession->getAuthenticatedRoleNames();
+                    std::vector<Value> roles;
+                    for (; rolesIter.more(); rolesIter.next()) {
+                        roles.emplace_back(Document{{"db",rolesIter->getDB()},{"role",rolesIter->getRole()}});
+                        //roles.emplace_back(rolesIter->getRole());
+                    }
+                    return Value(std::move(roles));
+                }
+                return Value();
+                }
             default:
                 MONGO_UNREACHABLE;
         }

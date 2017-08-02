@@ -68,6 +68,7 @@ public:
     static constexpr Variables::Id kRootId = Id(-1);
     static constexpr Variables::Id kRemoveId = Id(-2);
     static constexpr Variables::Id kUserId = Id(-3);
+    static constexpr Variables::Id kRolesId = Id(-4);
 
     // Map from builtin var name to reserved id number.
     static const StringMap<Id> kBuiltinVarNameToId;
