@@ -1907,6 +1907,10 @@ Value ExpressionFieldPath::evaluate(const Document& root) const {
 }
 
 Value ExpressionFieldPath::serialize(bool explain) const {
+    if (_variable == Variables::kUserId) {
+        auto& vars = getExpressionContext()->variables;
+        return vars.getValue(_variable, Document{});
+    }
     if (_fieldPath.getFieldName(0) == "CURRENT" && _fieldPath.getPathLength() > 1) {
         // use short form for "$$CURRENT.foo" but not just "$$CURRENT"
         return Value("$" + _fieldPath.tail().fullPath());
