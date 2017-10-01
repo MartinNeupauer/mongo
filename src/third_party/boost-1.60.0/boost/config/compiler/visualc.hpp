@@ -289,6 +289,7 @@
 
 //
 // last known and checked version is 19.00.23026 (VC++ 2015 RTM):
+/*
 #if (_MSC_VER > 1900)
 #  if defined(BOOST_ASSERT_CONFIG)
 #     error "Unknown compiler version - please run the configure tests and report the results"
@@ -296,3 +297,4 @@
 #     pragma message("Unknown compiler version - please run the configure tests and report the results")
 #  endif
 #endif
+*/

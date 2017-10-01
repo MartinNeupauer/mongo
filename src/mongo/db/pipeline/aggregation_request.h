@@ -59,6 +59,7 @@ public:
     static constexpr StringData kAllowDiskUseName = "allowDiskUse"_sd;
     static constexpr StringData kHintName = "hint"_sd;
     static constexpr StringData kCommentName = "comment"_sd;
+	static constexpr StringData kCodeGenName = "codegen"_sd;
 
     static constexpr long long kDefaultBatchSize = 101;
 
@@ -254,6 +255,14 @@ public:
         _unwrappedReadPref = unwrappedReadPref.getOwned();
     }
 
+	bool getCodeGen() const {
+		return _codeGen;
+	}
+
+	void setCodeGen(bool codeGen)
+	{
+		_codeGen = codeGen;
+	}
 private:
     // Required fields.
     const NamespaceString _nss;
@@ -297,6 +306,9 @@ private:
     // sort key.
     // TODO SERVER-30924: remove this.
     bool _from34Mongos = false;
+
+	// We will compile the request the native code
+	bool _codeGen = false;
 
     // A user-specified maxTimeMS limit, or a value of '0' if not specified.
     unsigned int _maxTimeMS = 0;

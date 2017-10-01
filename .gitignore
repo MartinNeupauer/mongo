@@ -1,3 +1,4 @@
+.vs/
 /build
 /src/mongo/db/modules
 /.jsdbshell
@@ -62,6 +63,7 @@ log_config.py
 /tags
 TAGS
 failfile.smoke
+CppProperties.json
 
 # temp dirs
 dump

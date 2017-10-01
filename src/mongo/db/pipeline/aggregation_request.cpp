@@ -59,6 +59,7 @@ constexpr StringData AggregationRequest::kExplainName;
 constexpr StringData AggregationRequest::kAllowDiskUseName;
 constexpr StringData AggregationRequest::kHintName;
 constexpr StringData AggregationRequest::kCommentName;
+constexpr StringData AggregationRequest::kCodeGenName;
 
 constexpr long long AggregationRequest::kDefaultBatchSize;
 
@@ -225,7 +226,16 @@ StatusWith<AggregationRequest> AggregationRequest::parseFromBSON(
                                       << typeName(elem.type())};
             }
             request.setAllowDiskUse(elem.Bool());
-        } else if (bypassDocumentValidationCommandOption() == fieldName) {
+		}
+		else if (kCodeGenName == fieldName) {
+			if (elem.type() != BSONType::Bool) {
+				return { ErrorCodes::TypeMismatch,
+					str::stream() << kCodeGenName << " must be a boolean, not a "
+					<< typeName(elem.type()) };
+			}
+
+			request.setCodeGen(elem.Bool());
+		} else if (bypassDocumentValidationCommandOption() == fieldName) {
             request.setBypassDocumentValidation(elem.trueValue());
         } else if (!Command::isGenericArgument(fieldName)) {
             return {ErrorCodes::FailedToParse,
