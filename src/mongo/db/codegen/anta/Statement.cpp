@@ -400,7 +400,7 @@ namespace anta
 
 	StmtGenResult BreakStmt::generate(EnvCodeGenCtx& ectx)
     {
-		if (level_ == -1 || level_ >= ectx.blockBreak_.size())
+		if (!valid() || level_ >= ectx.blockBreak_.size())
 			throw std::logic_error("break is out of range");
 
 		auto& b = *(ectx.blockBreak_.rbegin() + level_);

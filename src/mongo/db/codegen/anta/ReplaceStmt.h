@@ -20,7 +20,7 @@ namespace anta
 		bool replace(std::vector<intrusive_ptr<const Expr>>&) const;
 		bool replace(std::vector<intrusive_ptr<Statement>>&) const;
 		
-		public:
+	public:
 		Replacer(
 			SemaFactory& f,
 			const std::unordered_map<const Statement*, intrusive_ptr<Statement>>& stmtMap = {}
@@ -34,6 +34,8 @@ namespace anta
 			exprMap_.insert({ nullptr,nullptr });
 		}
 
+
+		using AbstractVisitor::visit;
 		virtual void visit(NoopStmt*) override;
 		virtual void visit(Statements*) override;
 		virtual void visit(IfStmt*) override;

@@ -43,6 +43,7 @@ namespace anta
 
 		intrusive_ptr<Statement> clone(Statement* stmt);
 
+		using AbstractVisitor::visit;
 		virtual void visit(NoopStmt*) override;
 		virtual void visit(Statements*) override;
 		virtual void visit(IfStmt*) override;

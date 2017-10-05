@@ -45,6 +45,8 @@ namespace anta
 	class DefaultVisitor : public AbstractVisitor
 	{
 	public:
+		using AbstractVisitor::visit;
+
 		virtual void visit(NoopStmt*) override {}
 		virtual void visit(Statements*) override {}
 		virtual void visit(IfStmt*) override {}

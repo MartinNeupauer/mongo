@@ -22,6 +22,7 @@ namespace anta
 		)
 			: Cloner(f, fn, scopeMap, variableMap), ret_(ret) {}
 
+		using Cloner::visit;
 		virtual void visit(ReturnStmt *original) override
 		{
 			if (stmtMap_.count(original)) return;

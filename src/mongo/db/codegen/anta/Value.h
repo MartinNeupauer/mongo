@@ -14,9 +14,10 @@ namespace anta
     {
 		using ArrayValue = std::vector<Value>;
 
-		//                    0      1       2           3         4           5
-        const boost::variant<int, int64_t, double, std::string, Function*, ArrayValue> value_;
         const Type*                                          type_;
+
+        //                    0      1       2           3         4           5
+        const boost::variant<int, int64_t, double, std::string, Function*, ArrayValue> value_;
 
         Value(const Type* type) : type_(type) {}
 

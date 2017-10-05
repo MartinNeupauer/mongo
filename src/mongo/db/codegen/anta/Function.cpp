@@ -58,14 +58,14 @@ namespace anta
 		, returnType_(type)
 		, name_(name)
 		, paramScope_(paramScope)
-		, body_(nullptr)
 		, builtin_(builtin)
 		, llvmfn_(nullptr)
 		, globalVar_(nullptr)
 		, intrinsicId_(0)
 		, const_(false)
 		, inline_(false)
-    {
+		, body_(nullptr)
+		{
 		auto intrinsic = intrinsics.find(name);
 		if (intrinsic != intrinsics.end())
 		{

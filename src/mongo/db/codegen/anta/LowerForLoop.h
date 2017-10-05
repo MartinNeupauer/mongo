@@ -19,6 +19,7 @@ namespace anta
 			const intrusive_ptr<Statement>& step,
 			intrusive_ptr<Statement> body);
 
+		using Replacer::visit;
 		virtual void visit(ContinueStmt* stmt) override;
 		virtual void visit(BreakStmt* stmt) override;
 	};

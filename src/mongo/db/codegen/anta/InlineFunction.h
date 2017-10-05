@@ -19,6 +19,7 @@ namespace anta
 
 		void run();
 
+		using Replacer::visit;
 		virtual void visit(FuncCallStmt* caller) override;
 		virtual void visit(const FuncCallExpr* caller) override;
 	};

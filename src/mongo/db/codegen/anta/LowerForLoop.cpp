@@ -71,7 +71,7 @@ namespace anta
 
 	void LowerForLoop::visit(BreakStmt* stmt)
 	{
-		if (stmt->level() != -1)
+		if (!stmt->valid())
 			return;
 
 		// already replaced

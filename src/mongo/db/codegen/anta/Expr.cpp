@@ -279,6 +279,8 @@ namespace anta
 		case op_comp_less_eq:
 		case op_comp_greater_eq:
 			result = ectx.builder_.CreateZExt(result, llvm::Type::getInt32Ty(ectx.ctx_.context_));
+		default:
+			;
 		}
 		return result;
 	}

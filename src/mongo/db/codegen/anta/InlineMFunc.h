@@ -19,6 +19,7 @@ namespace anta
 
 		void run();
 
+		using Replacer::visit;
 		virtual void visit(MFuncCallStmt* caller) override;
 	};
 }

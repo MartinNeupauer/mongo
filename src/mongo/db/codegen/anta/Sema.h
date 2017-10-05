@@ -79,7 +79,7 @@ namespace anta
 
 	inline SemanticNode::~SemanticNode() {}
 
-	inline unsigned alignUp(unsigned x, unsigned a) { return x + (a - 1) & ~(a - 1); }
+	inline unsigned alignUp(unsigned x, unsigned a) { return (x + (a - 1)) & ~(a - 1); }
 
 }
 

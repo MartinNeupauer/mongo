@@ -32,6 +32,8 @@ namespace anta
 		bool exitEarly(const std::vector<intrusive_ptr<Statement>>& stmts);
 
 		void visit(const std::vector<intrusive_ptr<Statement>>& stmts);
+	
+		using DefaultVisitor::visit;
 
 		virtual void visit(NoopStmt*) override;
 		virtual void visit(Statements*) override;
@@ -59,7 +61,8 @@ namespace anta
 		RemoveRedundantBlocks(SemaFactory& f, Function& fn) : Replacer(f), fn_(fn) {}
 
 		void run();
-
+	
+		using Replacer::visit;
 		virtual void visit(BreakStmt*) override;
 		virtual void visit(ContinueStmt*) override;
 		virtual void visit(BlockStmt*) override;

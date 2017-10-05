@@ -323,7 +323,6 @@ env.Library(
 )
 env.Append(
     LIBS=[
-        'LLVMSupport',
         'LLVMCore',
         'LLVMIRReader',
         'LLVMOrcJIT',
@@ -360,6 +359,7 @@ env.Append(
         'LLVMBinaryFormat',
         'LLVMMCParser',
         'LLVMMC',
+        'LLVMSupport',
     ]
 )
 

@@ -141,12 +141,14 @@ namespace anta
     {
 	private:
 		// how many levels (blocks) to break out
-		int level_;
+		unsigned level_;
 	public:
 		BreakStmt(int level) : level_(level) {}
 
 		auto level() const { return level_; }
 		auto& level() { return level_; }
+
+		bool valid() const { return level_ != 0xffffffff; }
 
         virtual StmtGenResult generate(EnvCodeGenCtx& ectx) override;
 
@@ -240,8 +242,8 @@ namespace anta
 	{
 		friend class Cloner; friend class Replacer;
 	private:
-		bool loop_;
 		intrusive_ptr<Statement> body_;
+		bool loop_;
 	public:
 		BlockStmt(const intrusive_ptr<Statement>& body, bool loop);
 

@@ -28,6 +28,8 @@ namespace anta
 
 		auto& referencedReturns() const { return referencedReturns_; }
 
+		using Cloner::visit;
+		
 		virtual void visit(MReturnStmt *original) override
 		{
 			if (stmtMap_.count(original)) return;

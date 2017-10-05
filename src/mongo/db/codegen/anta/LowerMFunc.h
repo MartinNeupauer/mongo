@@ -18,11 +18,9 @@ namespace anta
 		{
 			callerFn_.body_->postorder(*this);
 			replace(callerFn_.body_);
-/*			auto it = stmtMap_.find(callerFn_.body_.get());
-			if (it != stmtMap_.end())
-				callerFn_.body_ = it->second;
-*/		}
+		}
 
+		using Replacer::visit;
 		virtual void visit(MFuncCallStmt* caller) override;
 		virtual void visit(MReturnStmt* stmt) override;
 	};

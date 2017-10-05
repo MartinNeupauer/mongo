@@ -27,7 +27,7 @@
 
 namespace machine
 {
-	static constexpr uintptr_t alignUp(uintptr_t x, unsigned a) { return x + (a - 1ull) & ~(a - 1ull); }
+	static constexpr uintptr_t alignUp(uintptr_t x, unsigned a) { return (x + (a - 1ull)) & ~(a - 1ull); }
 
 	// Custom memory manager for LLVM
 	class MemoryManager final : public llvm::RuntimeDyld::MemoryManager
@@ -155,13 +155,13 @@ namespace machine
 		{
 			std::error_code errorCode;
 
-			if (errorCode = _regions.protect(_base, rgCode, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_EXEC))
+			if ((errorCode = _regions.protect(_base, rgCode, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_EXEC)))
 				return true;
 
-			if (errorCode = _regions.protect(_base, rgROData, llvm::sys::Memory::MF_READ))
+			if ((errorCode = _regions.protect(_base, rgROData, llvm::sys::Memory::MF_READ)))
 				return true;
 
-			if (errorCode = _regions.protect(_base, rgRWData, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_WRITE))
+			if ((errorCode = _regions.protect(_base, rgRWData, llvm::sys::Memory::MF_READ | llvm::sys::Memory::MF_WRITE)))
 				return true;
 
 			return false;

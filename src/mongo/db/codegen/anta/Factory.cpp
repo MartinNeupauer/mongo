@@ -593,7 +593,7 @@ namespace anta
 
 	void SemaFactory::destroyFunction(Function * f)
 	{
-		auto scope = f->scope();
+		//auto scope = f->scope();
 		functions_.erase( std::remove(functions_.begin(), functions_.end(), f), functions_.end());
 	}
 
