@@ -33,6 +33,10 @@
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/stdx/memory.h"
 
+namespace anta
+{
+    int theTestFunction();
+}
 namespace mongo {
 
 using std::unique_ptr;
@@ -51,6 +55,7 @@ bool CodeGenStage::isEOF() {
 }
 
 PlanStage::StageState CodeGenStage::doWork(WorkingSetID* out) {
+    anta::theTestFunction();
     return PlanStage::IS_EOF;
 }
 

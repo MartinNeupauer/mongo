@@ -1,3 +1,5 @@
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/codegen/machine/jitter.h"
 
 #include <llvm/ExecutionEngine/JITSymbol.h>
@@ -84,7 +86,7 @@ namespace machine
 		std::unordered_map<std::string, uint64_t> _distance;
 
 		unsigned _pageSize;
-#ifdef OS_WINDOWS
+#ifdef _WIN32
 		std::vector<RUNTIME_FUNCTION> _runtimeTable;
 
 		void buildRuntimeTable(const llvm::object::ObjectFile& obj);
@@ -111,7 +113,7 @@ namespace machine
 		//
 		void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) override
 		{
-#ifdef OS_WINDOWS
+#ifdef _WIN32
 			if (!RtlAddFunctionTable(_runtimeTable.data(), _runtimeTable.size(), reinterpret_cast<uint64_t>(_base)))
 				throw std::runtime_error("RtlAddFunctionTable failed.");
 #endif
@@ -121,7 +123,7 @@ namespace machine
 
 		void deregisterEHFrames() override
 		{
-#ifdef OS_WINDOWS
+#ifdef _WIN32
 			if (!RtlDeleteFunctionTable(_runtimeTable.data()))
 				throw std::runtime_error("RtlDeleteFunctionTable failed.");
 #endif
@@ -165,7 +167,7 @@ namespace machine
 
 		void notifyObjectLoaded(llvm::RuntimeDyld&, const llvm::object::ObjectFile& obj) override
 		{
-#ifdef OS_WINDOWS
+#ifdef _WIN32
 			buildRuntimeTable(obj);
 #endif
 		}
@@ -187,7 +189,7 @@ namespace machine
 		}
 	};
 
-#ifdef OS_WINDOWS
+#ifdef _WIN32
 	void MemoryManager::buildRuntimeTable(const llvm::object::ObjectFile& obj)
 	{
 		// The famous LLVM bug https://llvm.org/bugs/show_bug.cgi?id=24233
