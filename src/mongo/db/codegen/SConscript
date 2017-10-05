@@ -1,0 +1,38 @@
+# -*- mode: python -*-
+
+Import("env")
+
+env = env.Clone()
+
+#hack before we clean up includes
+env.AppendUnique( CPPPATH=[ '$BUILD_DIR/mongo/db/codegen/anta' ])
+env.AppendUnique( CPPPATH=[ '$BUILD_DIR/mongo/db/codegen' ])
+env.AppendUnique( CPPDEFINES=[ 'BOOST_NO_IOSTREAM' ] )
+
+env.Library(
+    target="codegen",
+    source=[
+        "anta/Analysis.cpp",
+        "anta/Cloner.cpp",
+        "anta/CodeGenCtx.cpp",
+        "anta/DebugPrint.cpp",
+        "anta/Expr.cpp",
+        "anta/Factory.cpp",
+        "anta/Function.cpp",
+        "anta/InlineFunction.cpp",
+        "anta/InlineMFunc.cpp",
+        "anta/LowerForLoop.cpp",
+        "anta/LowerMFunc.cpp",
+        "anta/ReplaceStmt.cpp",
+        "anta/Scope.cpp",
+        "anta/Statement.cpp",
+        "anta/Type.cpp",
+
+	"machine/jitter.cpp",
+
+        "test.cpp",
+    ],
+    LIBDEPS=[
+        "$BUILD_DIR/mongo/base",
+    ],
+)
