@@ -18,10 +18,6 @@
 #include <llvm/Support/Process.h>
 #include <llvm/Support/Memory.h>
 
-//#ifdef OS_WINDOWS
-//#include "Windows.h>
-//#endif
-
 #include <unordered_map>
 #include <initializer_list>
 
