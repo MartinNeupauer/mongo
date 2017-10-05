@@ -283,6 +283,7 @@ env.Library(
     LIBDEPS=[
         'db/catalog/catalog',
         'db/clientcursor',
+        'db/codegen/codegen',
         'db/commands/core',
         'db/conn_pool_options',
         'db/dbdirectclient',
@@ -320,6 +321,48 @@ env.Library(
         'util/version_impl',
     ],
 )
+env.Append(
+    LIBS=[
+        'LLVMSupport',
+        'LLVMCore',
+        'LLVMIRReader',
+        'LLVMOrcJIT',
+        'LLVMTarget',
+        'LLVMX86Info',
+        'LLVMX86Desc',
+        'LLVMX86CodeGen',
+        'LLVMX86AsmParser',
+        'LLVMMCJIT',
+        'LLVMAsmParser',
+        'LLVMAsmPrinter',
+        'LLVMDebugInfoCodeView',
+        'LLVMDebugInfoMSF',
+        'LLVMGlobalISel',
+        'LLVMSelectionDAG',
+        'LLVMCodeGen',
+        'LLVMBitWriter',
+        'LLVMScalarOpts',
+        'LLVMInstCombine',
+        'LLVMTransformUtils',
+        'LLVMX86Desc',
+        'LLVMX86Info',
+        'LLVMMCDisassembler',
+        'LLVMX86AsmPrinter',
+        'LLVMX86Utils',
+        'LLVMExecutionEngine',
+        'LLVMTarget',
+        'LLVMAnalysis',
+        'LLVMProfileData',
+        'LLVMRuntimeDyld',
+        'LLVMObject',
+        'LLVMBitReader',
+        'LLVMCore',
+        'LLVMBinaryFormat',
+        'LLVMMCParser',
+        'LLVMMC',
+    ]
+)
+
 mongod = env.Program(
     target="mongod",
     source=[

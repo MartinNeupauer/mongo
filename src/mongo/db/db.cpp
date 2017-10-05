@@ -32,6 +32,8 @@
 
 #include "mongo/db/dbmain.h"
 
+#include <llvm/Support/TargetSelect.h>
+
 #include <boost/filesystem/operations.hpp>
 #include <boost/optional.hpp>
 #include <fstream>
@@ -668,6 +670,10 @@ void initWireSpec() {
 MONGO_FP_DECLARE(shutdownAtStartup);
 
 ExitCode _initAndListen(int listenPort) {
+    llvm::InitializeNativeTarget();
+    llvm::InitializeNativeTargetAsmPrinter();
+    llvm::InitializeNativeTargetAsmParser();
+    
     Client::initThread("initandlisten");
 
     initWireSpec();

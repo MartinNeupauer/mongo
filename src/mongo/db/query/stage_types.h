@@ -90,6 +90,7 @@ enum StageType {
     STAGE_PROJECTION,
 
     // Stage for running aggregation pipelines.
+    STAGE_CODEGEN,
     STAGE_PIPELINE_PROXY,
 
     STAGE_QUEUED_DATA,

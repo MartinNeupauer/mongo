@@ -39,6 +39,7 @@
 #include "mongo/db/catalog/database.h"
 #include "mongo/db/curop.h"
 #include "mongo/db/db_raii.h"
+#include "mongo/db/exec/pipeline_codegen.h"
 #include "mongo/db/exec/pipeline_proxy.h"
 #include "mongo/db/exec/working_set_common.h"
 #include "mongo/db/namespace_string.h"
@@ -485,14 +486,18 @@ Status runAggregate(OperationContext* opCtx,
         // Transfer ownership of the Pipeline to the PipelineProxyStage.
         unownedPipeline = pipeline.get();
         auto ws = make_unique<WorkingSet>();
-        auto proxy = make_unique<PipelineProxyStage>(opCtx, std::move(pipeline), ws.get());
-
+        unique_ptr<PlanStage> plan;
+        if (request.getCodeGen()) {
+            plan = make_unique<CodeGenStage>(opCtx);
+        } else {
+            plan = make_unique<PipelineProxyStage>(opCtx, std::move(pipeline), ws.get());
+        }
         // This PlanExecutor will simply forward requests to the Pipeline, so does not need to
         // yield or to be registered with any collection's CursorManager to receive invalidations.
         // The Pipeline may contain PlanExecutors which *are* yielding PlanExecutors and which *are*
         // registered with their respective collection's CursorManager
         auto statusWithPlanExecutor =
-            PlanExecutor::make(opCtx, std::move(ws), std::move(proxy), nss, PlanExecutor::NO_YIELD);
+            PlanExecutor::make(opCtx, std::move(ws), std::move(plan), nss, PlanExecutor::NO_YIELD);
         invariant(statusWithPlanExecutor.isOK());
         exec = std::move(statusWithPlanExecutor.getValue());
 

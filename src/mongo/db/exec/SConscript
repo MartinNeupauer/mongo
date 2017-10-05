@@ -64,6 +64,7 @@ env.Library(
         "near.cpp",
         "oplogstart.cpp",
         "or.cpp",
+        "pipeline_codegen.cpp",
         "pipeline_proxy.cpp",
         "plan_stage.cpp",
         "projection.cpp",

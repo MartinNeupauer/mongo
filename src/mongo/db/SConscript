@@ -17,6 +17,7 @@ env.SConscript(
         'auth',
         'bson',
         'catalog',
+        'codegen',
         'commands',
         'concurrency',
         'exec',
