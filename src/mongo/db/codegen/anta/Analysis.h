@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Visitor.h"
-#include "Statement.h"
-#include "ReplaceStmt.h"
+#include "mongo/db/codegen/anta/Visitor.h"
+#include "mongo/db/codegen/anta/Statement.h"
+#include "mongo/db/codegen/anta/ReplaceStmt.h"
 
 #include <vector>
 #include <unordered_map>

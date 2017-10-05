@@ -1,5 +1,5 @@
 #pragma once
-#include "Visitor.h"
+#include "mongo/db/codegen/anta/Visitor.h"
 
 #include <boost/intrusive_ptr.hpp>
 #include <unordered_map>

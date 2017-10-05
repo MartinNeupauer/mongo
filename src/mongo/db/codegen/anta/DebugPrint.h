@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Visitor.h"
+#include "mongo/db/codegen/anta/Visitor.h"
 
 #include <ostream>
 namespace anta

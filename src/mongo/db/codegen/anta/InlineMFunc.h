@@ -1,6 +1,6 @@
 #pragma once
-#include "Sema.h"
-#include "ReplaceStmt.h"
+#include "mongo/db/codegen/anta/Sema.h"
+#include "mongo/db/codegen/anta/ReplaceStmt.h"
 
 #include <unordered_set>
 namespace anta

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Sema.h"
-#include "Value.h"
-#include "Variable.h"
+#include "mongo/db/codegen/anta/Sema.h"
+#include "mongo/db/codegen/anta/Value.h"
+#include "mongo/db/codegen/anta/Variable.h"
 
 #include <boost/intrusive_ptr.hpp>
 #include <boost/smart_ptr/intrusive_ref_counter.hpp>

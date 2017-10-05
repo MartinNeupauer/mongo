@@ -2,12 +2,13 @@
 
 #include <inttypes.h>
 
-#include "Factory.h"
-#include "CodeGenCtx.h"
-#include "LowerMFunc.h"
-#include "LowerForLoop.h"
-#include "InlineFunction.h"
-#include "Analysis.h"
+#include "mongo/db/codegen/anta/Factory.h"
+#include "mongo/db/codegen/anta/CodeGenCtx.h"
+#include "mongo/db/codegen/anta/LowerMFunc.h"
+#include "mongo/db/codegen/anta/LowerForLoop.h"
+#include "mongo/db/codegen/anta/InlineFunction.h"
+#include "mongo/db/codegen/anta/Analysis.h"
+
 #include <algorithm>
 #include <iostream>
 

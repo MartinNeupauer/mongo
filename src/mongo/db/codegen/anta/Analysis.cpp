@@ -1,6 +1,6 @@
-#include "Analysis.h"
-#include "Statement.h"
-#include "Function.h"
+#include "mongo/db/codegen/anta/Analysis.h"
+#include "mongo/db/codegen/anta/Statement.h"
+#include "mongo/db/codegen/anta/Function.h"
 
 #include <iostream>
 
@@ -31,7 +31,7 @@ namespace anta
 		{
 			s->visit(*this);
 
-			// only the last statement should exit
+			// only the last statement may exit
 			if (state_ == Exit && position != size)
 			{
 				throw std::logic_error("unreachable code beyond this point");

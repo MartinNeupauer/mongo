@@ -1,12 +1,15 @@
 #pragma once
+
+#include "mongo/db/codegen/anta/Sema.h"
+#include "mongo/db/codegen/anta/Scope.h"
+#include "mongo/db/codegen/anta/Expr.h"
+
+
 #include <memory>
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
 #include <vector>
-#include "Sema.h"
-#include "Scope.h"
-#include "Expr.h"
 
 namespace std
 {

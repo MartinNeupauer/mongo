@@ -1,7 +1,7 @@
 #pragma once
-#include "Factory.h"
-#include "Sema.h"
-#include "ReplaceStmt.h"
+#include "mongo/db/codegen/anta/Factory.h"
+#include "mongo/db/codegen/anta/Sema.h"
+#include "mongo/db/codegen/anta/ReplaceStmt.h"
 
 #include <unordered_map>
 #include <unordered_set>

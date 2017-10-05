@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Visitor.h"
-#include "Statement.h"
+#include "mongo/db/codegen/anta/Visitor.h"
+#include "mongo/db/codegen/anta/Statement.h"
 
 #include <unordered_map>
 

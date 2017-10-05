@@ -1,12 +1,13 @@
 #pragma once
+#include "mongo/db/codegen/anta/Sema.h"
+#include "mongo/db/codegen/anta/CodeGenCtx.h"
+
+#include <llvm/IR/DerivedTypes.h>
+
 #include <string>
 #include <vector>
 #include <unordered_map>
 
-#include "llvm/IR/DerivedTypes.h"
-
-#include "Sema.h"
-#include "CodeGenCtx.h"
 
 namespace llvm
 {

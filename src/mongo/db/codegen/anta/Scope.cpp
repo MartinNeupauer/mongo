@@ -1,4 +1,4 @@
-#include "Scope.h"
+#include "mongo/db/codegen/anta/Scope.h"
 
 namespace anta
 {
