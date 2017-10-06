@@ -26,16 +26,28 @@
  *    it in the license file.
  */
 
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
+
 #include "mongo/platform/basic.h"
 
 #include "mongo/db/exec/pipeline_codegen.h"
-
 #include "mongo/db/exec/scoped_timer.h"
+#include "mongo/db/exec/working_set_common.h"
 #include "mongo/stdx/memory.h"
+
+#include "mongo/util/log.h"
+
+// This is a horrible hack - mongo defines 'verify' macro (uggrh) that clashes with LLVM methods 'verify'
+#ifdef verify
+#undef verify
+#endif
+#include "mongo/db/codegen/machine/jitter.h"
+
+#include <string>
 
 namespace anta
 {
-    int theTestFunction();
+    unsigned theTestFunction(machine::Jitter& jitter, rohan::NativeOpenFunction& openFn, rohan::NativeGetNextFunction& getNextFn);
 }
 namespace mongo {
 
@@ -46,7 +58,7 @@ using stdx::make_unique;
 // static
 const char* CodeGenStage::kStageType = "CODEGEN";
 
-CodeGenStage::CodeGenStage(OperationContext* opCtx) : PlanStage(kStageType, opCtx) {}
+CodeGenStage::CodeGenStage(OperationContext* opCtx, WorkingSet* workingSet) : PlanStage(kStageType, opCtx), _workingSet(workingSet) {}
 
 CodeGenStage::~CodeGenStage() {}
 
@@ -55,8 +67,64 @@ bool CodeGenStage::isEOF() {
 }
 
 PlanStage::StageState CodeGenStage::doWork(WorkingSetID* out) {
-    anta::theTestFunction();
-    return PlanStage::IS_EOF;
+    if (_first) {
+        _first = false;
+
+        _jitter = make_unique<machine::Jitter>();
+
+        unsigned localStateSize = anta::theTestFunction(*_jitter, _openFunction, _getNextFunction);
+        _stateBuffer.resize(localStateSize);
+
+        int openError{0};
+        rohan::OpenCallResult openResult = _openFunction(_stateBuffer.data(), &openError);
+
+        if (openResult == rohan::OpenCallResult::kError) {
+            Status status(
+                ErrorCodes::InternalError,
+                str::stream()
+                    << "Native Open function returned error code: "
+                    << openError);
+            *out = WorkingSetCommon::allocateStatusMember(_workingSet, status);
+            return PlanStage::FAILURE;
+        } else if (openResult == rohan::OpenCallResult::kCancel) {
+            Status status(
+                ErrorCodes::InternalError,
+                str::stream()
+                    << "Native Open function was canceled");
+            *out = WorkingSetCommon::allocateStatusMember(_workingSet, status);
+            return PlanStage::FAILURE;
+        }
+    }
+
+    int getNextError{0};
+    rohan::GetNextCallResult getNextResult = _getNextFunction(_stateBuffer.data(), &getNextError);
+
+    switch(getNextResult)
+    {
+        case rohan::GetNextCallResult::kOK:
+            return PlanStage::ADVANCED;
+        case rohan::GetNextCallResult::kEOS:
+            return PlanStage::IS_EOF;
+        case rohan::GetNextCallResult::kError:
+        {
+            Status status(
+                ErrorCodes::InternalError,
+                str::stream()
+                    << "Native GetNext function returned error code: "
+                    << getNextError);
+            *out = WorkingSetCommon::allocateStatusMember(_workingSet, status);
+            return PlanStage::FAILURE;
+        }
+        case rohan::GetNextCallResult::kCancel:
+        {
+            Status status(
+                ErrorCodes::InternalError,
+                str::stream()
+                    << "Native GetNext function was canceled");
+            *out = WorkingSetCommon::allocateStatusMember(_workingSet, status);
+            return PlanStage::FAILURE;
+        }
+    }
 }
 
 unique_ptr<PlanStageStats> CodeGenStage::getStats() {

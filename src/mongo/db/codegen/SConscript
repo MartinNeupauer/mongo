@@ -5,7 +5,7 @@ Import("env")
 env = env.Clone()
 
 #hack before we clean up includes
-env.AppendUnique( CPPDEFINES=[ 'BOOST_NO_IOSTREAM' ] )
+#env.AppendUnique( CPPDEFINES=[ 'BOOST_NO_IOSTREAM' ] )
 
 env.Library(
     target="codegen",
@@ -26,7 +26,11 @@ env.Library(
         "anta/Statement.cpp",
         "anta/Type.cpp",
 
-	"machine/jitter.cpp",
+    	"machine/jitter.cpp",
+
+        "operator/collection_scan.cpp",
+        "operator/entry_functions.cpp",
+        "operator/operator.cpp",
 
         "test.cpp",
     ],

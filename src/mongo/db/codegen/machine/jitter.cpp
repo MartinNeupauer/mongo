@@ -102,10 +102,7 @@ namespace machine
 
 		~MemoryManager() override
 		{
-			if (_ehRegistered)
-			{
-				deregisterEHFrames();
-			}
+			deregisterEHFrames();
 		}
 
 		//
@@ -123,12 +120,15 @@ namespace machine
 
 		void deregisterEHFrames() override
 		{
+			if (_ehRegistered)
+			{
 #ifdef _WIN32
-			if (!RtlDeleteFunctionTable(_runtimeTable.data()))
-				throw std::runtime_error("RtlDeleteFunctionTable failed.");
+				if (!RtlDeleteFunctionTable(_runtimeTable.data()))
+					throw std::runtime_error("RtlDeleteFunctionTable failed.");
 #endif
-			_memmgr.deregisterEHFrames();
-			_ehRegistered = false;
+				_memmgr.deregisterEHFrames();
+				_ehRegistered = false;
+			}
 		}
 
 		uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, llvm::StringRef SectionName) override

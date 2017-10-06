@@ -29,7 +29,15 @@
 #pragma once
 
 #include "mongo/db/exec/plan_stage.h"
+#include "mongo/db/exec/working_set.h"
 #include "mongo/db/record_id.h"
+
+#include "mongo/db/codegen/operator/entry_functions.h"
+
+#include <memory>
+#include <vector>
+
+namespace machine { class Jitter; }
 
 namespace mongo {
 
@@ -38,7 +46,7 @@ namespace mongo {
  */
 class CodeGenStage final : public PlanStage {
 public:
-    CodeGenStage(OperationContext* opCtx);
+    CodeGenStage(OperationContext* opCtx, WorkingSet* workingSet);
 
     ~CodeGenStage();
 
@@ -55,6 +63,26 @@ public:
     const SpecificStats* getSpecificStats() const final;
 
     static const char* kStageType;
+private:
+
+    // The Jitter that translates IR to the native code
+    // TODO: Temporary placement
+    std::unique_ptr<machine::Jitter> _jitter;
+
+    // The buffer that holds any internal state needed by the compiled query (if any)
+    std::vector<char> _stateBuffer;
+
+    // Native function pointer to the Open call
+    rohan::NativeOpenFunction _openFunction {nullptr};
+
+    // Native function pointer to the GetNext call
+    rohan::NativeGetNextFunction _getNextFunction {nullptr};
+
+    // Is this the first call to doWork?
+    bool _first {true};
+
+    // WorkingSet is not owned by us.
+    WorkingSet* _workingSet;
 };
 
 }  // namespace mongo

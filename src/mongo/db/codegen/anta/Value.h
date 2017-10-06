@@ -2,7 +2,11 @@
 
 #include "mongo/db/codegen/anta/Type.h"
 
+#ifndef BOOST_NO_IOSTREAM
+#define BOOST_NO_IOSTREAM
+#endif
 #include <boost/variant.hpp>
+
 #include <string>
 #include <vector>
 

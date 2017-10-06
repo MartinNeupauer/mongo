@@ -1,10 +1,18 @@
 #include "mongo/db/codegen/anta/Generator.h"
 #include "mongo/db/codegen/anta/CodeGenCtx.h"
 #include "mongo/db/codegen/machine/jitter.h"
+#include "mongo/db/codegen/operator/operator.h"
+#include "mongo/db/codegen/operator/collection_scan.h"
+#include "mongo/db/codegen/operator/entry_functions.h"
 
 #include <llvm/IR/Verifier.h>
 
+#include <memory>
+#include <string>
+
 #include <iostream>
+
+using namespace std;
 
 namespace anta
 {
@@ -24,7 +32,7 @@ namespace anta
         }
     };
 
-    int theTestFunction()
+    int theTestFunction2()
     {
         CodeGenContext ctx("codegen");
         SemaFactory f;
@@ -51,5 +59,35 @@ namespace anta
         std::cout << s1 << "\n";
 
         return 5;
+    }
+
+    unsigned theTestFunction(machine::Jitter& jitter, rohan::NativeOpenFunction& openFn, rohan::NativeGetNextFunction& getNextFn)
+    {
+        CodeGenContext ctx("codegen");
+        SemaFactory f;
+        
+        unique_ptr<rohan::XteOperator> _root = make_unique<rohan::XteCollectionScan>(f);
+
+        unsigned localStateSize = 0;
+        _root->calculateStateOffset(localStateSize);
+        
+        
+        rohan::GenContext gctx{ false };
+        _root->generate(gctx);
+        
+        rohan::EntryFunctions e(f);
+        auto fnOpen = e.generateOpen(gctx);
+        auto fnGetNext = e.generateGetNext(gctx);
+
+        f.finalizeCodeGen(ctx);
+        
+        llvm::verifyModule(*ctx.module_, &llvm::errs());
+        
+        jitter.jit(ctx.module_); 
+
+        openFn = jitter.find<rohan::NativeOpenFunction>(fnOpen->fullName().c_str());
+        getNextFn = jitter.find<rohan::NativeGetNextFunction>(fnGetNext->fullName().c_str());
+
+        return localStateSize;
     }
 }

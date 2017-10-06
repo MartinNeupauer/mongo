@@ -488,7 +488,7 @@ Status runAggregate(OperationContext* opCtx,
         auto ws = make_unique<WorkingSet>();
         unique_ptr<PlanStage> plan;
         if (request.getCodeGen()) {
-            plan = make_unique<CodeGenStage>(opCtx);
+            plan = make_unique<CodeGenStage>(opCtx, ws.get());
         } else {
             plan = make_unique<PipelineProxyStage>(opCtx, std::move(pipeline), ws.get());
         }

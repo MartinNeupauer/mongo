@@ -6,6 +6,9 @@
 #include "mongo/db/codegen/anta/LowerMFunc.h"
 #include "mongo/db/codegen/anta/InlineMFunc.h"
 
+#ifndef BOOST_NO_IOSTREAM
+#define BOOST_NO_IOSTREAM
+#endif
 #include <boost/variant.hpp>
 #include <vector>
 
