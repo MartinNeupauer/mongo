@@ -125,6 +125,9 @@ PlanStage::StageState CodeGenStage::doWork(WorkingSetID* out) {
             return PlanStage::FAILURE;
         }
     }
+
+    // Unreachable
+    return PlanStage::IS_EOF;
 }
 
 unique_ptr<PlanStageStats> CodeGenStage::getStats() {
