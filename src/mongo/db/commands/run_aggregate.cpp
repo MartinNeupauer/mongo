@@ -488,8 +488,16 @@ Status runAggregate(OperationContext* opCtx,
         auto ws = make_unique<WorkingSet>();
         unique_ptr<PlanStage> plan;
         if (request.getCodeGen()) {
-            plan = make_unique<CodeGenStage>(opCtx, ws.get());
-        } else {
+            auto codeGenPlan = make_unique<CodeGenStage>(opCtx, ws.get());
+
+            if (codeGenPlan->translate(pipeline.get())) {
+                // Succesfully translated the query, we can run it in the native generated code
+                plan = move(codeGenPlan);
+            }
+        }
+
+        // Fall back if we cannot generate the native code
+        if (!plan) {
             plan = make_unique<PipelineProxyStage>(opCtx, std::move(pipeline), ws.get());
         }
         // This PlanExecutor will simply forward requests to the Pipeline, so does not need to

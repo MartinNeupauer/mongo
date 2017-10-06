@@ -30,9 +30,11 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/exec/collection_scan.h"
 #include "mongo/db/exec/pipeline_codegen.h"
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/exec/working_set_common.h"
+#include "mongo/db/pipeline/document_source_cursor.h"
 #include "mongo/stdx/memory.h"
 
 #include "mongo/util/log.h"
@@ -63,6 +65,34 @@ CodeGenStage::CodeGenStage(OperationContext* opCtx, WorkingSet* workingSet) : Pl
 CodeGenStage::~CodeGenStage() {}
 
 bool CodeGenStage::isEOF() {
+    return true;
+}
+
+bool CodeGenStage::translate(Pipeline* pipeline)
+{
+    const auto& sources = pipeline->getSources();
+
+    for(const auto& source : sources) {
+        if (auto cursor = dynamic_cast<const DocumentSourceCursor*>(source.get()))
+        {
+            auto exec = cursor->getExecutor();
+            auto root = exec->getRootStage();
+
+            if (!root) {
+                throw std::logic_error("!!!!");
+            }
+
+            if (auto scan = dynamic_cast<CollectionScan*>(root))
+            {
+                auto& params = scan->params();
+                auto collection = params.collection;
+
+                if (!collection) {
+                    throw std::logic_error("!!!!");
+                }
+            }
+        }
+    }
     return true;
 }
 

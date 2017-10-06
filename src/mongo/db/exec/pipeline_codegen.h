@@ -30,6 +30,7 @@
 
 #include "mongo/db/exec/plan_stage.h"
 #include "mongo/db/exec/working_set.h"
+#include "mongo/db/pipeline/pipeline.h"
 #include "mongo/db/record_id.h"
 
 #include "mongo/db/codegen/operator/entry_functions.h"
@@ -61,6 +62,8 @@ public:
     std::unique_ptr<PlanStageStats> getStats();
 
     const SpecificStats* getSpecificStats() const final;
+
+    bool translate(Pipeline* pipeline);
 
     static const char* kStageType;
 private:

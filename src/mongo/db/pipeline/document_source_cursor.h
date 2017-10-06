@@ -146,6 +146,9 @@ public:
         return _planSummaryStats;
     }
 
+    const auto getExecutor() const {
+        return _exec.get();
+    }
 protected:
     /**
      * Disposes of '_exec' and '_rangePreserver' if they haven't been disposed already. This

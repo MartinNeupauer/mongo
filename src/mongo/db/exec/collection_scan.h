@@ -78,6 +78,13 @@ public:
 
     static const char* kStageType;
 
+    const auto& params() const {
+        return _params;
+    }
+
+    const auto filter() const {
+        return _filter;
+    }
 private:
     /**
      * If the member (with id memberID) passes our filter, set *out to memberID and return that

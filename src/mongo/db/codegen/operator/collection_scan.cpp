@@ -1,12 +1,14 @@
 #include "mongo/db/codegen/operator/collection_scan.h"
-
+#include "mongo/db/catalog/collection.h"
+#include "mongo/db/operation_context.h"
 namespace rohan
 {
     namespace runtime
     {
         struct CollectionScan
         {
-            void* _placeholder;
+            mongo::OperationContext* _opCtx;
+            const mongo::Collection* _collection;
         };
     }
 
