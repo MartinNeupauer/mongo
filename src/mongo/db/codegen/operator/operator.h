@@ -2,10 +2,12 @@
 
 #include "mongo/db/codegen/anta/Sema.h"
 #include "mongo/db/codegen/anta/Generator.h"
+#include "mongo/db/operation_context.h"
 
 #include <string>
 #include <memory>
 #include <vector>
+#include <functional>
 
 namespace rohan
 {
@@ -28,6 +30,19 @@ namespace rohan
 		GenContext(bool disableInline) : disableInline_(disableInline) {}
 	};
 
+	using ConstructFunction = std::function<void(char*,mongo::OperationContext*)>;
+	using DestructFunction = std::function<void(char*,mongo::OperationContext*)>;
+
+	struct RuntimeState
+	{
+		unsigned _size;
+
+		ConstructFunction _construct;
+		DestructFunction _destruct;
+
+		RuntimeState() : _size(0), _construct([](char*, mongo::OperationContext*){}), _destruct([](char*, mongo::OperationContext*){}) {}
+	};
+
 	class XteOperator : public anta::Generator
 	{
 		static unsigned nameCounter_;
@@ -44,7 +59,7 @@ namespace rohan
 
 		void generateHandleErrorCancel(const anta::Wrapper& errorCode);
 
-		std::vector<anta::Wrapper> generateColumnVariables(const SchemaType& schema, const char* colname = "column", anta::ExprPlaceholders* env = nullptr);
+		std::vector<anta::Wrapper> generateColumnVariables(const SchemaType& schema, const char* colRuntiname = "column", anta::ExprPlaceholders* env = nullptr);
 
 		void inlineOpen(GenContext&, GenContext&);
 		void inlineGetNext(GenContext&, GenContext&);
@@ -57,6 +72,6 @@ namespace rohan
 
 		const SchemaType& outputSchema() const { return outputSchema_; }
 		virtual void generate(GenContext&) = 0;
-		virtual void calculateStateOffset(unsigned&) = 0;
+		virtual void calculateRuntimeState(RuntimeState&) = 0;
 	};
 }

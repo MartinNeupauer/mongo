@@ -258,18 +258,37 @@ namespace anta
 		return make_intrusive<BinaryExpr>(t, op, lhs, rhs);
 	}
 	
+	bool validLogicType(const intrusive_ptr<const Expr>& expr)
+	{
+		return expr->type()->isInteger() || expr->is_a<PointerType>();
+	}
 	intrusive_ptr<const Expr> SemaFactory::Logic(ExprOp op, const intrusive_ptr<const Expr>& expr)
 	{
 		switch (op)
 		{
 		case op_logical_not:
-			if (!(expr->type()->isInteger() || expr->is_a<PointerType>()))
+			if (!validLogicType(expr))
 				throw std::logic_error("incompatible types in an unary logical expression");
 			break;
 		default:
-			throw std::runtime_error("unknown unary logical operator");
+			throw std::logic_error("unknown unary logical operator");
 		}
 		return make_intrusive<UnaryExpr>(expr->type(), op, expr);
+	}
+
+	intrusive_ptr<const Expr> SemaFactory::Logic(ExprOp op, const intrusive_ptr<const Expr>& lhs, const intrusive_ptr<const Expr>& rhs)
+	{
+		switch (op)
+		{
+		case op_logical_and:
+		case op_logical_or:
+			if (!(validLogicType(lhs) && validLogicType(rhs)))
+				throw std::logic_error("incompatible types in an binary logical expression");
+			break;
+		default:
+			throw std::logic_error("unknown binary logical operator");
+		}
+		return make_intrusive<BinaryExpr>(lhs->type(), op, lhs, rhs);
 	}
 
 	intrusive_ptr<const Expr> SemaFactory::Arith(ExprOp op, const intrusive_ptr<const Expr>& expr)
@@ -328,6 +347,9 @@ namespace anta
 
 	intrusive_ptr<const Expr> SemaFactory::FuncExpr(const Function* fn, std::vector<intrusive_ptr<const Expr>>&& args)
     {
+		if (!fn)
+			throw std::logic_error("calling unknown function");
+	
 		return make_intrusive<FuncCallExpr>(fn, addCastIfNeeded(fn, std::move(args), 0));
     }
 
@@ -462,6 +484,9 @@ namespace anta
 
 	intrusive_ptr<Statement> SemaFactory::FuncStmt(const Function* fn, std::vector<intrusive_ptr<const Expr>>&& args)
     {
+		if (!fn)
+			throw std::logic_error("calling unknown function");
+			
 		return make_intrusive<FuncCallStmt>(fn, addCastIfNeeded(fn, std::move(args), 0));
     }
 

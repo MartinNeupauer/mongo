@@ -75,6 +75,9 @@ namespace anta
 	}
 	void FallthruAnalysis::visit(BreakStmt *stmt)
 	{
+		if (!stmt->valid())
+			throw std::logic_error("break must be lowered");
+
 		if (blockBreak_.size() > stmt->level())
 		{
 			(blockBreak_.rbegin() + stmt->level())->hasBreak_ = true;

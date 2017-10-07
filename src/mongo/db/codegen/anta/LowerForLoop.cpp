@@ -71,12 +71,12 @@ namespace anta
 
 	void LowerForLoop::visit(BreakStmt* stmt)
 	{
-		if (!stmt->valid())
-			return;
-
 		// already replaced
 		if (stmtMap_.count(stmt)) return;
 
+		if (stmt->valid())
+			return;
+		
 		// run the base version
 		Replacer::visit(stmt);
 

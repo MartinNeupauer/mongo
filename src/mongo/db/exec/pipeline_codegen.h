@@ -75,6 +75,9 @@ private:
     // The buffer that holds any internal state needed by the compiled query (if any)
     std::vector<char> _stateBuffer;
 
+    // State
+    rohan::RuntimeState _state;
+
     // Native function pointer to the Open call
     rohan::NativeOpenFunction _openFunction {nullptr};
 

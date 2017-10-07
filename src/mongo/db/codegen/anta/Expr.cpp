@@ -225,6 +225,88 @@ namespace anta
             else if (left->getType()->isDoubleTy())  { result = ectx.builder_.CreateFRem(left, right); }
             break;
 
+		case op_logical_and:
+		{
+			// Convert condition to a bool by comparing equal to 0.
+			if (!left_->type()->is_a<Int1Type>())
+				left = ectx.builder_.CreateICmpNE(left, llvm::Constant::getNullValue(left->getType()));
+			
+			llvm::BasicBlock *entryBB = ectx.builder_.GetInsertBlock();
+
+			// Create blocks for the then and else cases.  Insert the 'then' block at the
+			// end of the function.
+			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "and_lhs_true", ectx.function_);
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "and_test_merge");
+
+			ectx.builder_.CreateCondBr(left, ThenBB, MergeBB);
+
+			// Left hand side is true so evaluate the right hand side
+			ectx.builder_.SetInsertPoint(ThenBB);
+			
+			// Right hand side
+			right = right_->generate(ectx);
+
+			if (!right_->type()->is_a<Int1Type>())
+				right = ectx.builder_.CreateICmpNE(right, llvm::Constant::getNullValue(right->getType()));
+
+			ectx.CreateBr(MergeBB);
+			ThenBB = ectx.builder_.GetInsertBlock();
+
+			// Emit merge block.
+			ectx.function_->getBasicBlockList().push_back(MergeBB);
+			ectx.builder_.SetInsertPoint(MergeBB);
+
+			// Final PHI node
+			llvm::PHINode *PN = ectx.builder_.CreatePHI(left->getType(), 2);
+			
+			PN->addIncoming(left, entryBB);
+			PN->addIncoming(right, ThenBB);
+
+			result = PN;
+			break;
+		}
+
+		case op_logical_or:
+		{
+			// Convert condition to a bool by comparing equal to 0.
+			if (!left_->type()->is_a<Int1Type>())
+				left = ectx.builder_.CreateICmpNE(left, llvm::Constant::getNullValue(left->getType()));
+			
+			llvm::BasicBlock *entryBB = ectx.builder_.GetInsertBlock();
+
+			// Create blocks for the then and else cases.  Insert the 'then' block at the
+			// end of the function.
+			llvm::BasicBlock *ThenBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "or_lhs_false", ectx.function_);
+			llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "or_test_merge");
+
+			ectx.builder_.CreateCondBr(left, MergeBB, ThenBB);
+
+			// Left hand side is false so evaluate the right hand side
+			ectx.builder_.SetInsertPoint(ThenBB);
+			
+			// Right hand side
+			right = right_->generate(ectx);
+
+			if (!right_->type()->is_a<Int1Type>())
+				right = ectx.builder_.CreateICmpNE(right, llvm::Constant::getNullValue(right->getType()));
+
+			ectx.CreateBr(MergeBB);
+			ThenBB = ectx.builder_.GetInsertBlock();
+
+			// Emit merge block.
+			ectx.function_->getBasicBlockList().push_back(MergeBB);
+			ectx.builder_.SetInsertPoint(MergeBB);
+
+			// Final PHI node
+			llvm::PHINode *PN = ectx.builder_.CreatePHI(left->getType(), 2);
+			
+			PN->addIncoming(left, entryBB);
+			PN->addIncoming(right, ThenBB);
+
+			result = PN;
+			break;
+		}
+
 		case op_bit_and:
 			if (left->getType()->isIntegerTy()) { result = ectx.builder_.CreateAnd(left, right); }
 			break;

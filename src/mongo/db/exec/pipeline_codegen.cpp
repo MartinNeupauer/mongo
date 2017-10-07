@@ -30,6 +30,9 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/codegen/operator/common.h"
+#include "mongo/db/codegen/operator/collection_scan.h"
+
 #include "mongo/db/exec/collection_scan.h"
 #include "mongo/db/exec/pipeline_codegen.h"
 #include "mongo/db/exec/scoped_timer.h"
@@ -50,7 +53,14 @@
 namespace anta
 {
     unsigned theTestFunction(machine::Jitter& jitter, rohan::NativeOpenFunction& openFn, rohan::NativeGetNextFunction& getNextFn);
+    rohan::RuntimeState generateNative(
+        SemaFactory& f, 
+        machine::Jitter& jitter,
+        const std::unique_ptr<rohan::XteOperator>& root,
+        rohan::NativeOpenFunction& openFn,
+        rohan::NativeGetNextFunction& getNextFn);
 }
+
 namespace mongo {
 
 using std::unique_ptr;
@@ -70,7 +80,13 @@ bool CodeGenStage::isEOF() {
 
 bool CodeGenStage::translate(Pipeline* pipeline)
 {
+    anta::SemaFactory f;
+    rohan::CommonDeclarations common(f);
+    common.generate();
+    
     const auto& sources = pipeline->getSources();
+
+    unique_ptr<rohan::XteOperator> xteroot;
 
     for(const auto& source : sources) {
         if (auto cursor = dynamic_cast<const DocumentSourceCursor*>(source.get()))
@@ -90,9 +106,20 @@ bool CodeGenStage::translate(Pipeline* pipeline)
                 if (!collection) {
                     throw std::logic_error("!!!!");
                 }
+
+                xteroot = make_unique<rohan::XteCollectionScan>(f, params);
             }
         }
     }
+
+    if (!xteroot)
+        return false;
+
+    _jitter = make_unique<machine::Jitter>();
+
+    _state = anta::generateNative(f, *_jitter, xteroot, _openFunction, _getNextFunction);
+    _stateBuffer.resize(_state._size);
+
     return true;
 }
 
@@ -100,10 +127,7 @@ PlanStage::StageState CodeGenStage::doWork(WorkingSetID* out) {
     if (_first) {
         _first = false;
 
-        _jitter = make_unique<machine::Jitter>();
-
-        unsigned localStateSize = anta::theTestFunction(*_jitter, _openFunction, _getNextFunction);
-        _stateBuffer.resize(localStateSize);
+        _state._construct(_stateBuffer.data(), getOpCtx());
 
         int openError{0};
         rohan::OpenCallResult openResult = _openFunction(_stateBuffer.data(), &openError);
@@ -132,9 +156,21 @@ PlanStage::StageState CodeGenStage::doWork(WorkingSetID* out) {
     switch(getNextResult)
     {
         case rohan::GetNextCallResult::kOK:
+        {
+            *out = _workingSet->allocate();
+            auto member = _workingSet->get(*out);
+
+            BSONObjBuilder bob;
+            bob.append("a",0);
+            member->obj = Snapshotted<BSONObj>(SnapshotId(),bob.obj());
+            member->transitionToOwnedObj();
             return PlanStage::ADVANCED;
+        }
         case rohan::GetNextCallResult::kEOS:
+        {
+            _state._destruct(_stateBuffer.data(), getOpCtx());
             return PlanStage::IS_EOF;
+        }
         case rohan::GetNextCallResult::kError:
         {
             Status status(

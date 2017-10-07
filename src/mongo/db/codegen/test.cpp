@@ -61,15 +61,50 @@ namespace anta
         return 5;
     }
 
+    rohan::RuntimeState generateNative(
+        SemaFactory& f, 
+        machine::Jitter& jitter,
+        const std::unique_ptr<rohan::XteOperator>& root,
+        rohan::NativeOpenFunction& openFn,
+        rohan::NativeGetNextFunction& getNextFn)
+    {
+        rohan::RuntimeState state;
+        root->calculateRuntimeState(state);
+      
+        rohan::GenContext gctx{ false };
+        root->generate(gctx);
+
+        rohan::EntryFunctions e(f);
+        auto fnOpen = e.generateOpen(gctx);
+        auto fnGetNext = e.generateGetNext(gctx);        
+
+        CodeGenContext ctx("codegen");
+
+        f.finalizeCodeGen(ctx);
+        
+        llvm::verifyModule(*ctx.module_, &llvm::errs());
+                
+        jitter.jit(ctx.module_); 
+
+        ctx.module_->dump();
+        
+        openFn = jitter.find<rohan::NativeOpenFunction>(fnOpen->fullName().c_str());
+        getNextFn = jitter.find<rohan::NativeGetNextFunction>(fnGetNext->fullName().c_str());
+
+        return state;
+    }
+
     unsigned theTestFunction(machine::Jitter& jitter, rohan::NativeOpenFunction& openFn, rohan::NativeGetNextFunction& getNextFn)
     {
         CodeGenContext ctx("codegen");
         SemaFactory f;
         
-        unique_ptr<rohan::XteOperator> _root = make_unique<rohan::XteCollectionScan>(f);
+        mongo::CollectionScanParams params;
+        unique_ptr<rohan::XteOperator> _root = make_unique<rohan::XteCollectionScan>(f, params);
 
-        unsigned localStateSize = 0;
-        _root->calculateStateOffset(localStateSize);
+        rohan::RuntimeState state;
+
+        _root->calculateRuntimeState(state);
         
         
         rohan::GenContext gctx{ false };
@@ -88,6 +123,6 @@ namespace anta
         openFn = jitter.find<rohan::NativeOpenFunction>(fnOpen->fullName().c_str());
         getNextFn = jitter.find<rohan::NativeGetNextFunction>(fnGetNext->fullName().c_str());
 
-        return localStateSize;
+        return state._size;
     }
 }

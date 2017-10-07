@@ -21,7 +21,7 @@ namespace anta
 		if (linear() && !dest->linear() && dest->is_a<StringType>())
 			return true;
 
-		return false;
+		return PointerType::canCast(dest);
 	}
 	llvm::Function* StringType::killValue(CodeGenContext& ctx) const
 	{

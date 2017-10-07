@@ -232,6 +232,11 @@ namespace anta
 			return Wrapper(*this, factory_.CastInteger(factory_.UIntConst(c), int1_));
 		}
 
+		auto const8_(int c)
+		{
+			return Wrapper(*this, factory_.CastInteger(factory_.UIntConst(c), int8_));
+		}
+
 		auto const64_(int c)
 		{
 			return Wrapper(*this, factory_.CastInteger(factory_.UIntConst(c), int64_));
@@ -585,4 +590,7 @@ namespace anta
 	inline Wrapper operator> (const Wrapper& lhs, const Wrapper& rhs) { return Wrapper(lhs.g_, lhs.g_.factory_.Cmp(anta::op_comp_greater, lhs.expr_, rhs.expr_)); }
 	inline Wrapper operator== (const Wrapper& lhs, const Wrapper& rhs) { return Wrapper(lhs.g_, lhs.g_.factory_.Cmp(anta::op_comp_eq, lhs.expr_, rhs.expr_)); }
 	inline Wrapper operator!= (const Wrapper& lhs, const Wrapper& rhs) { return Wrapper(lhs.g_, lhs.g_.factory_.Cmp(anta::op_comp_neq, lhs.expr_, rhs.expr_)); }
+
+	inline Wrapper operator&& (const Wrapper& lhs, const Wrapper& rhs) { return Wrapper(lhs.g_, lhs.g_.factory_.Logic(anta::op_logical_and, lhs.expr_, rhs.expr_)); }
+	inline Wrapper operator|| (const Wrapper& lhs, const Wrapper& rhs) { return Wrapper(lhs.g_, lhs.g_.factory_.Logic(anta::op_logical_or, lhs.expr_, rhs.expr_)); }
 }

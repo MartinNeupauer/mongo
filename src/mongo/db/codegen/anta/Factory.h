@@ -136,6 +136,7 @@ namespace anta
 		intrusive_ptr<const Expr> Var(Variable* v);
 		intrusive_ptr<const Expr> Cmp(ExprOp op, const intrusive_ptr<const Expr>& lhs, const intrusive_ptr<const Expr>& rhs);
 		intrusive_ptr<const Expr> Logic(ExprOp op, const intrusive_ptr<const Expr>& expr);
+		intrusive_ptr<const Expr> Logic(ExprOp op, const intrusive_ptr<const Expr>& lhs, const intrusive_ptr<const Expr>& rhs);
 		intrusive_ptr<const Expr> Arith(ExprOp op, const intrusive_ptr<const Expr>& expr);
 		intrusive_ptr<const Expr> Arith(ExprOp op, const intrusive_ptr<const Expr>& lhs, const intrusive_ptr<const Expr>& rhs);
 		intrusive_ptr<const Expr> BitOp(ExprOp op, const intrusive_ptr<const Expr>& lhs, const intrusive_ptr<const Expr>& rhs);

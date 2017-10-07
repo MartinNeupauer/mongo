@@ -28,6 +28,7 @@ env.Library(
 
     	"machine/jitter.cpp",
 
+        "operator/common.cpp",
         "operator/collection_scan.cpp",
         "operator/entry_functions.cpp",
         "operator/operator.cpp",
