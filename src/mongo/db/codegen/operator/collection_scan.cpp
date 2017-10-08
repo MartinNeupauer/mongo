@@ -84,7 +84,7 @@ namespace rohan
                 auto record = var_("%record", cast_(ptr_(recordType),collScanState));
                 columns[0] = record["data"];
 
-                auto field = var_("%field", eval_("BSON::getField", { columns[0], const_("_id")}));
+                auto field = var_("%field", eval_("BSON::getField", { columns[0], const_("b")}));
                 if_ (field);
                     call_("printString", {const_("found")});
                 else_();

@@ -1,4 +1,5 @@
 #include "mongo/db/codegen/operator/common.h"
+#include "mongo/bson/bsontypes.h"
 
 namespace rohan
 {
@@ -13,38 +14,128 @@ namespace rohan
                 auto fieldName = param_(weak_string_, "%fieldName");
             body_();
                 auto size = var_("%size", *cast_(pint_, document));
-                auto begin = var_("%begin", document + const_(4));
+                auto begin = var_("begin", document + const_(4));
                 auto end = var_("%end", document + size);
 
-                // If we have hit the end of document then we are done
-                if_ (*begin == const8_(0));
-                    return_(nullptr_(pint8_));
-                end_();
+                auto tag = var_(int8_, "tag");
 
-                // Check the name match
-                auto lhs = var_("lhs", begin + const_(1)); // skip the field type tag
-                auto rhs = var_("rhs", cast_(pint8_, fieldName));
-                auto match = var_("match", const1_(true));
                 loop_();
-                    if_ (*lhs != *rhs);
-                        match = const1_(false);
-                        break_();
-                    end_();
-                    if_ (*lhs == const8_(0) || *rhs == const8_(0));
-                        break_();
+                    tag = *begin;
+                    // If we have hit the end of document then we are done
+                    if_ (tag == const8_(mongo::BSONType::EOO));
+                        return_(nullptr_(pint8_));
                     end_();
 
-                    lhs = lhs + const_(1);
-                    rhs = rhs + const_(1);
-                end_();
+                    // Check the name match
+                    auto lhs = var_("lhs", begin + const_(1)); // skip the field type tag
+                    auto rhs = var_("rhs", cast_(pint8_, fieldName));
+                    auto match = var_("match", const1_(true));
+                    loop_();
+                        if_ (*lhs != *rhs);
+                            match = const1_(false);
+                            break_();
+                        end_();
+                        if_ (*lhs == const8_(0) || *rhs == const8_(0));
+                            break_();
+                        end_();
 
-                // If we have a match we are done
-                if_ (match);
-                    return_(begin);
-                end_();
+                        lhs = lhs + const_(1);
+                        rhs = rhs + const_(1);
+                    end_();
 
-                //fake
-                return_(nullptr_(pint8_));
+                    // If we have a match we are done
+                    if_ (match);
+                        return_(begin);
+                    end_();
+
+                    // Skip the field name
+                    begin = begin + const_(1);
+                    for_(nothing_(), *begin, begin = begin + const_(1) );
+                    end_();
+                    begin = begin + const_(1);
+
+                    if_ (tag == const8_(mongo::BSONType::NumberDouble));
+                        begin = begin + const_(sizeof(double));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::String));
+                        begin = begin + *cast_(pint_, begin) + const_(4);
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Object));
+                        begin = begin + *cast_(pint_, begin);
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Array));
+                        begin = begin + *cast_(pint_, begin);
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Undefined));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::jstOID));
+                        begin = begin + const_(12);
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Bool));
+                        begin = begin + const_(1);
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Date));
+                        begin = begin + const_(sizeof(int64_t));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::jstNULL));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::RegEx));
+                        call_("llvm.trap",{}); // TODO - fixit
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::DBRef));
+                        call_("llvm.trap",{}); // TODO - fixit
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Code));
+                        call_("llvm.trap",{}); // TODO - fixit
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::Symbol));
+                        call_("llvm.trap",{}); // TODO - fixit
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::CodeWScope));
+                        call_("llvm.trap",{}); // TODO - fixit
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::NumberInt));
+                        begin = begin + const_(sizeof(int32_t));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::bsonTimestamp));
+                        begin = begin + const_(sizeof(uint64_t));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::NumberLong));
+                        begin = begin + const_(sizeof(int64_t));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::NumberDecimal));
+                        begin = begin + const_(16);
+                        continue_();
+                    end_();
+
+
+                    if_ (tag == const8_(mongo::BSONType::MinKey));
+                        continue_();
+                    end_();
+                    if_ (tag == const8_(mongo::BSONType::MaxKey));
+                        continue_();
+                    end_();
+
+                    // unhandled types - need a better bail out
+                    call_("llvm.trap",{});
+                end_();
             end_();
         }
         generateCollectionScan();
