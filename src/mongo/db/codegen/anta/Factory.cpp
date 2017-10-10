@@ -55,6 +55,18 @@ namespace
 	{
 		printf("\n");
 	}
+
+	char* allocateMemory(char*, unsigned size)
+	{
+		++gblStrAllocs;
+		return (char*)malloc(size);
+	}
+
+	void releaseMemory(char*, char* memory)
+	{
+		++gblStrFrees;
+		free(memory);
+	}
 }
 
 namespace anta
@@ -78,6 +90,8 @@ namespace anta
 		globalScope_->addType("double", std::make_unique<DoubleType>(globalScope()));
         globalScope_->addType("string", std::make_unique<StringType>(globalScope(), UInt8Type(), true));
 		globalScope_->addType("weak_string", std::make_unique<StringType>(globalScope(), UInt8Type(), false));
+		globalScope_->addType("BSONVariant", std::make_unique<BSONVariant>(globalScope(), UInt8Type(), true));
+		globalScope_->addType("BSONVariantView", std::make_unique<BSONVariant>(globalScope(), UInt8Type(), false));
 
 		Function* f = createFunction(globalScope(), "printInt", (void*)::printInt); f->setConst();
         f->setParameters({ createVariable(f->paramScope(), UIntType(), "i") });
@@ -112,7 +126,19 @@ namespace anta
 		{
 			createFunction(globalScope(), "llvm.trap");
 		}
-    }
+
+		{
+			auto f = createFunction(globalScope(), UPtrToInt8Type(), "allocateMemory", (void*)::allocateMemory);
+			f->addParameter(createVariable(f->paramScope(), UPtrToInt8Type(), "allocator"));
+			f->addParameter(createVariable(f->paramScope(), UIntType(), "size"));
+		}
+	
+		{
+			auto f = createFunction(globalScope(), "releaseMemory", (void*)::releaseMemory);
+			f->addParameter(createVariable(f->paramScope(), UPtrToInt8Type(), "allocator"));
+			f->addParameter(createVariable(f->paramScope(), UPtrToInt8Type(), "memory"));
+		}
+	}
 
     Scope* SemaFactory::createScope(const std::string& name, Scope* parent)
     {
@@ -619,7 +645,6 @@ namespace anta
 
 	void SemaFactory::destroyFunction(Function * f)
 	{
-		//auto scope = f->scope();
 		functions_.erase( std::remove(functions_.begin(), functions_.end(), f), functions_.end());
 	}
 
@@ -672,9 +697,10 @@ namespace anta
 			std::string name(pointee->name());
 			if (name.empty())
 				name = generateUniqueName("annonptr");
+			name.append(1,'*');
 
 			// oooh ... this is fugly
-			auto t = const_cast<Scope*>(pointee->scope())->addType(name+'*', std::make_unique<PointerType>(pointee->scope(), pointee, name));
+			auto t = const_cast<Scope*>(pointee->scope())->addType(name, std::make_unique<PointerType>(pointee->scope(), pointee, name));
 			pointers_.insert({ pointee, t });
 			return t;
 		}
@@ -688,10 +714,11 @@ namespace anta
 		}
 		else
 		{
-			//std::string name = arrayOf->name().empty() ? generateUniqueName("annonarray") : arrayOf->name();
-			std::string name = generateUniqueName("annonarray");
+			std::string name = arrayOf->name().empty() ? generateUniqueName("annonarray") : arrayOf->name();
+			name.append(1,'['); name.append(std::to_string(size)); name.append(1,']');
+
 			// oooh ... this is fugly
-			auto t = const_cast<Scope*>(arrayOf->scope())->addType(name+"[]", std::make_unique<ArrayType>(arrayOf->scope(), arrayOf, size, name));
+			auto t = const_cast<Scope*>(arrayOf->scope())->addType(name, std::make_unique<ArrayType>(arrayOf->scope(), arrayOf, size, name));
 			arrays_.insert({ std::make_pair(arrayOf,size), t });
 			return t;
 		}

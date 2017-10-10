@@ -42,10 +42,6 @@ namespace anta
 		{
 			throw std::logic_error("unsupported type");
 		}
-		virtual llvm::Function* killValue(CodeGenContext&) const
-		{
-			throw std::logic_error("unsupported type");
-		}
 		virtual unsigned alignSize() const = 0;
 		virtual unsigned allocSize() const = 0;
 		virtual bool canCast(const Type*) const;
@@ -297,14 +293,15 @@ namespace anta
 
 	class ArrayType : public Type
 	{
+	protected:
 		const Type* arrayOf_;
 		unsigned    size_;
 	public:
-		ArrayType(const Scope* scope, const Type* arrayOf, unsigned size) : Type(scope, arrayOf->name() + "[]"), arrayOf_(arrayOf), size_(size)
+		ArrayType(const Scope* scope, const Type* arrayOf, unsigned size, bool linear = false) : Type(scope, arrayOf->name() + "[]", linear), arrayOf_(arrayOf), size_(size)
 		{
 			if (!arrayOf_) throw std::logic_error("arrayOf must not be nullptr");
 		}
-		ArrayType(const Scope* scope, const Type* arrayOf, unsigned size, const std::string& name) : Type(scope, name + "[]"), arrayOf_(arrayOf), size_(size)
+		ArrayType(const Scope* scope, const Type* arrayOf, unsigned size, const std::string& name, bool linear = false) : Type(scope, name, linear), arrayOf_(arrayOf), size_(size)
 		{
 			if (!arrayOf_) throw std::logic_error("arrayOf must not be nullptr");
 		}
@@ -331,7 +328,7 @@ namespace anta
 		{
 			if (!pointerOf_) throw std::logic_error("pointerOf must not be nullptr");
 		}
-		PointerType(const Scope* scope, const Type* pointerOf, const std::string& name, bool linear = false) : Type(scope, name + "*", linear), pointerOf_(pointerOf)
+		PointerType(const Scope* scope, const Type* pointerOf, const std::string& name, bool linear = false) : Type(scope, name, linear), pointerOf_(pointerOf)
 		{
 			if (!pointerOf_) throw std::logic_error("pointerOf must not be nullptr");
 		}
@@ -353,9 +350,42 @@ namespace anta
 	class StringType : public PointerType
 	{
 	public:
-		StringType(const Scope* scope, const Type* pointerOf, bool linear) : PointerType(scope, pointerOf, linear ? "String" : "WeakString", linear) {}
+		StringType(const Scope* scope, const Type* pointerOf, bool linear) : PointerType(scope, pointerOf, linear ? "String" : "StringView", linear) {}
+
 		virtual bool canCast(const Type* dest) const override;
-		virtual llvm::Function* killValue(CodeGenContext&) const override;
+
+		virtual void generateUndef(EnvCodeGenCtx&, llvm::Value*) const override;
+		virtual void generateCheckUndef(EnvCodeGenCtx&, llvm::Value*) const override;
+		virtual void generateKill(EnvCodeGenCtx&, llvm::Value*) const override;
+	};
+
+	// The Variant type 
+	class BSONVariant : public ArrayType
+	{
+	public:
+		static const unsigned int kSize = 20;
+/*
+		static const unsigned int kTagOffset = 0;
+		static const unsigned int kInlineStringOffset = 1;
+		static const unsigned int kMemoryPtrOffset = 4;
+		static const unsigned int kAllocatorPtrOffset = 12;
+		static const unsigned int kScalarValueOffset = 4;
+*/
+		static const unsigned int kTagOffset = 19;
+		static const unsigned int kInlineStringOffset = 0;
+		static const unsigned int kMemoryPtrOffset = 0;
+		static const unsigned int kAllocatorPtrOffset = 8;
+		static const unsigned int kScalarValueOffset = 0;
+		
+		BSONVariant(const Scope* scope, const Type* storageType, bool linear) : ArrayType(scope, storageType, kSize, linear ? "BSONVariant" : "BSONVariantView", linear) {}
+
+		virtual llvm::Type* getllvm(CodeGenContext& ctx) const override
+		{
+			return llvm::Type::getIntNTy(ctx.context_, 8 * kSize);
+		}
+
+		virtual bool canCast(const Type* dest) const override;
+
 		virtual void generateUndef(EnvCodeGenCtx&, llvm::Value*) const override;
 		virtual void generateCheckUndef(EnvCodeGenCtx&, llvm::Value*) const override;
 		virtual void generateKill(EnvCodeGenCtx&, llvm::Value*) const override;

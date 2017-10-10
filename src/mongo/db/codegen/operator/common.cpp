@@ -70,6 +70,10 @@ namespace rohan
                         begin = begin + *cast_(pint_, begin);
                         continue_();
                     end_();
+                    if_ (tag == const8_(mongo::BSONType::BinData));
+                        begin = begin + *cast_(pint_, begin) + const_(1);
+                        continue_();
+                    end_();
                     if_ (tag == const8_(mongo::BSONType::Undefined));
                         continue_();
                     end_();
@@ -136,6 +140,74 @@ namespace rohan
                     // unhandled types - need a better bail out
                     call_("llvm.trap",{});
                 end_();
+            end_();
+        }
+        {
+			function_(bsonvariant_, "BSON::createString");
+				auto alloc = param_(pint8_, "%allocator");
+				auto str = param_(pint8_, "%str");
+				auto len = param_(int_, "%len"); // including 0 at the end
+            body_();
+
+                auto result = var_(bsonvariant_, "result");
+				auto rawptr = var_("%rawptr", cast_(pint8_, &result));
+
+                auto memory = var_(pint8_, "memory");
+
+				if_(len < const_(anta::BSONVariant::kSize));
+					// store the tag
+					*(rawptr + const_(anta::BSONVariant::kTagOffset)) = const8_(mongo::BSONType::String);
+					memory = rawptr + const_(anta::BSONVariant::kInlineStringOffset);
+				else_();
+					// allocate memory
+					memory = eval_("allocateMemory", { alloc, len });
+					// store the tag
+					*(rawptr + const_(anta::BSONVariant::kTagOffset)) = const8_(0x80 | mongo::BSONType::String);
+					*cast_(ptr_(pint8_), rawptr + const_(anta::BSONVariant::kMemoryPtrOffset)) = memory;
+					*cast_(ptr_(pint8_), rawptr + const_(anta::BSONVariant::kAllocatorPtrOffset)) = alloc;
+				end_();
+
+                // copy the string
+				auto i = var_("i", const_(0));
+				auto iter = var_("iter", str);
+				for_(nothing_(), i < len, i = i + const_(1));
+					*memory = *iter;
+					memory = memory + const_(1);
+					iter = iter + const_(1);
+				end_();
+
+				return_(result);
+			end_();            
+        }
+        {
+            function_(bsonvariant_, "BSON::getVariant");
+                auto field = param_(pint8_, "%field");
+            body_();
+                auto begin = var_("begin", field);
+                auto tag = var_("%tag", *begin);
+                auto result = var_(bsonvariant_, "result");
+                auto rawptr = var_("%rawptr", cast_(pint8_, &result));
+                auto len = var_(int_, "len");
+
+                // Skip the field name
+                begin = begin + const_(1);
+                for_(nothing_(), *begin, begin = begin + const_(1) );
+                end_();
+                begin = begin + const_(1);
+
+                if_ (tag == const8_(mongo::BSONType::NumberDouble));
+                    *(rawptr + const_(anta::BSONVariant::kTagOffset)) = tag;
+                    *cast_(ptr_(double_), rawptr + const_(anta::BSONVariant::kScalarValueOffset)) = *cast_(ptr_(double_), begin);
+                    return_(result);
+                end_();
+                if_ (tag == const8_(mongo::BSONType::String));
+                    len = *cast_(pint_, begin);
+                    begin = begin + const_(4);
+
+                    return_(eval_("BSON::createString", {nullptr_(pint8_), begin, len}));
+                end_();
+                
+                return_(result);
             end_();
         }
         generateCollectionScan();

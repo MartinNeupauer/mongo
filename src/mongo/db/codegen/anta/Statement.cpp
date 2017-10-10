@@ -324,7 +324,8 @@ namespace anta
 			llvm::Value* rhs = rhs_->generateTopLevel(ectx);
 			llvm::Value* lhs = lhs_->generateRefTopLevel(ectx);
 
-			ectx.builder_.CreateStore(rhs, lhs);
+			//ectx.builder_.CreateStore(rhs, lhs);
+			ectx.builder_.CreateAlignedStore(rhs, lhs, lhs_->type()->alignSize());
 		}
 
 		return StmtGenResult{ false };

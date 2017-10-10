@@ -240,7 +240,9 @@ namespace machine
 		llvm::EngineBuilder builder;
 		
 		builder.setOptLevel(llvm::CodeGenOpt::Aggressive);
-		//builder.setCodeModel(llvm::CodeModel::Small);
+#ifdef _WIN32
+		builder.setCodeModel(llvm::CodeModel::Small);
+#endif
 /*
 		builder.setOptLevel(llvm::CodeGenOpt::None);
 		llvm::TargetOptions options;
@@ -290,7 +292,7 @@ namespace machine
 		// Provide basic AliasAnalysis support for GVN.
 		fpm->add(llvm::createBasicAAWrapperPass());
 		// Aggregates to scalars
-		fpm->add(llvm::createSROAPass());
+		//fpm->add(llvm::createSROAPass());
 		// Promote allocas to registers.
 		fpm->add(llvm::createPromoteMemoryToRegisterPass());
 		// Do simple "peephole" optimizations and bit-twiddling optzns.

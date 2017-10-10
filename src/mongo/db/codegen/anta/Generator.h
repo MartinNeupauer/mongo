@@ -504,6 +504,7 @@ namespace anta
 		const anta::Type* string_;
 		const anta::Type* weak_string_;
 		const anta::Type* double_;
+		const anta::Type* bsonvariant_;
 
 		const anta::Type* pint8_;
 		const anta::Type* pint16_;
@@ -528,6 +529,7 @@ namespace anta
 			string_ = factory_.UStringType();
 			weak_string_ = factory_.UStringType(true);
 			double_ = factory_.UDoubleType();
+			bsonvariant_ = factory_.globalScope()->getType("BSONVariant");
 
 			pint8_ = ptr_(int8_);
 			pint16_ = ptr_(int16_);
