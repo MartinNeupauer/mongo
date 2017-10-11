@@ -83,7 +83,8 @@ namespace anta
         f.finalizeCodeGen(ctx);
         
         llvm::verifyModule(*ctx.module_, &llvm::errs());
-                
+        ctx.module_->dump();
+        
         jitter.jit(ctx.module_); 
 
         ctx.module_->dump();

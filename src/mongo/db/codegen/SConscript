@@ -32,6 +32,7 @@ env.Library(
         "operator/collection_scan.cpp",
         "operator/entry_functions.cpp",
         "operator/operator.cpp",
+        "operator/project.cpp",
 
         "test.cpp",
     ],

@@ -32,12 +32,14 @@
 
 #include "mongo/db/codegen/operator/common.h"
 #include "mongo/db/codegen/operator/collection_scan.h"
+#include "mongo/db/codegen/operator/project.h"
 
 #include "mongo/db/exec/collection_scan.h"
 #include "mongo/db/exec/pipeline_codegen.h"
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/exec/working_set_common.h"
 #include "mongo/db/pipeline/document_source_cursor.h"
+#include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/stdx/memory.h"
 
 #include "mongo/util/log.h"
@@ -87,6 +89,7 @@ bool CodeGenStage::translate(Pipeline* pipeline)
     const auto& sources = pipeline->getSources();
 
     unique_ptr<rohan::XteOperator> xteroot;
+    bool failToCompile = false;
 
     for(const auto& source : sources) {
         if (auto cursor = dynamic_cast<const DocumentSourceCursor*>(source.get()))
@@ -109,10 +112,53 @@ bool CodeGenStage::translate(Pipeline* pipeline)
 
                 xteroot = make_unique<rohan::XteCollectionScan>(f, params);
             }
+        } else if (auto groupby = dynamic_cast<const DocumentSourceGroup*>(source.get())) {
+            auto& idexprs = groupby->getIdExpressions();
+            if (idexprs.size() == 1 && dynamic_cast<const ExpressionConstant*>(idexprs[0].get())) {
+                // no group by columns
+            } else {
+                vector<StringData> groupByCols;
+                for(auto& col : idexprs) {
+                    auto fieldAccess = dynamic_cast<const ExpressionFieldPath*>(col.get());
+                    if (!fieldAccess) {
+                        failToCompile = true;
+                        break;
+                    }
+
+                    auto& fieldPath = fieldAccess->getFieldPath();
+                    if (fieldPath.getPathLength() != 2)
+                    {
+                        failToCompile = true;
+                        break;
+                    }
+                    groupByCols.push_back(fieldPath.getFieldName(1));
+                }
+                if (!failToCompile) {
+                    // input environment
+                    auto envIn = f.createPlaceholders(xteroot->outputSchema());
+
+                    // output environment
+                    rohan::SchemaType outTypes(groupByCols.size(), f.globalScope()->getType("BSONVariant"));
+                    auto envOut = f.createPlaceholders(outTypes);
+
+                    vector<boost::intrusive_ptr<anta::Statement>> stmts;
+
+                    for(unsigned idx=0; idx<groupByCols.size(); ++idx) {
+                        stmts.push_back(
+                            f.Assign(
+                                f.Hole(envOut, idx),
+                                f.FuncExpr(f.GlobalFunction("BSON::getVariantFromDocument"), {f.Hole(envIn, 0), f.UStringConst(groupByCols[idx].toString())})
+                            )
+                        );
+                    }
+
+                    xteroot = make_unique<rohan::XteProject>(f,std::move(xteroot),envIn,envOut,f.Stmts(std::move(stmts)));
+                }
+            }
         }
     }
 
-    if (!xteroot)
+    if (!xteroot || failToCompile)
         return false;
 
     _jitter = make_unique<machine::Jitter>();

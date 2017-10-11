@@ -102,6 +102,9 @@ public:
     boost::intrusive_ptr<DocumentSource> getShardSource() final;
     std::list<boost::intrusive_ptr<DocumentSource>> getMergeSources() final;
 
+    auto& getIdExpressions() const {
+        return _idExpressions;
+    }
 protected:
     void doDispose() final;
 

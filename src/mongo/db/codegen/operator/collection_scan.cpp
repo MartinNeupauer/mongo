@@ -83,7 +83,7 @@ namespace rohan
 
                 auto record = var_("%record", cast_(ptr_(recordType),collScanState));
                 columns[0] = record["data"];
-
+/*
                 auto bsonvar = var_(bsonvariant_, "variant");
                 
                 auto field = var_("%field", eval_("BSON::getField", { columns[0], const_("b")}));
@@ -94,8 +94,8 @@ namespace rohan
                     call_("printString", {const_("not found")});
                 end_();
                 
-                call_("printLn", {});
-                mreturn_(rohan::kNextRowDone);
+                call_("printLn", {});*/
+                mreturn_(rohan::kNextRowDone, columns);
             end_();
         }
     }

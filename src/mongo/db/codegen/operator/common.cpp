@@ -183,10 +183,16 @@ namespace rohan
             function_(bsonvariant_, "BSON::getVariant");
                 auto field = param_(pint8_, "%field");
             body_();
-                auto begin = var_("begin", field);
-                auto tag = var_("%tag", *begin);
                 auto result = var_(bsonvariant_, "result");
                 auto rawptr = var_("%rawptr", cast_(pint8_, &result));
+
+                if_ (field == nullptr_(pint8_));
+                    *(rawptr + const_(anta::BSONVariant::kTagOffset)) = const8_(0x1f); //  void 
+                    return_ (result);
+                end_();
+
+                auto begin = var_("begin", field);
+                auto tag = var_("%tag", *begin);
                 auto len = var_(int_, "len");
 
                 // Skip the field name
@@ -208,6 +214,15 @@ namespace rohan
                 end_();
                 
                 return_(result);
+            end_();
+        }
+        {
+            function_(bsonvariant_, "BSON::getVariantFromDocument");
+                auto document = param_(pint8_, "%document");
+                auto fieldName = param_(weak_string_, "%fieldName");
+            body_();
+                auto field = var_("%field", eval_("BSON::getField", {document, fieldName}));
+                return_(eval_("BSON::getVariant", {field}));
             end_();
         }
         generateCollectionScan();
