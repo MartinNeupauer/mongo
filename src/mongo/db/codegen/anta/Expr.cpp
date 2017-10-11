@@ -437,7 +437,7 @@ namespace anta
 
         if (type->isIntegerTy())
         {
-            return llvm::ConstantInt::get(type, constant_.value<int>(), true);
+            return llvm::ConstantInt::get(type, constant_.value<int64_t>(), true);
         }
         else if (type->isDoubleTy())
         {

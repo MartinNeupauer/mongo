@@ -51,7 +51,7 @@ namespace anta
 		std::vector<std::pair<Scope*, StructType*>> structs_;
 
 		// all int constants - unified
-		std::unordered_map<int, intrusive_ptr<const Expr>> intConstants_;
+		std::unordered_map<int64_t, intrusive_ptr<const Expr>> intConstants_;
 
 		// all string constants - unified
 		std::unordered_map<std::string, intrusive_ptr<const Expr>> stringConstants_;
@@ -127,7 +127,7 @@ namespace anta
 		// constants are unified
 		intrusive_ptr<const Expr> UNullPtr(const Type* t);
 		intrusive_ptr<const Expr> UFuncPtr(Function* f);
-		intrusive_ptr<const Expr> UIntConst(const int i);
+		intrusive_ptr<const Expr> UIntConst(const int64_t i);
 		intrusive_ptr<const Expr> UStringConst(const std::string& s);
 		intrusive_ptr<const Expr> UDoubleConst(const double d);
 		intrusive_ptr<const Expr> CastInteger(const intrusive_ptr<const Expr>& e, const Type* t);

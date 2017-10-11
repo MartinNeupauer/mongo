@@ -236,6 +236,113 @@ namespace rohan
                 return_(eval_("BSON::getVariant", {field}));
             end_();
         }
+        {
+            function_(int64_, "BSON::hashString")->setConst();
+                auto str = param_(pint8_, "str");
+            body_();
+                auto hash = var_(int64_, "hash");
+                // in lieu of casts do a poor man zero extend - have to fix it eventually as this is suboptimal code
+                auto widechar = var_("widechar", const64_(0));
+
+                hash = const64_(14695981039346656037);
+
+                for_(nothing_(), *str != const8_(0), str = str + const_(1));
+                    *cast_(pint8_, &widechar) = *str;
+                    hash = hash ^ widechar;
+                    hash = hash * const64_(1099511628211);
+                end_();
+
+                return_(hash);
+            end_();
+        }
+        {
+            function_(int64_, "BSON::hash")->setConst();
+                auto v = param_(bsonvariantview_, "v");
+            body_();
+                auto pv = var_("%pv", cast_(pint8_, &v));
+                auto tag = var_("%tag", *(pv+const_(anta::BSONVariant::kTagOffset)));
+
+                if_( (tag | const8_(0x80)) == (const8_(0x80 | mongo::BSONType::String)) );
+                    if_(tag == const8_(mongo::BSONType::String));
+                        // the string is inline
+                        return_(eval_("BSON::hashString", { pv + const_(anta::BSONVariant::kInlineStringOffset)}));
+                    else_();
+                        // the allocated string
+                        auto memory = var_("%memory", *cast_(ptr_(pint8_), pv + const_(anta::BSONVariant::kMemoryPtrOffset)));
+                        return_(eval_("BSON::hashString", {memory}));
+                    end_();
+                end_();
+
+                // unsupported type
+                call_("llvm.trap",{});
+
+                return_(const64_(0));
+            end_();
+        }
+        {
+            function_(int1_, "BSON::compareEQString")->setConst();
+                auto lhs = param_(pint8_, "lhs");
+                auto rhs = param_(pint8_, "rhs");
+            body_();
+                loop_();
+                    if_ (*lhs != *rhs);
+                        return_(const1_(false));
+                    end_();
+
+                    if_ (*lhs == const8_(0));
+                        return_(const1_(true));
+                    end_();
+
+                    lhs = lhs + const_(1);
+                    rhs = rhs + const_(1);
+                end_();
+            end_();
+        }
+        {
+            function_(int1_, "BSON::compareEQ")->setConst();
+                auto lhs = param_(bsonvariantview_, "lhs");
+                auto rhs = param_(bsonvariantview_, "rhs");
+            body_();
+                auto plhs = var_("%plhs", cast_(pint8_, &lhs));
+                auto prhs = var_("%prhs", cast_(pint8_, &rhs));
+                auto taglhs = var_("%taglhs", *(plhs+const_(anta::BSONVariant::kTagOffset)));
+                auto tagrhs = var_("%tagrhs", *(prhs+const_(anta::BSONVariant::kTagOffset)));
+                
+                // values of different types are not equal (how about equivalency ? i.e. 1 == "1")
+                if_ ((taglhs | const8_(0x80)) != (tagrhs | const8_(0x80)));
+                    return_(const1_(false));
+                end_();
+
+                // string type
+                if_( (taglhs | const8_(0x80)) == (const8_(0x80 | mongo::BSONType::String)) );
+                    // left hand side string
+                    auto lhsstr = var_(pint8_, "lhsstr");
+                    if_(taglhs == const8_(mongo::BSONType::String));
+                        // the string is inline
+                        lhsstr = plhs + const_(anta::BSONVariant::kInlineStringOffset);
+                    else_();
+                        // the allocated string
+                        lhsstr = *cast_(ptr_(pint8_), plhs + const_(anta::BSONVariant::kMemoryPtrOffset));
+                    end_();
+                    // right hand side string
+                    auto rhsstr = var_(pint8_, "rhsstr");
+                    if_(tagrhs == const8_(mongo::BSONType::String));
+                        // the string is inline
+                        rhsstr = prhs + const_(anta::BSONVariant::kInlineStringOffset);
+                    else_();
+                        // the allocated string
+                        rhsstr = *cast_(ptr_(pint8_), prhs + const_(anta::BSONVariant::kMemoryPtrOffset));
+                    end_();
+
+                    return_(eval_("BSON::compareEQString",{lhsstr, rhsstr}));
+                end_();
+
+                // unsupported type
+                call_("llvm.trap",{});
+
+                return_(const1_(false));
+            end_();
+        }
         generateCollectionScan();
     }
 }

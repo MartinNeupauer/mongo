@@ -116,10 +116,10 @@ bool CodeGenStage::translate(Pipeline* pipeline)
             }
         } else if (auto groupby = dynamic_cast<const DocumentSourceGroup*>(source.get())) {
             auto& idexprs = groupby->getIdExpressions();
+            vector<StringData> groupByCols;
             if (idexprs.size() == 1 && dynamic_cast<const ExpressionConstant*>(idexprs[0].get())) {
                 // no group by columns
             } else {
-                vector<StringData> groupByCols;
                 for(auto& col : idexprs) {
                     auto fieldAccess = dynamic_cast<const ExpressionFieldPath*>(col.get());
                     if (!fieldAccess) {
@@ -159,20 +159,28 @@ bool CodeGenStage::translate(Pipeline* pipeline)
             }
 
             rohan::Aggregates aggs(f);
+            auto gbsize = groupByCols.size();
             auto internalTypes = aggs.getCountInternalTypes();
 
             auto envIn = f.createPlaceholders(xteroot->outputSchema());
-            auto envOut = f.createPlaceholders(internalTypes); // hack
+
+            std::vector<const anta::Type*> groupbyTypes(gbsize,f.globalScope()->getType("BSONVariant"));
+
+            groupbyTypes.insert(groupbyTypes.end(), internalTypes.begin(), internalTypes.end());
+
+            auto envOut = f.createPlaceholders(groupbyTypes); // hack
 
             // internal env
-            auto envTableOpen = f.createPlaceholders(internalTypes); // hack
-            auto envTableGetRow = f.createPlaceholders(internalTypes); //hack
+            auto envTableOpen = f.createPlaceholders(groupbyTypes); // hack
+            auto envTableGetRow = f.createPlaceholders(groupbyTypes); //hack
 
-            auto initGroup = aggs.generateCountInit(envTableOpen, 0, {});
-            auto aggStep = aggs.generateCountStep(envTableOpen, 0, {});
-            auto finalStep = aggs.generateGenericAggFinal(envOut, 0, envTableGetRow, 0);
+            auto initGroup = aggs.generateCountInit(envTableOpen, gbsize, {});
+            auto aggStep = aggs.generateCountStep(envTableOpen, gbsize, {});
+            auto finalStep = aggs.generateGenericAggFinal(envOut, gbsize, envTableGetRow, gbsize);
 
-            std::vector<unsigned> groupbyCols;            
+            std::vector<unsigned> groupbyCols;
+            for(unsigned i=0;i<gbsize;++i) groupbyCols.push_back(i);
+            
             xteroot = make_unique<rohan::XteHashAgg>(f, std::move(xteroot), groupbyCols, envIn, envOut, envTableOpen, envTableGetRow, initGroup, aggStep, finalStep);
         }
     }

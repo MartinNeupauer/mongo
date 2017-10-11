@@ -244,7 +244,7 @@ namespace anta
 			return Wrapper(*this, factory_.CastInteger(factory_.UIntConst(c), int8_));
 		}
 
-		auto const64_(int c)
+		auto const64_(int64_t c)
 		{
 			return Wrapper(*this, factory_.CastInteger(factory_.UIntConst(c), int64_));
 		}
@@ -544,7 +544,8 @@ namespace anta
 		const anta::Type* weak_string_;
 		const anta::Type* double_;
 		const anta::Type* bsonvariant_;
-
+		const anta::Type* bsonvariantview_;
+		
 		const anta::Type* pint8_;
 		const anta::Type* pint16_;
 		const anta::Type* pint_;
@@ -569,7 +570,8 @@ namespace anta
 			weak_string_ = factory_.UStringType(true);
 			double_ = factory_.UDoubleType();
 			bsonvariant_ = factory_.globalScope()->getType("BSONVariant");
-
+			bsonvariantview_ = factory_.globalScope()->getType("BSONVariantView");
+			
 			pint8_ = ptr_(int8_);
 			pint16_ = ptr_(int16_);
 			pint_ = ptr_(int_);

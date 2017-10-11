@@ -89,6 +89,10 @@ namespace rohan
 				{
 					h = h ^ eval_("hashString", { key[i] });
 				}
+				else if(key[i].expr_->type()->is_a<anta::BSONVariant>())
+				{
+					h = h ^ eval_("BSON::hash", { key[i] });
+				}
 				else
 				{
 					throw std::logic_error("unsupported type in hash");
@@ -110,6 +114,12 @@ namespace rohan
 				if (lhs[i].expr_->type()->is_a<anta::StringType>())
 				{
 					if_(eval_("compareString", { lhs[i], rhs[i] }) != const_(0));
+						return_(const1_(false));
+					end_();
+				}
+				else if (lhs[i].expr_->type()->is_a<anta::BSONVariant>())
+				{
+					if_(!eval_("BSON::compareEQ", { lhs[i], rhs[i] }));
 						return_(const1_(false));
 					end_();
 				}

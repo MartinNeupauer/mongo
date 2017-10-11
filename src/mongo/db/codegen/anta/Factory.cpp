@@ -59,7 +59,14 @@ namespace
 	char* allocateMemory(char*, unsigned size)
 	{
 		++gblStrAllocs;
-		return (char*)malloc(size);
+		char* ptr = (char*)malloc(size);
+		if (!ptr)
+			throw std::runtime_error("OOM in codegen");
+
+		// uuugrh - ugly hack - when underlying memory will contain linear type we must initialize it 
+		// it would be better to call proper Type::generateUndef methods
+		memset(ptr, 0, size);
+		return ptr;
 	}
 
 	void releaseMemory(char*, char* memory)
@@ -194,7 +201,7 @@ namespace anta
 		return it->second.get();
 	}
 
-	intrusive_ptr<const Expr> SemaFactory::UIntConst(const int i)
+	intrusive_ptr<const Expr> SemaFactory::UIntConst(const int64_t i)
     {
 		auto it = intConstants_.find(i);
 
@@ -224,7 +231,7 @@ namespace anta
 		if (!ce)
 			throw std::logic_error("cast works only on constants");
 
-		return make_intrusive<ConstExpr>(Value(t, ce->value().value<int>()));
+		return make_intrusive<ConstExpr>(Value(t, ce->value().value<int64_t>()));
 	}
 
 	intrusive_ptr<const Expr> SemaFactory::BitCast(const intrusive_ptr<const Expr>& e, const Type* t)
@@ -679,6 +686,9 @@ namespace anta
 
 		if (t->is_a<StringType>())
 			return UStringType(true);
+
+		if (t->is_a<BSONVariant>())
+			return globalScope()->getType("BSONVariantView");
 
 		throw std::logic_error("cannot delinearize unknown type");
 
