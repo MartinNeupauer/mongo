@@ -49,6 +49,7 @@ namespace anta
 		functionFrame,
 		mcallFrame,
 		mcallbranchFrame,
+		fragmentFrame
 	};
 
 	struct ForParameters
@@ -128,7 +129,13 @@ namespace anta
 		std::vector<Frame> frames_;
 
 		anta::Scope* currentScope() const { return frames_.back().scope_; }
-		Frame& currentFrame() { return frames_.back(); }
+		Frame& currentFrame() 
+		{
+			if (frames_.empty())
+				throw std::logic_error("there is not a current frame");
+
+			return frames_.back();
+		}
 
 		void pushFrame(anta::Scope* scope = nullptr)
 		{
@@ -268,7 +275,16 @@ namespace anta
 
 		auto eval_(const char* name, std::vector<Wrapper> args)
 		{
-			return eval_(currentScope()->getFunction(name), std::move(args));
+			auto fn = currentScope()->getFunction(name);
+			if (!fn)
+				throw std::logic_error(std::string{"calling undefined function: "}.append(name));
+			
+			return eval_(fn, std::move(args));
+		}
+
+		auto hole_(const anta::ExprPlaceholders* env, unsigned slot)
+		{
+			return Wrapper(*this, factory_.Hole(env, slot));
 		}
 
 		auto mfunction_(const std::string& name)
@@ -406,7 +422,11 @@ namespace anta
 
 		void call_(const char* name, std::vector<Wrapper> args)
 		{
-			call_(currentScope()->getFunction(name), std::move(args));
+			auto fn = currentScope()->getFunction(name);
+			if (!fn)
+				throw std::logic_error(std::string{"calling undefined function: "}.append(name));
+
+			call_(fn, std::move(args));
 		}
 
 		void mcall_(const anta::Function* fn, std::vector<Wrapper> args)
@@ -417,6 +437,15 @@ namespace anta
 
 			pushFrame();
 			currentFrame().set(MCallParameters{ fn, std::move(argsExpr), {} });
+		}
+
+		void mcall_(const char* name, std::vector<Wrapper> args)
+		{
+			auto fn = currentScope()->getFunction(name);
+			if (!fn)
+				throw std::logic_error(std::string{"calling undefined function: "}.append(name));
+
+			mcall_(fn, std::move(args));
 		}
 
 		void break_()
@@ -490,6 +519,16 @@ namespace anta
 			}
 		}
 
+		void fragment_()
+		{
+			pushFrame();
+		}
+
+		auto endfragment_()
+		{
+			return popFrame();
+		}
+		
 		auto ptr_(const anta::Type* pointee)
 		{
 			return factory_.UPtrToType(pointee);

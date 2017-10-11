@@ -145,7 +145,8 @@ namespace anta
 	{
 		auto shifted = ectx.builder_.CreateLShr(value, (uint64_t)(8 * kTagOffset));
 		auto tagByte = ectx.builder_.CreateTrunc(shifted, llvm::Type::getInt8Ty(ectx.ctx_.context_));
-		auto condition = ectx.builder_.CreateICmpEQ(tagByte, llvm::Constant::getNullValue(tagByte->getType()));
+		ectx.CreateCall(scope()->getFunction("BSON::checkTag"), {tagByte});
+/*		auto condition = ectx.builder_.CreateICmpEQ(tagByte, llvm::Constant::getNullValue(tagByte->getType()));
 
 		llvm::BasicBlock *FailNullBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "checkfail", ectx.function_);
 		llvm::BasicBlock *MergeBB = llvm::BasicBlock::Create(ectx.ctx_.context_, "checkpass");
@@ -164,7 +165,7 @@ namespace anta
 		// Emit merge block.
 		ectx.function_->getBasicBlockList().push_back(MergeBB);
 		ectx.builder_.SetInsertPoint(MergeBB);
-	}
+*/	}
 
 	void BSONVariant::generateKill(EnvCodeGenCtx & ectx, llvm::Value *value) const
 	{

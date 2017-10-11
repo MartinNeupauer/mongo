@@ -33,6 +33,8 @@
 #include "mongo/db/codegen/operator/common.h"
 #include "mongo/db/codegen/operator/collection_scan.h"
 #include "mongo/db/codegen/operator/project.h"
+#include "mongo/db/codegen/operator/aggregates.h"
+#include "mongo/db/codegen/operator/hash_aggregation.h"
 
 #include "mongo/db/exec/collection_scan.h"
 #include "mongo/db/exec/pipeline_codegen.h"
@@ -155,6 +157,23 @@ bool CodeGenStage::translate(Pipeline* pipeline)
                     xteroot = make_unique<rohan::XteProject>(f,std::move(xteroot),envIn,envOut,f.Stmts(std::move(stmts)));
                 }
             }
+
+            rohan::Aggregates aggs(f);
+            auto internalTypes = aggs.getCountInternalTypes();
+
+            auto envIn = f.createPlaceholders(xteroot->outputSchema());
+            auto envOut = f.createPlaceholders(internalTypes); // hack
+
+            // internal env
+            auto envTableOpen = f.createPlaceholders(internalTypes); // hack
+            auto envTableGetRow = f.createPlaceholders(internalTypes); //hack
+
+            auto initGroup = aggs.generateCountInit(envTableOpen, 0, {});
+            auto aggStep = aggs.generateCountStep(envTableOpen, 0, {});
+            auto finalStep = aggs.generateGenericAggFinal(envOut, 0, envTableGetRow, 0);
+
+            std::vector<unsigned> groupbyCols;            
+            xteroot = make_unique<rohan::XteHashAgg>(f, std::move(xteroot), groupbyCols, envIn, envOut, envTableOpen, envTableGetRow, initGroup, aggStep, finalStep);
         }
     }
 

@@ -83,11 +83,11 @@ namespace anta
         f.finalizeCodeGen(ctx);
         
         llvm::verifyModule(*ctx.module_, &llvm::errs());
-        ctx.module_->dump();
+        //ctx.module_->dump();
         
         jitter.jit(ctx.module_); 
 
-        ctx.module_->dump();
+        //ctx.module_->dump();
         
         openFn = jitter.find<rohan::NativeOpenFunction>(fnOpen->fullName().c_str());
         getNextFn = jitter.find<rohan::NativeGetNextFunction>(fnGetNext->fullName().c_str());

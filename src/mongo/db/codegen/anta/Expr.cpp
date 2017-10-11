@@ -72,7 +72,7 @@ namespace anta
 		if (type()->linear())
 		{
 			// unless we can prove that the value is valid we must check
-			type()->generateCheckUndef(ectx, value);
+			//type()->generateCheckUndef(ectx, value);
 
 			// record that the variable has been used and cannot be used until redefined
 			if (var && move)

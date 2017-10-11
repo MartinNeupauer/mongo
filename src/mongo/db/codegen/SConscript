@@ -28,9 +28,11 @@ env.Library(
 
     	"machine/jitter.cpp",
 
+    	"operator/aggregates.cpp",
         "operator/common.cpp",
         "operator/collection_scan.cpp",
         "operator/entry_functions.cpp",
+        "operator/hash_aggregation.cpp",
         "operator/operator.cpp",
         "operator/project.cpp",
 

@@ -7,6 +7,17 @@ namespace rohan
     {
         // Low level BSON manipulation
         {
+            function_("BSON::checkTag")->setConst();
+                auto tag = param_(int8_, "%tag");
+            body_();
+                if_(tag == const8_(0));
+                    call_("llvm.trap",{});
+                end_();
+                return_();
+            end_();
+        }
+
+        {
             // Find a field in a document
             // Assume the document is valid (e.g. the size is correct and every byte is readable)
             function_(pint8_, "BSON::getField");
