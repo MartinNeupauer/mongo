@@ -83,7 +83,7 @@ namespace rohan
 		body_();
 			auto h = var_(int64_, "h");
 			h = const64_(0);
-			for (int i = 0; i < groupby_.size(); ++i)
+			for (unsigned i = 0; i < groupby_.size(); ++i)
 			{
 				if (key[i].expr_->type()->is_a<anta::StringType>())
 				{
@@ -105,7 +105,7 @@ namespace rohan
 			auto lhs = param_(ptr_(keyStruct), "%lhs");
 			auto rhs = param_(ptr_(keyStruct), "%rhs");
 		body_();
-			for (int i = 0; i < groupby_.size(); ++i)
+			for (unsigned i = 0; i < groupby_.size(); ++i)
 			{
 				if (lhs[i].expr_->type()->is_a<anta::StringType>())
 				{
@@ -197,7 +197,7 @@ namespace rohan
 				end_();
 
 				auto searchkey = var_(keyStruct, "searchkey");
-				for (int i = 0; i < groupby_.size(); ++i)
+				for (unsigned i = 0; i < groupby_.size(); ++i)
 				{
 					searchkey[i] = columns[groupby_[i]];
 				}
@@ -205,7 +205,7 @@ namespace rohan
 				auto searchhash = var_("%searchhash", eval_(keyHashFn, { &searchkey }));
 
 				auto keyval = var_("keyval", eval_(cppHashTableFind, {hashTablePtr, searchhash, &searchkey, funcptr_(keyCompareFn)}));
-				for (int i = 0; i < keyValueStruct->fieldCount(); ++i)
+				for (unsigned i = 0; i < keyValueStruct->fieldCount(); ++i)
 				{
 					envTableOpen_->fillHole(i, keyval[i].expr_);
 				}
@@ -216,7 +216,7 @@ namespace rohan
 					// insert into a hash table
 					keyval = cast_(ptr_(keyValueStruct), eval_("allocateMemory", { nullptr_(pint8_), const_(keyValueStruct->allocSize()) }));
 					// copy keys
-					for (int i = 0; i < groupby_.size(); ++i)
+					for (unsigned i = 0; i < groupby_.size(); ++i)
 					{
 						keyval[i] = columns[groupby_[i]];
 					}
@@ -266,7 +266,7 @@ namespace rohan
 
 			if (envTableGetRow_)
 			{
-				for (int i = 0; i < keyValueStruct->fieldCount(); ++i)
+				for (unsigned i = 0; i < keyValueStruct->fieldCount(); ++i)
 				{
 					envTableGetRow_->fillHole(i, keyval[i].expr_);
 				}
@@ -277,7 +277,7 @@ namespace rohan
 			if (finalStepStmt_)
 			{
 				// key columns
-				for (int i = 0; i < groupby_.size(); ++i)
+				for (unsigned i = 0; i < groupby_.size(); ++i)
 				{
 					columns[i] = keyval[i];
 				}
@@ -286,7 +286,7 @@ namespace rohan
 			else
 			{
 				// key columns + agg columns
-				for (int i = 0; i < envOut_->size(); ++i)
+				for (unsigned i = 0; i < envOut_->size(); ++i)
 				{
 					columns[i] = keyval[i];
 				}
