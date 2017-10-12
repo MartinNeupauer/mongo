@@ -244,7 +244,8 @@ namespace rohan
                 // in lieu of casts do a poor man zero extend - have to fix it eventually as this is suboptimal code
                 auto widechar = var_("widechar", const64_(0));
 
-                hash = const64_(14695981039346656037);
+                //hash = const64_(14695981039346656037);
+                hash = const64_(-3750763034362895579);
 
                 for_(nothing_(), *str != const8_(0), str = str + const_(1));
                     *cast_(pint8_, &widechar) = *str;
