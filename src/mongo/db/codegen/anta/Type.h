@@ -386,6 +386,15 @@ namespace anta
 
 		virtual bool canCast(const Type* dest) const override;
 
+		virtual unsigned alignSize() const override
+		{
+			return 32; //not 100%
+		}
+		virtual unsigned allocSize() const override
+		{
+			return 32; // should be kSize;
+		}
+
 		virtual void generateUndef(EnvCodeGenCtx&, llvm::Value*) const override;
 		virtual void generateCheckUndef(EnvCodeGenCtx&, llvm::Value*) const override;
 		virtual void generateKill(EnvCodeGenCtx&, llvm::Value*) const override;

@@ -3,6 +3,8 @@
 
 namespace rohan
 {
+    const int64_t kFNVoffset = -3750763034362895579;
+
     void CommonDeclarations::generate()
     {
         // Low level BSON manipulation
@@ -245,7 +247,7 @@ namespace rohan
                 auto widechar = var_("widechar", const64_(0));
 
                 //hash = const64_(14695981039346656037);
-                hash = const64_(-3750763034362895579);
+                hash = const64_(kFNVoffset);
 
                 for_(nothing_(), *str != const8_(0), str = str + const_(1));
                     *cast_(pint8_, &widechar) = *str;
@@ -263,6 +265,9 @@ namespace rohan
                 auto pv = var_("%pv", cast_(pint8_, &v));
                 auto tag = var_("%tag", *(pv+const_(anta::BSONVariant::kTagOffset)));
 
+                if_ (tag == const8_(mongo::BSONType::NumberDouble));
+                    return_(const64_(kFNVoffset) * (*cast_(pint64_, pv + const_(anta::BSONVariant::kScalarValueOffset))));
+                end_();
                 if_( (tag | const8_(0x80)) == (const8_(0x80 | mongo::BSONType::String)) );
                     if_(tag == const8_(mongo::BSONType::String));
                         // the string is inline
@@ -314,6 +319,14 @@ namespace rohan
                     return_(const1_(false));
                 end_();
 
+                // double
+                if_ (taglhs == const8_(mongo::BSONType::NumberDouble));
+                    if_ (*cast_(pdouble_, plhs + const_(anta::BSONVariant::kScalarValueOffset)) == *cast_(pdouble_, prhs + const_(anta::BSONVariant::kScalarValueOffset)));
+                        return_(const1_(true));
+                    else_();
+                        return_(const1_(false));
+                    end_();
+                end_();
                 // string type
                 if_( (taglhs | const8_(0x80)) == (const8_(0x80 | mongo::BSONType::String)) );
                     // left hand side string
