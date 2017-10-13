@@ -91,7 +91,7 @@ namespace rohan
 				}
 				else if(key[i].expr_->type()->is_a<anta::BSONVariant>())
 				{
-					h = h ^ eval_("BSON::hash", { key[i] });
+					h = h ^ eval_("BSON::hashByRef", { &key[i] });
 				}
 				else
 				{
@@ -119,7 +119,7 @@ namespace rohan
 				}
 				else if (lhs[i].expr_->type()->is_a<anta::BSONVariant>())
 				{
-					if_(!eval_("BSON::compareEQ", { lhs[i], rhs[i] }));
+					if_(!eval_("BSON::compareEQByRef", { &lhs[i], &rhs[i] }));
 						return_(const1_(false));
 					end_();
 				}

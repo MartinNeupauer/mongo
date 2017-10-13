@@ -259,10 +259,10 @@ namespace rohan
             end_();
         }
         {
-            function_(int64_, "BSON::hash")->setConst();
-                auto v = param_(bsonvariantview_, "v");
+            function_(int64_, "BSON::hashByRef")->setConst();
+                auto v = param_(ptr_(bsonvariantview_), "%v");
             body_();
-                auto pv = var_("%pv", cast_(pint8_, &v));
+                auto pv = var_("%pv", cast_(pint8_, v));
                 auto tag = var_("%tag", *(pv+const_(anta::BSONVariant::kTagOffset)));
 
                 if_ (tag == const8_(mongo::BSONType::NumberDouble));
@@ -286,6 +286,13 @@ namespace rohan
             end_();
         }
         {
+            function_(int64_, "BSON::hash")->setConst();
+                auto v = param_(bsonvariantview_, "v");
+            body_();
+                return_(eval_("BSON::hashByRef",{ &v }));
+            end_();
+        }
+        {
             function_(int1_, "BSON::compareEQString")->setConst();
                 auto lhs = param_(pint8_, "lhs");
                 auto rhs = param_(pint8_, "rhs");
@@ -305,12 +312,12 @@ namespace rohan
             end_();
         }
         {
-            function_(int1_, "BSON::compareEQ")->setConst();
-                auto lhs = param_(bsonvariantview_, "lhs");
-                auto rhs = param_(bsonvariantview_, "rhs");
+            function_(int1_, "BSON::compareEQByRef")->setConst();
+                auto lhs = param_(ptr_(bsonvariantview_), "%lhs");
+                auto rhs = param_(ptr_(bsonvariantview_), "%rhs");
             body_();
-                auto plhs = var_("%plhs", cast_(pint8_, &lhs));
-                auto prhs = var_("%prhs", cast_(pint8_, &rhs));
+                auto plhs = var_("%plhs", cast_(pint8_, lhs));
+                auto prhs = var_("%prhs", cast_(pint8_, rhs));
                 auto taglhs = var_("%taglhs", *(plhs+const_(anta::BSONVariant::kTagOffset)));
                 auto tagrhs = var_("%tagrhs", *(prhs+const_(anta::BSONVariant::kTagOffset)));
                 
@@ -357,6 +364,14 @@ namespace rohan
                 return_(const1_(false));
             end_();
         }
+        {
+            function_(int1_, "BSON::compareEQ")->setConst();
+                auto lhs = param_(bsonvariantview_, "lhs");
+                auto rhs = param_(bsonvariantview_, "rhs");
+            body_();
+                return_(eval_("BSON::compareEQByRef",{ &lhs, &rhs }));
+            end_();
+        }        
         generateCollectionScan();
     }
 }
