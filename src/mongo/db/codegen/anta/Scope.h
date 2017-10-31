@@ -1,4 +1,5 @@
 #pragma once
+#include "mongo/db/codegen/anta/Sema.h"
 #include "mongo/db/codegen/anta/Function.h"
 #include "mongo/db/codegen/anta/Type.h"
 
