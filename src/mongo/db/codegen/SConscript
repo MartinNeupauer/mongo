@@ -30,6 +30,7 @@ env.Library(
 
     	"operator/aggregates.cpp",
         "operator/common.cpp",
+        "operator/common_bson.cpp",
         "operator/collection_scan.cpp",
         "operator/entry_functions.cpp",
         "operator/hash_aggregation.cpp",

@@ -26,9 +26,7 @@ namespace rohan
                 auto document = param_(pint8_, "%document");
                 auto fieldName = param_(weak_string_, "%fieldName");
             body_();
-                auto size = var_("%size", *cast_(pint_, document));
                 auto begin = var_("begin", document + const_(4));
-                auto end = var_("%end", document + size);
 
                 auto tag = var_(int8_, "tag");
 
@@ -371,7 +369,8 @@ namespace rohan
             body_();
                 return_(eval_("BSON::compareEQByRef",{ &lhs, &rhs }));
             end_();
-        }        
+        }
+        generateCommonBSON();
         generateCollectionScan();
     }
 }

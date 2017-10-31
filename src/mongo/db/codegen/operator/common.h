@@ -8,6 +8,7 @@ namespace rohan
     class CommonDeclarations : public anta::Generator
     {
         void generateCollectionScan();
+        void generateCommonBSON();
     public:
         CommonDeclarations(anta::SemaFactory& f) : anta::Generator(f) {}
 
