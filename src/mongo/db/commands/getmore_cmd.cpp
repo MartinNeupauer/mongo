@@ -294,9 +294,7 @@ public:
             // any leftover time from the maxTimeMS of the operation that spawned this cursor,
             // applying it to this getMore.
             if (cursor->isAwaitData() && !disableAwaitDataFailpointActive) {
-                opCtx->setDeadlineAfterNowBy(Seconds{1});
-            } else if (cursor->getLeftoverMaxTimeMicros() < Microseconds::max()) {
-                opCtx->setDeadlineAfterNowBy(cursor->getLeftoverMaxTimeMicros());
+                waitForInsertsTime(opCtx) = Seconds{1};
             }
         }
         if (!cursor->isAwaitData()) {

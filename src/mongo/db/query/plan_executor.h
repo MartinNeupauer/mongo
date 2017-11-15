@@ -37,6 +37,7 @@
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/platform/unordered_set.h"
+#include "mongo/util/time_support.h"
 
 namespace mongo {
 
@@ -58,6 +59,11 @@ class WorkingSet;
  * causes results to become available.
  */
 extern const OperationContext::Decoration<bool> shouldWaitForInserts;
+
+/**
+ * The duration of how long we wait on the tail of cappend collection before returning IS_EOF.
+ */
+extern const OperationContext::Decoration<Milliseconds> waitForInsertsTime;
 
 /**
  * If a getMore command specified a lastKnownCommittedOpTime (as secondaries do), we want to stop
@@ -539,14 +545,6 @@ private:
      * catalog operation.
      */
     Status pickBestPlan(const Collection* collection);
-
-    /**
-     * Given a non-OK status returned from a yield 'yieldError', checks if this PlanExecutor
-     * represents a tailable, awaitData cursor and whether 'yieldError' is the error object
-     * describing an operation time out. If so, returns IS_EOF. Otherwise returns DEAD, and
-     * populates 'errorObj' with the error - if 'errorObj' is not null.
-     */
-    ExecState swallowTimeoutIfAwaitData(Status yieldError, Snapshotted<BSONObj>* errorObj) const;
 
     // The OperationContext that we're executing within. This can be updated if necessary by using
     // detachFromOperationContext() and reattachToOperationContext().
