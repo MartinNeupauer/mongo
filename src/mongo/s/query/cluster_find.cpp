@@ -427,7 +427,7 @@ StatusWith<CursorResponse> ClusterFind::runGetMore(OperationContext* opCtx,
         // been specified, do not apply it to the opCtx, since its deadline will already have been
         // set during command processing.
         auto timeout = request.awaitDataTimeout.value_or(Milliseconds{1000});
-        waitForInsertsTime(opCtx) = timeout;
+        waitForInsertsDeadline(opCtx) = Date_t::now() + timeout;
         invariant(pinnedCursor.getValue().setAwaitDataTimeout(timeout).isOK());
     } else if (request.awaitDataTimeout) {
         return {ErrorCodes::BadValue,

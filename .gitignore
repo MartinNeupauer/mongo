@@ -153,3 +153,5 @@ CMakeLists.txt
 DriverInclude.wxs
 
 compile_commands.json
+CppProperties.json
+.vs/

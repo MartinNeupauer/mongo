@@ -164,6 +164,16 @@ void CappedInsertNotifier::_wait(stdx::unique_lock<stdx::mutex>& lk,
     }
 }
 
+void CappedInsertNotifier::waitUntil(uint64_t prevVersion, Date_t deadline) const {
+    stdx::unique_lock<stdx::mutex> lk(_mutex);
+    while (!_dead && prevVersion == _version) {
+        if (stdx::cv_status::timeout == _notifier.wait_until(lk, deadline.toSystemTimePoint())) {
+            return;
+        }
+    }
+}
+
+
 void CappedInsertNotifier::wait(uint64_t prevVersion, Microseconds timeout) const {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
     _wait(lk, prevVersion, timeout);
@@ -173,12 +183,12 @@ void CappedInsertNotifier::wait(Microseconds timeout) const {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
     _wait(lk, _version, timeout);
 }
-
+/*
 void CappedInsertNotifier::wait() const {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
     _wait(lk, _version, Microseconds::max());
 }
-
+*/
 void CappedInsertNotifier::kill() {
     stdx::lock_guard<stdx::mutex> lk(_mutex);
     _dead = true;

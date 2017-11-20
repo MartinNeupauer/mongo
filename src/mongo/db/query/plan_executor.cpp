@@ -66,8 +66,8 @@ const OperationContext::Decoration<bool> shouldWaitForInserts =
     OperationContext::declareDecoration<bool>();
 const OperationContext::Decoration<repl::OpTime> clientsLastKnownCommittedOpTime =
     OperationContext::declareDecoration<repl::OpTime>();
-const OperationContext::Decoration<Milliseconds> waitForInsertsTime =
-    OperationContext::declareDecoration<Milliseconds>();
+const OperationContext::Decoration<Date_t> waitForInsertsDeadline =
+    OperationContext::declareDecoration<Date_t>();
 
 struct CappedInsertNotifierData {
     shared_ptr<CappedInsertNotifier> notifier;
@@ -427,7 +427,7 @@ bool PlanExecutor::shouldWaitForInserts() {
     // we should wait for inserts.
     if (_cq && _cq->getQueryRequest().isTailableAndAwaitData() &&
         mongo::shouldWaitForInserts(_opCtx) && _opCtx->checkForInterruptNoAssert().isOK() &&
-        waitForInsertsTime(_opCtx) > Microseconds::zero()) {
+        waitForInsertsDeadline(_opCtx) > Date_t::now()) {
         // We expect awaitData cursors to be yielding.
         invariant(_yieldPolicy->canReleaseLocksDuringExecution());
 
@@ -472,17 +472,8 @@ PlanExecutor::ExecState PlanExecutor::waitForInserts(CappedInsertNotifierData* n
     auto opCtx = _opCtx;
     uint64_t currentNotifierVersion = notifierData->notifier->getVersion();
     auto yieldResult = _yieldPolicy->yield(nullptr, [opCtx, notifierData] {
-        auto clock = opCtx->getServiceContext()->getFastClockSource();
-        const auto timeout = waitForInsertsTime(opCtx);
-        auto waitBegin = clock->now();
-        notifierData->notifier->wait(notifierData->lastEOFVersion, timeout);
-        auto delta = clock->now() - waitBegin;
-
-        if (delta<timeout) {
-            waitForInsertsTime(opCtx) -= delta;
-        } else {
-            waitForInsertsTime(opCtx) = Milliseconds::zero();
-        }
+        const auto deadline = waitForInsertsDeadline(opCtx);
+        notifierData->notifier->waitUntil(notifierData->lastEOFVersion, deadline);
     });
     notifierData->lastEOFVersion = currentNotifierVersion;
 

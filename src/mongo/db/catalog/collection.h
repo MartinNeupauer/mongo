@@ -124,6 +124,11 @@ public:
     void wait(uint64_t prevVersion, Microseconds timeout) const;
 
     /**
+     * Same as above but also ensures that if the version has changed, it also returns.
+     */
+    void waitUntil(uint64_t prevVersion, Date_t deadline) const;
+
+    /**
      * Returns the version for use as an additional wake condition when used above.
      */
     uint64_t getVersion() const {
@@ -133,7 +138,7 @@ public:
     /**
      * Same as above but without a timeout.
      */
-    void wait() const;
+    //void wait() const;
 
     /**
      * Cancels the notifier if the collection is dropped/invalidated, and wakes all waiting.
