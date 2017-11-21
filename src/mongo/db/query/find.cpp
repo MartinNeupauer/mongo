@@ -428,7 +428,7 @@ Message getMore(OperationContext* opCtx,
             // the total operation latency.
             curOp.pauseTimer();
             Seconds timeout(1);
-            notifier->wait(notifierVersion, timeout);
+            notifier->waitUntil(notifierVersion, Date_t::now() + timeout);
             notifier.reset();
             curOp.resumeTimer();
 

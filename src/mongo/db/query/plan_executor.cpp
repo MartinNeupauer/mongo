@@ -45,6 +45,7 @@
 #include "mongo/db/exec/subplan.h"
 #include "mongo/db/exec/working_set.h"
 #include "mongo/db/exec/working_set_common.h"
+#include "mongo/db/query/find_common.h"
 #include "mongo/db/query/mock_yield_policies.h"
 #include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/repl/replication_coordinator.h"
@@ -66,8 +67,6 @@ const OperationContext::Decoration<bool> shouldWaitForInserts =
     OperationContext::declareDecoration<bool>();
 const OperationContext::Decoration<repl::OpTime> clientsLastKnownCommittedOpTime =
     OperationContext::declareDecoration<repl::OpTime>();
-const OperationContext::Decoration<Date_t> waitForInsertsDeadline =
-    OperationContext::declareDecoration<Date_t>();
 
 struct CappedInsertNotifierData {
     shared_ptr<CappedInsertNotifier> notifier;

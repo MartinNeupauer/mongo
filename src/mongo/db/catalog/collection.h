@@ -116,12 +116,12 @@ public:
      *
      * NOTE: Waiting threads can be signaled by calling kill or notify* methods.
      */
-    void wait(Microseconds timeout) const;
+    //void wait(Microseconds timeout) const;
 
     /**
      * Same as above but also ensures that if the version has changed, it also returns.
      */
-    void wait(uint64_t prevVersion, Microseconds timeout) const;
+    //void wait(uint64_t prevVersion, Microseconds timeout) const;
 
     /**
      * Same as above but also ensures that if the version has changed, it also returns.
@@ -152,10 +152,10 @@ public:
 
 private:
     // Helper for wait impls.
-    void _wait(stdx::unique_lock<stdx::mutex>& lk,
+ /*   void _wait(stdx::unique_lock<stdx::mutex>& lk,
                uint64_t prevVersion,
                Microseconds timeout) const;
-
+*/
     // Signalled when a successful insert is made into a capped collection.
     mutable stdx::condition_variable _notifier;
 

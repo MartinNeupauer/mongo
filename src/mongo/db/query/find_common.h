@@ -27,10 +27,17 @@
  */
 
 #include "mongo/bson/bsonobj.h"
+#include "mongo/db/operation_context.h"
 #include "mongo/util/fail_point_service.h"
 
 namespace mongo {
 
+/**
+ * The duration of how long we wait on the tail of cappend collection before returning IS_EOF.
+ */
+extern const OperationContext::Decoration<Date_t> waitForInsertsDeadline;
+
+    
 class BSONObj;
 class QueryRequest;
 

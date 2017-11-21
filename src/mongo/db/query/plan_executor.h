@@ -61,11 +61,6 @@ class WorkingSet;
 extern const OperationContext::Decoration<bool> shouldWaitForInserts;
 
 /**
- * The duration of how long we wait on the tail of cappend collection before returning IS_EOF.
- */
-extern const OperationContext::Decoration<Date_t> waitForInsertsDeadline;
-
-/**
  * If a getMore command specified a lastKnownCommittedOpTime (as secondaries do), we want to stop
  * waiting for new data as soon as the committed op time changes.
  *
