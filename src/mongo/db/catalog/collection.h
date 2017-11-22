@@ -111,20 +111,10 @@ public:
     void notifyAll();
 
     /**
-     * Waits for 'timeout' microseconds, or until notifyAll() is called to indicate that new
+     * Waits for 'deadline', or until notifyAll() is called to indicate that new
      * data is available in the capped collection.
      *
      * NOTE: Waiting threads can be signaled by calling kill or notify* methods.
-     */
-    //void wait(Microseconds timeout) const;
-
-    /**
-     * Same as above but also ensures that if the version has changed, it also returns.
-     */
-    //void wait(uint64_t prevVersion, Microseconds timeout) const;
-
-    /**
-     * Same as above but also ensures that if the version has changed, it also returns.
      */
     void waitUntil(uint64_t prevVersion, Date_t deadline) const;
 
@@ -134,11 +124,6 @@ public:
     uint64_t getVersion() const {
         return _version;
     }
-
-    /**
-     * Same as above but without a timeout.
-     */
-    //void wait() const;
 
     /**
      * Cancels the notifier if the collection is dropped/invalidated, and wakes all waiting.
@@ -151,11 +136,6 @@ public:
     bool isDead();
 
 private:
-    // Helper for wait impls.
- /*   void _wait(stdx::unique_lock<stdx::mutex>& lk,
-               uint64_t prevVersion,
-               Microseconds timeout) const;
-*/
     // Signalled when a successful insert is made into a capped collection.
     mutable stdx::condition_variable _notifier;
 
