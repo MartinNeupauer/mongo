@@ -223,27 +223,28 @@ bool canAssignPredToIndex(const RelevantTag* rt,
  */
 void tagForSort(MatchExpression* tree) {
     if (!Indexability::nodeCanUseIndexOnOwnField(tree)) {
-        size_t myTagValue = IndexTag::kNoIndex;
+        const MatchExpression* childIndex = nullptr;
         for (size_t i = 0; i < tree->numChildren(); ++i) {
             MatchExpression* child = tree->getChild(i);
             tagForSort(child);
             if (child->getTag() &&
                 child->getTag()->getType() == MatchExpression::TagData::Type::IndexTag) {
-                IndexTag* childTag = static_cast<IndexTag*>(child->getTag());
-                myTagValue = std::min(myTagValue, childTag->index);
+                if (!childIndex || TagComparison(child, childIndex)) {
+                    childIndex = child;
+                }
             } else if (child->getTag() &&
                        child->getTag()->getType() ==
                            MatchExpression::TagData::Type::OrPushdownTag) {
                 OrPushdownTag* childTag = static_cast<OrPushdownTag*>(child->getTag());
                 if (childTag->getIndexTag()) {
-                    const IndexTag* indexTag =
-                        static_cast<const IndexTag*>(childTag->getIndexTag());
-                    myTagValue = std::min(myTagValue, indexTag->index);
+                    if (!childIndex || TagComparison(child, childIndex)) {
+                        childIndex = child;
+                    }
                 }
             }
         }
-        if (myTagValue != IndexTag::kNoIndex) {
-            tree->setTag(new IndexTag(myTagValue));
+        if (childIndex) {
+            tree->setTag(new IndexTag(*static_cast<const IndexTag*>(childIndex->getTag())));
         }
     }
 }
