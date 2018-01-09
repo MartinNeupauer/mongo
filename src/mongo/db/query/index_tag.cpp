@@ -50,7 +50,7 @@ void sortUsingTags(MatchExpression* tree) {
     }
     std::vector<MatchExpression*>* children = tree->getChildVector();
     if (NULL != children) {
-        std::sort(children->begin(), children->end(), TagComparison);
+        std::sort(children->begin(), children->end(), tagComparisonLess);
     }
 }
 
@@ -266,7 +266,7 @@ void prepareForAccessPlanning(MatchExpression* tree) {
     sortUsingTags(tree);
 }
 
-bool TagComparison(const MatchExpression* lhs, const MatchExpression* rhs) {
+bool tagComparisonLess(const MatchExpression* lhs, const MatchExpression* rhs) {
     IndexTag* lhsTag = static_cast<IndexTag*>(lhs->getTag());
     size_t lhsValue = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->index;
     size_t lhsPos = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->pos;
