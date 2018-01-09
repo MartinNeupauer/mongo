@@ -245,7 +245,7 @@ void tagForSort(MatchExpression* tree) {
         }
         if (nodeWithSmallestTag) {
             tree->setTag(
-                    new IndexTag(*static_cast<const IndexTag*>(nodeWithSmallestTag->getTag())));
+                new IndexTag(*static_cast<const IndexTag*>(nodeWithSmallestTag->getTag())));
         }
     }
 }
