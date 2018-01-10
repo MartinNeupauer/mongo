@@ -42,6 +42,50 @@ using TagType = MatchExpression::TagData::Type;
 
 namespace {
 
+bool TagComparison(const MatchExpression* lhs, const MatchExpression* rhs) {
+    IndexTag* lhsTag = static_cast<IndexTag*>(lhs->getTag());
+    size_t lhsValue = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->index;
+    size_t lhsPos = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->pos;
+
+    IndexTag* rhsTag = static_cast<IndexTag*>(rhs->getTag());
+    size_t rhsValue = (NULL == rhsTag) ? IndexTag::kNoIndex : rhsTag->index;
+    size_t rhsPos = (NULL == rhsTag) ? IndexTag::kNoIndex : rhsTag->pos;
+
+    // First, order on indices.
+    if (lhsValue != rhsValue) {
+        // This relies on kNoIndex being larger than every other possible index.
+        return lhsValue < rhsValue;
+    }
+
+    // Next, order so that if there's a GEO_NEAR it's first.
+    if (MatchExpression::GEO_NEAR == lhs->matchType()) {
+        return true;
+    } else if (MatchExpression::GEO_NEAR == rhs->matchType()) {
+        return false;
+    }
+
+    // Ditto text.
+    if (MatchExpression::TEXT == lhs->matchType()) {
+        return true;
+    } else if (MatchExpression::TEXT == rhs->matchType()) {
+        return false;
+    }
+
+    // Next, order so that the first field of a compound index appears first.
+    if (lhsPos != rhsPos) {
+        return lhsPos < rhsPos;
+    }
+
+    // Next, order on fields.
+    int cmp = lhs->path().compare(rhs->path());
+    if (0 != cmp) {
+        return 0;
+    }
+
+    // Finally, order on expression type.
+    return lhs->matchType() < rhs->matchType();
+}
+
 // Sorts the tree using its IndexTag(s). Nodes that use the same index will sort so that they are
 // adjacent to one another.
 void sortUsingTags(MatchExpression* tree) {
@@ -50,7 +94,7 @@ void sortUsingTags(MatchExpression* tree) {
     }
     std::vector<MatchExpression*>* children = tree->getChildVector();
     if (NULL != children) {
-        std::sort(children->begin(), children->end(), tagComparisonLess);
+        std::sort(children->begin(), children->end(), TagComparison);
     }
 }
 
@@ -264,50 +308,6 @@ const size_t IndexTag::kNoIndex = std::numeric_limits<size_t>::max();
 void prepareForAccessPlanning(MatchExpression* tree) {
     resolveOrPushdowns(tree);
     sortUsingTags(tree);
-}
-
-bool tagComparisonLess(const MatchExpression* lhs, const MatchExpression* rhs) {
-    IndexTag* lhsTag = static_cast<IndexTag*>(lhs->getTag());
-    size_t lhsValue = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->index;
-    size_t lhsPos = (NULL == lhsTag) ? IndexTag::kNoIndex : lhsTag->pos;
-
-    IndexTag* rhsTag = static_cast<IndexTag*>(rhs->getTag());
-    size_t rhsValue = (NULL == rhsTag) ? IndexTag::kNoIndex : rhsTag->index;
-    size_t rhsPos = (NULL == rhsTag) ? IndexTag::kNoIndex : rhsTag->pos;
-
-    // First, order on indices.
-    if (lhsValue != rhsValue) {
-        // This relies on kNoIndex being larger than every other possible index.
-        return lhsValue < rhsValue;
-    }
-
-    // Next, order so that if there's a GEO_NEAR it's first.
-    if (MatchExpression::GEO_NEAR == lhs->matchType()) {
-        return true;
-    } else if (MatchExpression::GEO_NEAR == rhs->matchType()) {
-        return false;
-    }
-
-    // Ditto text.
-    if (MatchExpression::TEXT == lhs->matchType()) {
-        return true;
-    } else if (MatchExpression::TEXT == rhs->matchType()) {
-        return false;
-    }
-
-    // Next, order so that the first field of a compound index appears first.
-    if (lhsPos != rhsPos) {
-        return lhsPos < rhsPos;
-    }
-
-    // Next, order on fields.
-    int cmp = lhs->path().compare(rhs->path());
-    if (0 != cmp) {
-        return 0;
-    }
-
-    // Finally, order on expression type.
-    return lhs->matchType() < rhs->matchType();
 }
 
 }  // namespace mongo

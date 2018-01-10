@@ -261,6 +261,5 @@ private:
  * tagged MatchExpression tree in canonical order.
  */
 void prepareForAccessPlanning(MatchExpression* tree);
-bool TagComparison(const MatchExpression* lhs, const MatchExpression* rhs);
 
 }  // namespace mongo
