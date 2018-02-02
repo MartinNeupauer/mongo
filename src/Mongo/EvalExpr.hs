@@ -7,7 +7,7 @@ module Mongo.EvalExpr(
 import Mongo.Expression
 import Mongo.Variant
 
-evalExpr::Expr a->a
+evalExpr::Expr a-> Maybe a
 evalExpr (Const c) = Just c
 
 -- Selectors

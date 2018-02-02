@@ -31,6 +31,9 @@ fromString input =
         Ok val -> Just $ fromTextJson $ JSObject val
         _ -> Nothing
 
+class Parseable a where
+    parseP::Variant->Maybe (Expr a)
+
 parsePlus params =
     do
         pa <- getArrayValue params
