@@ -18,10 +18,14 @@ module Mongo.Variant (
     addElement,
     getElement,
     removeElement,
+
+    compareEQ,
+    compareEQ3VL,
     ) where
 
 import Data.List
 import Data.Monoid
+import Mongo.Bool3VL
 
 -- Basic data structure that holds values. It should model BSON more closely (i.e. various int types)
 -- but it will do for now.
@@ -97,4 +101,48 @@ removeElement index (Array array) =
             Array $ deleteNth index array            
         else
             Array array
-        
+
+
+compareEQ::Variant->Variant->Bool
+compareEQ (NullValue) (NullValue) = True
+compareEQ (IntValue lhs) (IntValue rhs) = lhs == rhs
+compareEQ (BoolValue lhs) (BoolValue rhs) = lhs == rhs
+compareEQ (StringValue lhs) (StringValue rhs) = lhs == rhs -- lexicographical comparison, ignores collation
+compareEQ (ArrayValue lhs) (ArrayValue rhs) = lhs == rhs -- elementwise comparison
+compareEQ (DocumentValue lhs) (DocumentValue rhs) = 
+    ((sortBy compareFieldNames . getDocument) lhs) == ((sortBy compareFieldNames . getDocument) rhs) -- elementwise comparison
+compareEQ _ _ = False
+
+compareEQ3VL::Variant->Variant->Bool3VL
+-- Anything compared to NULL is unknown
+compareEQ3VL (NullValue) _ = Unknown3VL
+compareEQ3VL _ (NullValue) = Unknown3VL
+compareEQ3VL (IntValue lhs) (IntValue rhs) = convertTo3VL $ lhs == rhs
+compareEQ3VL (BoolValue lhs) (BoolValue rhs) = convertTo3VL $ lhs == rhs
+compareEQ3VL (StringValue lhs) (StringValue rhs) = convertTo3VL $ lhs == rhs -- lexicographical comparison, ignores collation
+compareEQ3VL (ArrayValue lhs) (ArrayValue rhs) = compareArrayEQ (getArray lhs) (getArray rhs)
+compareEQ3VL (DocumentValue lhs) (DocumentValue rhs) = 
+    compareDocumentEQ ((sortBy compareFieldNames . getDocument) lhs) ((sortBy compareFieldNames . getDocument) rhs)
+compareEQ3VL _ _ = False3VL
+
+compareFieldNames lhs rhs = compare (fst lhs) (fst rhs)
+
+-- Array comparison helper
+compareArrayEQ::[Variant]->[Variant]->Bool3VL
+compareArrayEQ [] [] = True3VL
+compareArrayEQ [] (_:_) = False3VL
+compareArrayEQ (_:_) [] = False3VL
+compareArrayEQ (x:xs) (y:ys) = and3VL (compareEQ3VL x y) (compareArrayEQ xs ys)
+
+-- Document comparison helper
+-- Note: assumes same order of field names
+compareDocumentEQ::[(String,Variant)]->[(String,Variant)]->Bool3VL
+compareDocumentEQ [] [] = True3VL
+compareDocumentEQ [] (_:_) = False3VL
+compareDocumentEQ (_:_) [] = False3VL
+compareDocumentEQ (x:xs) (y:ys) =
+    if ( (fst x) /= (fst y) )
+    then
+        False3VL
+    else    
+        and3VL (compareEQ3VL (snd x) (snd y)) (compareDocumentEQ xs ys)
