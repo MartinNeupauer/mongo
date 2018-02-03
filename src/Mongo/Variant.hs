@@ -60,16 +60,16 @@ isNull _  = Just False
 -- The Array and Document types are not particularly efficient now. We don't care much as it's an
 -- implementation detail and we are building a model not the best implementation of the model.
 -- TODO: Change the kind from * to *->* so they can be made instances of Functor and Applicative.
-newtype Array = Array { getArray::[Variant] } deriving (Eq, Show)
-newtype Document = Document { getDocument::[(String, Variant)] } deriving (Eq, Show)
+newtype Array = Array { getElements::[Variant] } deriving (Eq, Show)
+newtype Document = Document { getFields::[(String, Variant)] } deriving (Eq, Show)
 
 instance Monoid Array where
     mempty = Array []
-    mappend lhs rhs = Array $ getArray lhs ++ getArray rhs
+    mappend lhs rhs = Array $ getElements lhs ++ getElements rhs
 
 instance Monoid Document where
     mempty = Document []
-    mappend lhs rhs = Document $ getDocument lhs ++ getDocument rhs
+    mappend lhs rhs = Document $ getFields lhs ++ getFields rhs
 
 -- Does not check for duplicate field names
 addField::(String,Variant)->Document->Document
@@ -110,7 +110,7 @@ compareEQ (BoolValue lhs) (BoolValue rhs) = lhs == rhs
 compareEQ (StringValue lhs) (StringValue rhs) = lhs == rhs -- lexicographical comparison, ignores collation
 compareEQ (ArrayValue lhs) (ArrayValue rhs) = lhs == rhs -- elementwise comparison
 compareEQ (DocumentValue lhs) (DocumentValue rhs) = 
-    ((sortBy compareFieldNames . getDocument) lhs) == ((sortBy compareFieldNames . getDocument) rhs) -- elementwise comparison
+    ((sortBy compareFieldNames . getFields) lhs) == ((sortBy compareFieldNames . getFields) rhs) -- elementwise comparison
 compareEQ _ _ = False
 
 compareEQ3VL::Variant->Variant->Bool3VL
@@ -120,9 +120,9 @@ compareEQ3VL _ (NullValue) = Unknown3VL
 compareEQ3VL (IntValue lhs) (IntValue rhs) = convertTo3VL $ lhs == rhs
 compareEQ3VL (BoolValue lhs) (BoolValue rhs) = convertTo3VL $ lhs == rhs
 compareEQ3VL (StringValue lhs) (StringValue rhs) = convertTo3VL $ lhs == rhs -- lexicographical comparison, ignores collation
-compareEQ3VL (ArrayValue lhs) (ArrayValue rhs) = compareArrayEQ (getArray lhs) (getArray rhs)
+compareEQ3VL (ArrayValue lhs) (ArrayValue rhs) = compareArrayEQ (getElements lhs) (getElements rhs)
 compareEQ3VL (DocumentValue lhs) (DocumentValue rhs) = 
-    compareDocumentEQ ((sortBy compareFieldNames . getDocument) lhs) ((sortBy compareFieldNames . getDocument) rhs)
+    compareDocumentEQ ((sortBy compareFieldNames . getFields) lhs) ((sortBy compareFieldNames . getFields) rhs)
 compareEQ3VL _ _ = False3VL
 
 compareFieldNames lhs rhs = compare (fst lhs) (fst rhs)

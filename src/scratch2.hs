@@ -6,6 +6,7 @@ import Mongo.Expression
 import Mongo.Util
 import Mongo.Variant
 import Data.Monoid
+import Data.List
 
 type Array2 = [Variant2]
 

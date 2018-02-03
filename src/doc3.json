@@ -1,0 +1,8 @@
+{ "$putdocument" :
+	{ "$remove" : 
+		[
+		"a",
+		{ "$const" : {"a" : 100}}
+		]
+	}
+}
