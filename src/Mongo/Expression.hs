@@ -15,8 +15,10 @@ data Expr a where
     -- Same applies to array indices
     SelectElem::Int->Expr Array->Expr Variant
 
+    -- If the field does not exist in the document then it is added to it, otherwise it is overwritten
     SetField::(String, Expr Variant)->Expr Document->Expr Document
     RemoveField::String->Expr Document->Expr Document
+    HasField::String->Expr Document->Expr Bool
 
     -- Selectors for the Variant
     GetInt::Expr Variant->Expr Int
@@ -41,3 +43,8 @@ data Expr a where
     CompareEQ::Expr Variant->Expr Variant->Expr Bool
     CompareEQ3VL::Expr Variant->Expr Variant->Expr Bool3VL
 
+    -- If <cond> <then expr> <else expr>
+    If::Expr Bool->Expr Variant->Expr Variant->Expr Variant
+
+    -- Access a variable in the current environment, operators ("stages") set e.g. "$$root" et al.
+    Var::String->Expr Variant

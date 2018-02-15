@@ -26,6 +26,13 @@ evalExpr (SetField (f,v) d) =
 evalExpr (RemoveField f v) =
     evalExpr v >>= return . removeField f
 
+evalExpr (HasField f v) =
+    do
+        doc <- evalExpr v
+        return (case getField f doc of
+                    Just _ -> True
+                    Nothing -> False)
+    
 evalExpr (GetInt v) =
     evalExpr v >>= getIntValue
 
@@ -63,4 +70,12 @@ evalExpr (CompareEQ lhs rhs) =
 
 evalExpr (CompareEQ3VL lhs rhs) =
     compareEQ3VL <$> (evalExpr lhs) <*> (evalExpr rhs) 
-    
+
+evalExpr (If cond t e) =
+    do
+        condval <- evalExpr cond
+        if condval
+        then
+            evalExpr t
+        else
+            evalExpr e

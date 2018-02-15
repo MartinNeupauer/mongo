@@ -52,12 +52,21 @@ instance Parseable Int where
             _ -> Nothing
             )
 
+instance Parseable Bool where
+    parseP (DocumentValue d) =
+        uncons (getFields d) >>= return . fst >>= (\(token,args) -> case token of
+            "$const" -> return $ GetBool $ Const args
+            "$eq" -> parseEq args
+            _ -> Nothing
+            )
+
 instance Parseable Variant where
     parseP (DocumentValue d) =
         uncons (getFields d) >>= return . fst >>= (\(token,args) -> case token of
             "$const" -> return $ Const args
             "$field" -> parseSelectField args
             "$elem" -> parseSelectElem args
+            "$if" -> parseIf args
             "$putint" -> parseP args >>= return . PutInt
             "$putdocument" -> parseP args >>= return . PutDocument
             _ -> Nothing
@@ -123,4 +132,18 @@ parseRemoveField params =
         field <- getStringValue (getElements pa !! 0)
         doc <- parseP (getElements pa !! 1)
         return $ RemoveField field doc
-        
+
+parseIf params =
+    do
+        pa <- getArrayValue params
+        cond <- parseP (getElements pa !! 0)
+        t <- parseP (getElements pa !! 1)
+        e <- parseP (getElements pa !! 2)
+        return $ If cond t e
+
+parseEq params =
+    do
+        pa <- getArrayValue params
+        lhs <- parseP (getElements pa !! 0)
+        rhs <- parseP (getElements pa !! 1)
+        return $ CompareEQ lhs rhs
