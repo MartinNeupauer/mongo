@@ -162,6 +162,7 @@ public:
     static const BSONField<bool> jumbo;
     static const BSONField<Date_t> lastmod;
     static const BSONField<OID> epoch;
+    static const BSONField<BSONArray> history;
 
     ChunkType();
     ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version, ShardId shardId);
@@ -236,6 +237,11 @@ public:
     }
     void setJumbo(bool jumbo);
 
+    const BSONArray& getHistory() const {
+        return _history.get();
+    }
+    void setHistory(const BSONArray& history);
+
     /**
      * Generates chunk id based on the namespace name and the lower bound of the chunk.
      */
@@ -267,6 +273,8 @@ private:
     boost::optional<ShardId> _shard;
     // (O)(C)     too big to move?
     boost::optional<bool> _jumbo;
+    // (M)(C)(S)  history of this chunk
+    boost::optional<BSONArray> _history;
 };
 
 }  // namespace mongo

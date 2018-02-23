@@ -54,6 +54,7 @@ const BSONField<std::string> ChunkType::shard("shard");
 const BSONField<bool> ChunkType::jumbo("jumbo");
 const BSONField<Date_t> ChunkType::lastmod("lastmod");
 const BSONField<OID> ChunkType::epoch("lastmodEpoch");
+const BSONField<BSONArray> ChunkType::history("history");
 
 namespace {
 
@@ -236,6 +237,8 @@ BSONObj ChunkType::toConfigBSON() const {
         _version->appendForChunk(&builder);
     if (_jumbo)
         builder.append(jumbo.name(), getJumbo());
+    if (_history)
+        builder.append(history.name(), getHistory());
 
     return builder.obj();
 }
@@ -296,6 +299,8 @@ BSONObj ChunkType::toShardBSON() const {
     builder.append(max.name(), getMax());
     builder.append(shard.name(), getShard().toString());
     builder.appendTimestamp(lastmod.name(), _version->toLong());
+    if (_history)
+        builder.append(history.name(), getHistory());
     return builder.obj();
 }
 
@@ -332,6 +337,10 @@ void ChunkType::setShard(const ShardId& shard) {
 
 void ChunkType::setJumbo(bool jumbo) {
     _jumbo = jumbo;
+}
+
+void ChunkType::setHistory(const BSONArray& history) {
+    _history = history;
 }
 
 std::string ChunkType::genID(const NamespaceString& nss, const BSONObj& o) {
