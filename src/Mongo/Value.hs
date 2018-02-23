@@ -1,5 +1,5 @@
-module Mongo.Variant (
-    Variant(..),
+module Mongo.Value (
+    Value(..),
     Array(..),
     Document(..),
 
@@ -29,7 +29,7 @@ import Mongo.Bool3VL
 
 -- Basic data structure that holds values. It should model BSON more closely (i.e. various int types)
 -- but it will do for now.
-data Variant
+data Value
     = NullValue
     | IntValue Int
     | BoolValue Bool
@@ -38,7 +38,7 @@ data Variant
     | DocumentValue Document
     deriving (Eq, Show)
 
--- Variant selectors
+-- Value selectors
 getIntValue (IntValue i) = Just i
 getIntValue _ = Nothing
 
@@ -60,8 +60,8 @@ isNull _  = Just False
 -- The Array and Document types are not particularly efficient now. We don't care much as it's an
 -- implementation detail and we are building a model not the best implementation of the model.
 -- TODO: Change the kind from * to *->* so they can be made instances of Functor and Applicative.
-newtype Array = Array { getElements::[Variant] } deriving (Eq, Show)
-newtype Document = Document { getFields::[(String, Variant)] } deriving (Eq, Show)
+newtype Array = Array { getElements::[Value] } deriving (Eq, Show)
+newtype Document = Document { getFields::[(String, Value)] } deriving (Eq, Show)
 
 instance Monoid Array where
     mempty = Array []
@@ -72,19 +72,19 @@ instance Monoid Document where
     mappend lhs rhs = Document $ getFields lhs ++ getFields rhs
 
 -- Does not check for duplicate field names
-addField::(String,Variant)->Document->Document
-addField field (Document document) = Document $ document ++ [field] 
+addField::(String, Value)->Document->Document
+addField field (Document document) = Document $ document ++ [field]
 
-getField::String->Document->Maybe Variant
+getField::String->Document->Maybe Value
 getField field (Document document) = lookup field document
 
 removeField::String->Document->Document
 removeField field (Document document) = Document $ deleteBy (\lhs rhs -> fst lhs == fst rhs) (field, NullValue) document
 
-addElement::Variant->Array->Array
+addElement::Value->Array->Array
 addElement value (Array array) = Array $ array ++ [value]
 
-getElement::Int->Array->Maybe Variant
+getElement::Int->Array->Maybe Value
 getElement index (Array array) =
     if (index >=0 && index < length array)
     then
@@ -98,12 +98,12 @@ removeElement::Int->Array->Array
 removeElement index (Array array) =
     if (index >=0 && index < length array)
         then
-            Array $ deleteNth index array            
+            Array $ deleteNth index array
         else
             Array array
 
 
-compareEQ::Variant->Variant->Bool
+compareEQ::Value->Value->Bool
 compareEQ (NullValue) (NullValue) = True
 compareEQ (IntValue lhs) (IntValue rhs) = lhs == rhs
 compareEQ (BoolValue lhs) (BoolValue rhs) = lhs == rhs
@@ -113,7 +113,7 @@ compareEQ (DocumentValue lhs) (DocumentValue rhs) =
     ((sortBy compareFieldNames . getFields) lhs) == ((sortBy compareFieldNames . getFields) rhs) -- elementwise comparison
 compareEQ _ _ = False
 
-compareEQ3VL::Variant->Variant->Bool3VL
+compareEQ3VL::Value->Value->Bool3VL
 -- Anything compared to NULL is unknown
 compareEQ3VL (NullValue) _ = Unknown3VL
 compareEQ3VL _ (NullValue) = Unknown3VL
@@ -128,7 +128,7 @@ compareEQ3VL _ _ = False3VL
 compareFieldNames lhs rhs = compare (fst lhs) (fst rhs)
 
 -- Array comparison helper
-compareArrayEQ::[Variant]->[Variant]->Bool3VL
+compareArrayEQ::[Value]->[Value]->Bool3VL
 compareArrayEQ [] [] = True3VL
 compareArrayEQ [] (_:_) = False3VL
 compareArrayEQ (_:_) [] = False3VL
@@ -136,7 +136,7 @@ compareArrayEQ (x:xs) (y:ys) = and3VL (compareEQ3VL x y) (compareArrayEQ xs ys)
 
 -- Document comparison helper
 -- Note: assumes same order of field names
-compareDocumentEQ::[(String,Variant)]->[(String,Variant)]->Bool3VL
+compareDocumentEQ::[(String,Value)]->[(String,Value)]->Bool3VL
 compareDocumentEQ [] [] = True3VL
 compareDocumentEQ [] (_:_) = False3VL
 compareDocumentEQ (_:_) [] = False3VL

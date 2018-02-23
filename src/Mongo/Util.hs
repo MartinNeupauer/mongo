@@ -9,10 +9,10 @@ module Mongo.Util (
 import Data.List
 import Data.Ratio
 import Mongo.Expression
-import Mongo.Variant
+import Mongo.Value
 import Text.JSON
 
-fromTextJson::JSValue->Variant
+fromTextJson::JSValue->Value
 fromTextJson json =
     case json of
         JSNull -> NullValue
@@ -24,7 +24,7 @@ fromTextJson json =
         JSArray v -> ArrayValue $ Array $ map (\x -> fromTextJson x) v
         JSObject v -> DocumentValue $ Document $ map (\x -> (fst x, fromTextJson $ snd x)) (fromJSObject v)
 
-fromString::String->Maybe Variant
+fromString::String->Maybe Value
 fromString input = 
     let decoded = decode input :: Result (JSObject JSValue) in
 
@@ -32,14 +32,14 @@ fromString input =
         Ok val -> Just $ fromTextJson $ JSObject val
         _ -> Nothing
 
-exprFromString::String->Maybe (Expr Variant)
+exprFromString::String->Maybe (Expr Value)
 exprFromString s = 
     (fromString s) >>= parseP
 
 
 -- A quick and dirty parser from a JSON object to an expression
 class Parseable a where
-    parseP::Variant->Maybe (Expr a)
+    parseP::Value->Maybe (Expr a)
     parseP _ = Nothing
 
 instance Parseable Int where
@@ -60,7 +60,7 @@ instance Parseable Bool where
             _ -> Nothing
             )
 
-instance Parseable Variant where
+instance Parseable Value where
     parseP (DocumentValue d) =
         uncons (getFields d) >>= return . fst >>= (\(token,args) -> case token of
             "$const" -> return $ Const args

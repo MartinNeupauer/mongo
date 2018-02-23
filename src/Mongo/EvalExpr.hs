@@ -5,7 +5,7 @@ module Mongo.EvalExpr(
     ) where
 
 import Mongo.Expression
-import Mongo.Variant
+import Mongo.Value
 
 evalExpr::Expr a-> Maybe a
 evalExpr (Const c) = return c
