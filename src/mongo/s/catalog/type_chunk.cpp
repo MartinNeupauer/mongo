@@ -197,8 +197,7 @@ BSONObj ChunkType::toConfigBSON() const {
 
     serialize(&builder);
 
-    if (ChunkTypeBase::getNss().is_initialized() && ChunkTypeBase::getMin().is_initialized())
-        builder.append(name.name(), getName());
+    builder.append(name.name(), getName());
 
     return builder.obj();
 }
@@ -251,9 +250,6 @@ StatusWith<ChunkType> ChunkType::fromShardBSON(const BSONObj& source, const OID&
 
 BSONObj ChunkType::toShardBSON() const {
     BSONObjBuilder builder;
-    invariant(ChunkTypeBase::getMin().is_initialized());
-    invariant(ChunkTypeBase::getMax().is_initialized());
-    invariant(ChunkTypeBase::getShard().is_initialized());
     invariant(_version);
     builder.append(minShardID.name(), getMin());
     builder.append(max.name(), getMax());
@@ -263,8 +259,6 @@ BSONObj ChunkType::toShardBSON() const {
 }
 
 std::string ChunkType::getName() const {
-    invariant(ChunkTypeBase::getNss().is_initialized());
-    invariant(ChunkTypeBase::getMin().is_initialized());
     return genID(getNS(), getMin());
 }
 
@@ -309,11 +303,11 @@ std::string ChunkType::genID(const NamespaceString& nss, const BSONObj& o) {
 }
 
 Status ChunkType::validate() const {
-    if (!ChunkTypeBase::getMin().is_initialized() || getMin().isEmpty()) {
+    if (getMin().isEmpty()) {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing " << min.name() << " field");
     }
 
-    if (!ChunkTypeBase::getMax().is_initialized() || getMax().isEmpty()) {
+    if (getMax().isEmpty()) {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing " << max.name() << " field");
     }
 
@@ -321,7 +315,7 @@ Status ChunkType::validate() const {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing version field");
     }
 
-    if (!ChunkTypeBase::getShard().is_initialized() || !getShard().isValid()) {
+    if (!getShard().isValid()) {
         return Status(ErrorCodes::NoSuchKey,
                       str::stream() << "missing " << shard.name() << " field");
     }

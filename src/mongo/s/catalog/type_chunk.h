@@ -169,7 +169,7 @@ public:
     ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version, ShardId shardId);
 
     ChunkType(const ChunkTypeBase& b) : ChunkTypeBase(b) {}
-    
+
     /**
      * Constructs a new ChunkType object from BSON that has the config server's config.chunks
      * collection format.
@@ -204,17 +204,17 @@ public:
      * Getters and setters.
      */
     const NamespaceString& getNS() const {
-        return ChunkTypeBase::getNss().get();
+        return ChunkTypeBase::getNss();
     }
     void setNS(const NamespaceString& nss);
 
     const BSONObj& getMin() const {
-        return ChunkTypeBase::getMin().get();
+        return ChunkTypeBase::getMin();
     }
     void setMin(const BSONObj& min);
 
     const BSONObj& getMax() const {
-        return ChunkTypeBase::getMax().get();
+        return ChunkTypeBase::getMax();
     }
     void setMax(const BSONObj& max);
 
@@ -231,7 +231,7 @@ public:
     void setVersion(const ChunkVersion& version);
 
     const ShardId& getShard() const {
-        return ChunkTypeBase::getShard().get();
+        return ChunkTypeBase::getShard();
     }
     void setShard(const ShardId& shard);
 

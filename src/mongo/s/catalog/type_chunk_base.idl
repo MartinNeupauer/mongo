@@ -53,15 +53,12 @@ structs:
             ns:
                 type: namespacestring
                 cpp_name: nss
-                optional: true
                 description: collection this chunk is in
             min:
                 type: object
-                optional: true
                 description: first key of the range, inclusive
             max:
                 type: object
-                optional: true
                 description: last key of the range, non-inclusive
             lastmod:
                 type: timestamp
@@ -73,7 +70,6 @@ structs:
                 description: version of this chunk
             shard:
                 type: shardid
-                optional: true
                 description: shard this chunk lives in
             jumbo:
                 type: bool
