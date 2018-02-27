@@ -163,20 +163,19 @@ ChunkRange ChunkRange::unionWith(ChunkRange const& other) const {
 ChunkType::ChunkType() = default;
 
 ChunkType::ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version, ShardId shardId)
-    : _version(version)
-    {
-        ChunkTypeBase::setMin(range.getMin());
-        ChunkTypeBase::setMax(range.getMax());
-        ChunkTypeBase::setNss(std::move(nss));
-        ChunkTypeBase::setShard(std::move(shardId));
-    }
+    : _version(version) {
+    ChunkTypeBase::setMin(range.getMin());
+    ChunkTypeBase::setMax(range.getMax());
+    ChunkTypeBase::setNss(std::move(nss));
+    ChunkTypeBase::setShard(std::move(shardId));
+}
 
 StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
     ChunkType chunk;
 
     try {
         ChunkType chunk2(parse(IDLParserErrorContext("chunk type"), source));
-        
+
     } catch (const DBException& e) {
         Status(ErrorCodes::BadValue, e.what());
     }
@@ -374,7 +373,8 @@ Status ChunkType::validate() const {
     // 'min' and 'max' must share the same fields.
     if (getMin().nFields() != getMax().nFields()) {
         return {ErrorCodes::BadValue,
-                str::stream() << "min and max don't have the same number of keys: " << getMin() << ", "
+                str::stream() << "min and max don't have the same number of keys: " << getMin()
+                              << ", "
                               << getMax()};
     }
 
