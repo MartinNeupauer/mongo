@@ -286,7 +286,7 @@ void ChunkType::setMax(const BSONObj& max) {
 void ChunkType::setVersion(const ChunkVersion& version) {
     invariant(version.isSet());
     _version = version;
-    ChunkTypeBase::setLastmod(Timestamp(_version->toLong());
+    ChunkTypeBase::setLastmod(Timestamp(_version->toLong()));
     ChunkTypeBase::setLastmodEpoch(_version->epoch());
 }
 
