@@ -176,6 +176,8 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
     try {
         ChunkType chunk(parse(IDLParserErrorContext("chunk type"), source));
 
+        chunk.set_id(boost::none);
+        
         {
             auto versionStatus = ChunkVersion::parseFromBSONForChunk(source);
             if (!versionStatus.isOK()) {

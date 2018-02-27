@@ -46,6 +46,10 @@ structs:
         description: "A chunk description as stored in config.chunks"
         fields:
 
+            _id:
+                type: string
+                optional: true
+                description: name of the chunk
             ns:
                 type: namespacestring
                 cpp_name: nss
