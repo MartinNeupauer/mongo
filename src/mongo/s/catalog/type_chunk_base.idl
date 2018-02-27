@@ -64,7 +64,7 @@ structs:
                 optional: true
                 description: last key of the range, non-inclusive
             lastmod:
-                type: date
+                type: timestamp
                 optional: true
                 description: version of this chunk
             lastmodEpoch:

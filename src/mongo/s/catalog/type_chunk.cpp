@@ -168,7 +168,7 @@ ChunkType::ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version
     ChunkTypeBase::setMax(range.getMax());
     ChunkTypeBase::setNss(std::move(nss));
     ChunkTypeBase::setShard(std::move(shardId));
-    ChunkTypeBase::setLastmod(Date_t::fromMillisSinceEpoch(_version->toLong()));
+    ChunkTypeBase::setLastmod(_version->toLong());
     ChunkTypeBase::setLastmodEpoch(_version->epoch());
 }
 
@@ -177,7 +177,7 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
         ChunkType chunk(parse(IDLParserErrorContext("chunk type"), source));
 
         chunk.set_id(boost::none);
-        
+
         {
             auto versionStatus = ChunkVersion::parseFromBSONForChunk(source);
             if (!versionStatus.isOK()) {
@@ -286,7 +286,7 @@ void ChunkType::setMax(const BSONObj& max) {
 void ChunkType::setVersion(const ChunkVersion& version) {
     invariant(version.isSet());
     _version = version;
-    ChunkTypeBase::setLastmod(Date_t::fromMillisSinceEpoch(_version->toLong()));
+    ChunkTypeBase::setLastmod(_version->toLong());
     ChunkTypeBase::setLastmodEpoch(_version->epoch());
 }
 
