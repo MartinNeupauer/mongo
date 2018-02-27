@@ -168,83 +168,35 @@ ChunkType::ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version
     ChunkTypeBase::setMax(range.getMax());
     ChunkTypeBase::setNss(std::move(nss));
     ChunkTypeBase::setShard(std::move(shardId));
+    ChunkTypeBase::setLastmod(Date_t::fromMillisSinceEpoch(_version->toLong()));
+    ChunkTypeBase::setLastmodEpoch(_version->epoch());
 }
 
 StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
-    ChunkType chunk;
-
     try {
-        ChunkType chunk2(parse(IDLParserErrorContext("chunk type"), source));
+        ChunkType chunk(parse(IDLParserErrorContext("chunk type"), source));
 
+        {
+            auto versionStatus = ChunkVersion::parseFromBSONForChunk(source);
+            if (!versionStatus.isOK()) {
+                return versionStatus.getStatus();
+            }
+            chunk._version = std::move(versionStatus.getValue());
+        }
+
+        return chunk;
     } catch (const DBException& e) {
-        Status(ErrorCodes::BadValue, e.what());
+       return Status(ErrorCodes::BadValue, e.what());
     }
-
-    {
-        std::string chunkNS;
-        Status status = bsonExtractStringField(source, ns.name(), &chunkNS);
-        if (!status.isOK())
-            return status;
-        chunk.setNss(NamespaceString(chunkNS));
-    }
-
-    {
-        auto chunkRangeStatus = ChunkRange::fromBSON(source);
-        if (!chunkRangeStatus.isOK())
-            return chunkRangeStatus.getStatus();
-
-        const auto chunkRange = std::move(chunkRangeStatus.getValue());
-        chunk.setMin(chunkRange.getMin().getOwned());
-        chunk.setMax(chunkRange.getMax().getOwned());
-    }
-
-    {
-        std::string chunkShard;
-        Status status = bsonExtractStringField(source, shard.name(), &chunkShard);
-        if (!status.isOK())
-            return status;
-        chunk.setShard(chunkShard);
-    }
-
-    {
-        bool chunkJumbo;
-        Status status = bsonExtractBooleanField(source, jumbo.name(), &chunkJumbo);
-        if (status.isOK()) {
-            chunk.setJumbo(chunkJumbo);
-        } else if (status == ErrorCodes::NoSuchKey) {
-            // Jumbo status is missing, so it will be presumed false
-        } else {
-            return status;
-        }
-    }
-
-    {
-        auto versionStatus = ChunkVersion::parseFromBSONForChunk(source);
-        if (!versionStatus.isOK()) {
-            return versionStatus.getStatus();
-        }
-        chunk._version = std::move(versionStatus.getValue());
-    }
-
-    return chunk;
 }
 
 BSONObj ChunkType::toConfigBSON() const {
     BSONObjBuilder builder;
+
+    serialize(&builder);
+
     if (ChunkTypeBase::getNss().is_initialized() && ChunkTypeBase::getMin().is_initialized())
         builder.append(name.name(), getName());
-    if (ChunkTypeBase::getNss().is_initialized())
-        builder.append(ns.name(), getNS().ns());
-    if (ChunkTypeBase::getMin().is_initialized())
-        builder.append(min.name(), getMin());
-    if (ChunkTypeBase::getMax().is_initialized())
-        builder.append(max.name(), getMax());
-    if (ChunkTypeBase::getShard().is_initialized())
-        builder.append(shard.name(), getShard().toString());
-    if (_version)
-        _version->appendForChunk(&builder);
-    if (ChunkTypeBase::getJumbo().is_initialized())
-        builder.append(jumbo.name(), getJumbo());
 
     return builder.obj();
 }
@@ -332,6 +284,8 @@ void ChunkType::setMax(const BSONObj& max) {
 void ChunkType::setVersion(const ChunkVersion& version) {
     invariant(version.isSet());
     _version = version;
+    ChunkTypeBase::setLastmod(Date_t::fromMillisSinceEpoch(_version->toLong()));
+    ChunkTypeBase::setLastmodEpoch(_version->epoch());
 }
 
 void ChunkType::setShard(const ShardId& shard) {
