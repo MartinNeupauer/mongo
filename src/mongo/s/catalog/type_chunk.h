@@ -168,6 +168,8 @@ public:
     ChunkType();
     ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version, ShardId shardId);
 
+    ChunkType(const ChunkTypeBase& b) : ChunkTypeBase(b) {}
+    
     /**
      * Constructs a new ChunkType object from BSON that has the config server's config.chunks
      * collection format.

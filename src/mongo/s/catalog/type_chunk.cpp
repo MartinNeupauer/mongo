@@ -174,6 +174,13 @@ ChunkType::ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version
 StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
     ChunkType chunk;
 
+    try {
+        ChunkType chunk2(parse(IDLParserErrorContext("chunk type"), source));
+        
+    } catch (const DBException& e) {
+        Status(ErrorCodes::BadValue, e.what());
+    }
+
     {
         std::string chunkNS;
         Status status = bsonExtractStringField(source, ns.name(), &chunkNS);
