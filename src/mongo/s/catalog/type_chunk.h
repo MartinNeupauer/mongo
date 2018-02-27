@@ -33,6 +33,7 @@
 
 #include "mongo/bson/bsonobj.h"
 #include "mongo/db/namespace_string.h"
+#include "mongo/s/catalog/type_chunk_base_gen.h"
 #include "mongo/s/chunk_version.h"
 #include "mongo/s/shard_id.h"
 
@@ -144,7 +145,7 @@ private:
  * server's collection schema, but that will be future work when the new schema is stable and there
  * is time to do the extra work, as well as handle the backwards compatibility issues it poses.
  */
-class ChunkType {
+class ChunkType : public ChunkTypeBase {
 public:
     // Name of the chunks collection in the config server.
     static const NamespaceString ConfigNS;
@@ -201,17 +202,17 @@ public:
      * Getters and setters.
      */
     const NamespaceString& getNS() const {
-        return _nss.get();
+        return ChunkTypeBase::getNss().get();
     }
     void setNS(const NamespaceString& nss);
 
     const BSONObj& getMin() const {
-        return _min.get();
+        return ChunkTypeBase::getMin().get();
     }
     void setMin(const BSONObj& min);
 
     const BSONObj& getMax() const {
-        return _max.get();
+        return ChunkTypeBase::getMax().get();
     }
     void setMax(const BSONObj& max);
 
@@ -228,19 +229,13 @@ public:
     void setVersion(const ChunkVersion& version);
 
     const ShardId& getShard() const {
-        return _shard.get();
+        return ChunkTypeBase::getShard().get();
     }
     void setShard(const ShardId& shard);
 
     bool getJumbo() const {
-        return _jumbo.get_value_or(false);
+        return ChunkTypeBase::getJumbo().get_value_or(false);
     }
-    void setJumbo(bool jumbo);
-
-    const BSONArray& getHistory() const {
-        return _history.get();
-    }
-    void setHistory(const BSONArray& history);
 
     /**
      * Generates chunk id based on the namespace name and the lower bound of the chunk.
@@ -261,20 +256,8 @@ public:
 private:
     // Convention: (M)andatory, (O)ptional, (S)pecial; (C)onfig, (S)hard.
 
-    // (O)(C)     collection this chunk is in
-    boost::optional<NamespaceString> _nss;
-    // (M)(C)(S)  first key of the range, inclusive
-    boost::optional<BSONObj> _min;
-    // (M)(C)(S)  last key of the range, non-inclusive
-    boost::optional<BSONObj> _max;
     // (M)(C)(S)  version of this chunk
     boost::optional<ChunkVersion> _version;
-    // (M)(C)(S)  shard this chunk lives in
-    boost::optional<ShardId> _shard;
-    // (O)(C)     too big to move?
-    boost::optional<bool> _jumbo;
-    // (M)(C)(S)  history of this chunk
-    boost::optional<BSONArray> _history;
 };
 
 }  // namespace mongo

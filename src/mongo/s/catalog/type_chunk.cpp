@@ -163,11 +163,13 @@ ChunkRange ChunkRange::unionWith(ChunkRange const& other) const {
 ChunkType::ChunkType() = default;
 
 ChunkType::ChunkType(NamespaceString nss, ChunkRange range, ChunkVersion version, ShardId shardId)
-    : _nss(nss),
-      _min(range.getMin()),
-      _max(range.getMax()),
-      _version(version),
-      _shard(std::move(shardId)) {}
+    : _version(version)
+    {
+        ChunkTypeBase::setMin(range.getMin());
+        ChunkTypeBase::setMax(range.getMax());
+        ChunkTypeBase::setNss(std::move(nss));
+        ChunkTypeBase::setShard(std::move(shardId));
+    }
 
 StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
     ChunkType chunk;
@@ -177,7 +179,7 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
         Status status = bsonExtractStringField(source, ns.name(), &chunkNS);
         if (!status.isOK())
             return status;
-        chunk._nss = NamespaceString(chunkNS);
+        chunk.setNss(NamespaceString(chunkNS));
     }
 
     {
@@ -186,8 +188,8 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
             return chunkRangeStatus.getStatus();
 
         const auto chunkRange = std::move(chunkRangeStatus.getValue());
-        chunk._min = chunkRange.getMin().getOwned();
-        chunk._max = chunkRange.getMax().getOwned();
+        chunk.setMin(chunkRange.getMin().getOwned());
+        chunk.setMax(chunkRange.getMax().getOwned());
     }
 
     {
@@ -195,14 +197,14 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
         Status status = bsonExtractStringField(source, shard.name(), &chunkShard);
         if (!status.isOK())
             return status;
-        chunk._shard = chunkShard;
+        chunk.setShard(chunkShard);
     }
 
     {
         bool chunkJumbo;
         Status status = bsonExtractBooleanField(source, jumbo.name(), &chunkJumbo);
         if (status.isOK()) {
-            chunk._jumbo = chunkJumbo;
+            chunk.setJumbo(chunkJumbo);
         } else if (status == ErrorCodes::NoSuchKey) {
             // Jumbo status is missing, so it will be presumed false
         } else {
@@ -223,22 +225,20 @@ StatusWith<ChunkType> ChunkType::fromConfigBSON(const BSONObj& source) {
 
 BSONObj ChunkType::toConfigBSON() const {
     BSONObjBuilder builder;
-    if (_nss && _min)
+    if (ChunkTypeBase::getNss().is_initialized() && ChunkTypeBase::getMin().is_initialized())
         builder.append(name.name(), getName());
-    if (_nss)
+    if (ChunkTypeBase::getNss().is_initialized())
         builder.append(ns.name(), getNS().ns());
-    if (_min)
+    if (ChunkTypeBase::getMin().is_initialized())
         builder.append(min.name(), getMin());
-    if (_max)
+    if (ChunkTypeBase::getMax().is_initialized())
         builder.append(max.name(), getMax());
-    if (_shard)
+    if (ChunkTypeBase::getShard().is_initialized())
         builder.append(shard.name(), getShard().toString());
     if (_version)
         _version->appendForChunk(&builder);
-    if (_jumbo)
+    if (ChunkTypeBase::getJumbo().is_initialized())
         builder.append(jumbo.name(), getJumbo());
-    if (_history)
-        builder.append(history.name(), getHistory());
 
     return builder.obj();
 }
@@ -265,8 +265,8 @@ StatusWith<ChunkType> ChunkType::fromShardBSON(const BSONObj& source, const OID&
                                   << maxKey.Obj()};
         }
 
-        chunk._min = minKey.Obj().getOwned();
-        chunk._max = maxKey.Obj().getOwned();
+        chunk.setMin(minKey.Obj().getOwned());
+        chunk.setMax(maxKey.Obj().getOwned());
     }
 
     {
@@ -274,7 +274,7 @@ StatusWith<ChunkType> ChunkType::fromShardBSON(const BSONObj& source, const OID&
         Status status = bsonExtractStringField(source, shard.name(), &chunkShard);
         if (!status.isOK())
             return status;
-        chunk._shard = chunkShard;
+        chunk.setShard(chunkShard);
     }
 
     {
@@ -291,38 +291,36 @@ StatusWith<ChunkType> ChunkType::fromShardBSON(const BSONObj& source, const OID&
 
 BSONObj ChunkType::toShardBSON() const {
     BSONObjBuilder builder;
-    invariant(_min);
-    invariant(_max);
-    invariant(_shard);
+    invariant(ChunkTypeBase::getMin().is_initialized());
+    invariant(ChunkTypeBase::getMax().is_initialized());
+    invariant(ChunkTypeBase::getShard().is_initialized());
     invariant(_version);
     builder.append(minShardID.name(), getMin());
     builder.append(max.name(), getMax());
     builder.append(shard.name(), getShard().toString());
     builder.appendTimestamp(lastmod.name(), _version->toLong());
-    if (_history)
-        builder.append(history.name(), getHistory());
     return builder.obj();
 }
 
 std::string ChunkType::getName() const {
-    invariant(_nss);
-    invariant(_min);
-    return genID(*_nss, *_min);
+    invariant(ChunkTypeBase::getNss().is_initialized());
+    invariant(ChunkTypeBase::getMin().is_initialized());
+    return genID(getNS(), getMin());
 }
 
 void ChunkType::setNS(const NamespaceString& nss) {
     invariant(nss.isValid());
-    _nss = nss;
+    ChunkTypeBase::setNss(nss);
 }
 
 void ChunkType::setMin(const BSONObj& min) {
     invariant(!min.isEmpty());
-    _min = min;
+    ChunkTypeBase::setMin(min);
 }
 
 void ChunkType::setMax(const BSONObj& max) {
     invariant(!max.isEmpty());
-    _max = max;
+    ChunkTypeBase::setMax(max);
 }
 
 void ChunkType::setVersion(const ChunkVersion& version) {
@@ -332,15 +330,7 @@ void ChunkType::setVersion(const ChunkVersion& version) {
 
 void ChunkType::setShard(const ShardId& shard) {
     invariant(shard.isValid());
-    _shard = shard;
-}
-
-void ChunkType::setJumbo(bool jumbo) {
-    _jumbo = jumbo;
-}
-
-void ChunkType::setHistory(const BSONArray& history) {
-    _history = history;
+    ChunkTypeBase::setShard(shard);
 }
 
 std::string ChunkType::genID(const NamespaceString& nss, const BSONObj& o) {
@@ -357,11 +347,11 @@ std::string ChunkType::genID(const NamespaceString& nss, const BSONObj& o) {
 }
 
 Status ChunkType::validate() const {
-    if (!_min.is_initialized() || _min->isEmpty()) {
+    if (!ChunkTypeBase::getMin().is_initialized() || getMin().isEmpty()) {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing " << min.name() << " field");
     }
 
-    if (!_max.is_initialized() || _max->isEmpty()) {
+    if (!ChunkTypeBase::getMax().is_initialized() || getMax().isEmpty()) {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing " << max.name() << " field");
     }
 
@@ -369,16 +359,16 @@ Status ChunkType::validate() const {
         return Status(ErrorCodes::NoSuchKey, str::stream() << "missing version field");
     }
 
-    if (!_shard.is_initialized() || !_shard->isValid()) {
+    if (!ChunkTypeBase::getShard().is_initialized() || !getShard().isValid()) {
         return Status(ErrorCodes::NoSuchKey,
                       str::stream() << "missing " << shard.name() << " field");
     }
 
     // 'min' and 'max' must share the same fields.
-    if (_min->nFields() != _max->nFields()) {
+    if (getMin().nFields() != getMax().nFields()) {
         return {ErrorCodes::BadValue,
-                str::stream() << "min and max don't have the same number of keys: " << *_min << ", "
-                              << *_max};
+                str::stream() << "min and max don't have the same number of keys: " << getMin() << ", "
+                              << getMax()};
     }
 
     BSONObjIterator minIt(getMin());
@@ -388,15 +378,15 @@ Status ChunkType::validate() const {
         BSONElement maxElem = maxIt.next();
         if (strcmp(minElem.fieldName(), maxElem.fieldName())) {
             return {ErrorCodes::BadValue,
-                    str::stream() << "min and max don't have matching keys: " << *_min << ", "
-                                  << *_max};
+                    str::stream() << "min and max don't have matching keys: " << getMin() << ", "
+                                  << getMax()};
         }
     }
 
     // 'max' should be greater than 'min'.
-    if (_min->woCompare(getMax()) >= 0) {
+    if (getMin().woCompare(getMax()) >= 0) {
         return {ErrorCodes::BadValue,
-                str::stream() << "max is not greater than min: " << *_min << ", " << *_max};
+                str::stream() << "max is not greater than min: " << getMin() << ", " << getMax()};
     }
 
     return Status::OK();

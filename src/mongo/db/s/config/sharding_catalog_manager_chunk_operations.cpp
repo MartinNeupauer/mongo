@@ -475,7 +475,7 @@ Status ShardingCatalogManager::commitChunkMerge(OperationContext* opCtx,
     ChunkType itChunk;
     itChunk.setMax(chunkBoundaries.front());
     itChunk.setNS(nss);
-    itChunk.setShard(shardName);
+    itChunk.setShard(ShardId(shardName));
 
     // Do not use the first chunk boundary as a max bound while building chunks
     for (size_t i = 1; i < chunkBoundaries.size(); ++i) {
