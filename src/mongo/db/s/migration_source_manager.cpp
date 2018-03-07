@@ -391,9 +391,8 @@ Status MigrationSourceManager::commitChunkMetadataOnConfig(OperationContext* opC
             return status;
 
         boost::optional<ChunkType> controlChunkType = boost::none;
-        if (metadata->getNumChunks() > 1) {
-            ChunkType differentChunk;
-            invariant(metadata->getDifferentChunk(_args.getMinKey(), &differentChunk));
+        ChunkType differentChunk;
+        if (metadata->getDifferentChunk(_args.getMinKey(), &differentChunk)) {
             invariant(differentChunk.getMin().woCompare(_args.getMinKey()) != 0);
             controlChunkType = std::move(differentChunk);
         } else {
