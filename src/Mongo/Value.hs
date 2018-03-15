@@ -31,6 +31,7 @@ import Mongo.Bool3VL
 -- but it will do for now.
 data Value
     = NullValue
+    | UndefinedValue
     | IntValue Int
     | BoolValue Bool
     | StringValue String
