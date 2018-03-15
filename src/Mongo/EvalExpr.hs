@@ -4,10 +4,10 @@ module Mongo.EvalExpr(
     evalExpr
     ) where
 
-import Mongo.Expression
+import Mongo.CoreExpr
 import Mongo.Value
 
-evalExpr::Expr a-> Maybe a
+evalExpr :: CoreExpr a -> Maybe a
 evalExpr (Const c) = return c
 
 -- Selectors

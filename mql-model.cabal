@@ -19,8 +19,8 @@ cabal-version:       >=1.10
 executable mql
   main-is:             Main.hs
   other-modules:       Mongo.Bool3VL
+                       Mongo.CoreExpr
                        Mongo.EvalExpr
-                       Mongo.Expression
                        Mongo.Util
                        Mongo.Value
   other-extensions:    GADTs, FlexibleInstances

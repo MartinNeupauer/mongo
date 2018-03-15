@@ -8,7 +8,7 @@ module Mongo.Util (
 
 import Data.List
 import Data.Ratio
-import Mongo.Expression
+import Mongo.CoreExpr
 import Mongo.Value
 import Text.JSON
 
@@ -32,14 +32,14 @@ fromString input =
         Ok val -> Just $ fromTextJson $ JSObject val
         _ -> Nothing
 
-exprFromString::String->Maybe (Expr Value)
+exprFromString::String->Maybe (CoreExpr Value)
 exprFromString s = 
     (fromString s) >>= parseP
 
 
 -- A quick and dirty parser from a JSON object to an expression
 class Parseable a where
-    parseP::Value->Maybe (Expr a)
+    parseP::Value->Maybe (CoreExpr a)
     parseP _ = Nothing
 
 instance Parseable Int where
