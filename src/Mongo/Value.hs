@@ -10,9 +10,10 @@ module Mongo.Value (
     getDocumentValue,
 
     isNull,
-    
+
     addField,
     getField,
+    hasField,
     removeField,
 
     addElement,
@@ -26,6 +27,8 @@ module Mongo.Value (
 import Data.List
 import Data.Monoid
 import Mongo.Bool3VL
+import Mongo.Error
+import qualified Data.Maybe
 
 -- Basic data structure that holds values. It should model BSON more closely (i.e. various int types)
 -- but it will do for now.
@@ -40,23 +43,34 @@ data Value
     deriving (Eq, Show)
 
 -- Value selectors
-getIntValue (IntValue i) = Just i
-getIntValue _ = Nothing
+getIntValue :: Value -> Either Error Int
+getIntValue (IntValue i) = Right i
+getIntValue val = Left $
+    Error { errCode = TypeMismatch, errReason = "Expected Int but found: " ++ (show val) }
 
-getBoolValue (BoolValue b) = Just b
-getBoolValue _ = Nothing
+getBoolValue :: Value -> Either Error Bool
+getBoolValue (BoolValue b) = Right b
+getBoolValue val = Left $
+    Error { errCode = TypeMismatch, errReason = "Expected Bool but found: " ++ (show val) }
 
-getStringValue (StringValue s) = Just s
-getStringValue _ = Nothing
+getStringValue :: Value -> Either Error String
+getStringValue (StringValue s) = Right s
+getStringValue val = Left $
+    Error { errCode = TypeMismatch, errReason = "Expected String but found: " ++ (show val) }
 
-getArrayValue (ArrayValue a) = Just a
-getArrayValue _ = Nothing
+getArrayValue :: Value -> Either Error Array
+getArrayValue (ArrayValue a) = Right a
+getArrayValue val = Left $
+    Error { errCode = TypeMismatch, errReason = "Expected Array but found: " ++ (show val) }
 
-getDocumentValue (DocumentValue d) = Just d
-getDocumentValue _ = Nothing
+getDocumentValue :: Value -> Either Error Document
+getDocumentValue (DocumentValue d) = Right d
+getDocumentValue val = Left $
+    Error { errCode = TypeMismatch, errReason = "Expected Document but found: " ++ (show val) }
 
-isNull (NullValue) = Just True
-isNull _  = Just False
+isNull :: Value -> Bool
+isNull (NullValue) = True
+isNull _  = False
 
 -- The Array and Document types are not particularly efficient now. We don't care much as it's an
 -- implementation detail and we are building a model not the best implementation of the model.
@@ -76,8 +90,13 @@ instance Monoid Document where
 addField::(String, Value)->Document->Document
 addField field (Document document) = Document $ document ++ [field]
 
-getField::String->Document->Maybe Value
-getField field (Document document) = lookup field document
+getField :: String -> Document -> Either Error Value
+getField field (Document document) = case (lookup field document) of
+    (Just val) -> Right val
+    _ -> Left $ Error { errCode = MissingField, errReason = "Field " ++ field ++ " not found" }
+
+hasField :: String -> Document -> Bool
+hasField field (Document document) = Data.Maybe.isJust (lookup field document)
 
 removeField::String->Document->Document
 removeField field (Document document) = Document $ deleteBy (\lhs rhs -> fst lhs == fst rhs) (field, NullValue) document
@@ -85,13 +104,19 @@ removeField field (Document document) = Document $ deleteBy (\lhs rhs -> fst lhs
 addElement::Value->Array->Array
 addElement value (Array array) = Array $ array ++ [value]
 
-getElement::Int->Array->Maybe Value
-getElement index (Array array) =
-    if (index >=0 && index < length array)
-    then
-        Just (array !! index)
-    else
-        Nothing
+getElement :: Int -> Array -> Either Error Value
+getElement index (Array array)
+    | index < 0 = Left $ Error {
+        errCode = ArrayIndexOutOfBounds,
+        errReason = "Negative array index " ++ (show index) }
+    | index >= arrLen = Left $ Error {
+        errCode = ArrayIndexOutOfBounds,
+        errReason = "Array index "
+                    ++ (show index)
+                    ++ " out of bounds. Array length: "
+                    ++ (show arrLen) }
+    | otherwise = Right (array !! index)
+    where arrLen = (length array)
 
 deleteNth n xs = let (a, b) = splitAt n xs in a ++ tail b
 

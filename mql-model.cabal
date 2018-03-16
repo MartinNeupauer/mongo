@@ -20,6 +20,7 @@ executable mql
   main-is:             Main.hs
   other-modules:       Mongo.Bool3VL
                        Mongo.CoreExpr
+                       Mongo.Error
                        Mongo.EvalExpr
                        Mongo.Util
                        Mongo.Value

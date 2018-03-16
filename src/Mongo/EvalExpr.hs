@@ -5,9 +5,10 @@ module Mongo.EvalExpr(
     ) where
 
 import Mongo.CoreExpr
+import Mongo.Error
 import Mongo.Value
 
-evalExpr :: CoreExpr a -> Maybe a
+evalExpr :: CoreExpr a -> Either Error a
 evalExpr (Const c) = return c
 
 -- Selectors
@@ -29,10 +30,8 @@ evalExpr (RemoveField f v) =
 evalExpr (HasField f v) =
     do
         doc <- evalExpr v
-        return (case getField f doc of
-                    Just _ -> True
-                    Nothing -> False)
-    
+        return $ hasField f doc
+
 evalExpr (GetInt v) =
     evalExpr v >>= getIntValue
 
@@ -44,7 +43,7 @@ evalExpr (GetString v) =
 
 evalExpr (GetArray v) =
     evalExpr v >>= getArrayValue
-    
+
 evalExpr (GetDocument v) =
     evalExpr v >>= getDocumentValue
 
@@ -55,7 +54,7 @@ evalExpr (PutDocument v) =
     evalExpr v >>= return . DocumentValue
 
 evalExpr (IsNull v) =
-    evalExpr v >>= isNull
+    isNull <$> evalExpr v
 
 -- Arithmetic
 evalExpr (Plus lhs rhs) =
@@ -64,7 +63,7 @@ evalExpr (Plus lhs rhs) =
 evalExpr (Minus lhs rhs) =
     (-) <$> (evalExpr lhs) <*> (evalExpr rhs)
 
--- Comparisons    
+-- Comparisons
 evalExpr (CompareEQ lhs rhs) =
     compareEQ <$> (evalExpr lhs) <*> (evalExpr rhs) 
 
