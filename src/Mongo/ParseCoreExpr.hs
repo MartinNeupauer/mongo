@@ -1,8 +1,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 
-module Mongo.Util (
-    fromString,
-    exprFromString,
+module Mongo.ParseCoreExpr (
+    coreExprFromString,
     parseP,
     ) where
 
@@ -36,8 +35,8 @@ fromString input =
             errCode = InvalidJSON,
             errReason = "JSON failed to parse: " ++ jsonErrString }
 
-exprFromString :: String -> Either Error (CoreExpr Value)
-exprFromString s =
+coreExprFromString :: String -> Either Error (CoreExpr Value)
+coreExprFromString s =
     fromString s >>= parseP
 
 

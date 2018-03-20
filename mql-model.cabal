@@ -21,8 +21,8 @@ executable mql
   other-modules:       Mongo.Bool3VL
                        Mongo.CoreExpr
                        Mongo.Error
-                       Mongo.EvalExpr
-                       Mongo.Util
+                       Mongo.EvalCoreExpr
+                       Mongo.ParseCoreExpr
                        Mongo.Value
   other-extensions:    GADTs, FlexibleInstances
   build-depends:       base >=4.8 && <4.11,
