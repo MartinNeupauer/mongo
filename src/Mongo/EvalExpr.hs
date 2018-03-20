@@ -25,12 +25,10 @@ evalExpr (SetField (f,v) d) =
         return $ addField (f,val) (removeField f doc)
 
 evalExpr (RemoveField f v) =
-    evalExpr v >>= return . removeField f
+    removeField f <$> evalExpr v
 
 evalExpr (HasField f v) =
-    do
-        doc <- evalExpr v
-        return $ hasField f doc
+    hasField f <$> evalExpr v
 
 evalExpr (GetInt v) =
     evalExpr v >>= getIntValue
@@ -48,27 +46,27 @@ evalExpr (GetDocument v) =
     evalExpr v >>= getDocumentValue
 
 evalExpr (PutInt v) =
-    evalExpr v >>= return . IntValue
+    IntValue <$> evalExpr v
 
 evalExpr (PutDocument v) =
-    evalExpr v >>= return . DocumentValue
+    DocumentValue <$> evalExpr v
 
 evalExpr (IsNull v) =
     isNull <$> evalExpr v
 
 -- Arithmetic
 evalExpr (Plus lhs rhs) =
-    (+) <$> (evalExpr lhs) <*> (evalExpr rhs)
+    (+) <$> evalExpr lhs <*> evalExpr rhs
 
 evalExpr (Minus lhs rhs) =
-    (-) <$> (evalExpr lhs) <*> (evalExpr rhs)
+    (-) <$> evalExpr lhs <*> evalExpr rhs
 
 -- Comparisons
 evalExpr (CompareEQ lhs rhs) =
-    compareEQ <$> (evalExpr lhs) <*> (evalExpr rhs) 
+    compareEQ <$> evalExpr lhs <*> evalExpr rhs 
 
 evalExpr (CompareEQ3VL lhs rhs) =
-    compareEQ3VL <$> (evalExpr lhs) <*> (evalExpr rhs) 
+    compareEQ3VL <$> evalExpr lhs <*> evalExpr rhs 
 
 evalExpr (If cond t e) =
     do

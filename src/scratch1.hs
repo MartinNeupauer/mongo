@@ -13,8 +13,8 @@ data Variant =
     deriving (Eq, Show)
 
 -- Nulls do not compare equal to anything
-cmpEq (MkNull) _ = False
-cmpEq _ (MkNull) = False
+cmpEq MkNull _ = False
+cmpEq _ MkNull = False
 -- lhs and rhs types must be the same
 cmpEq (MkInt lhs) (MkInt rhs) = lhs == rhs
 cmpEq (MkVarDoc lhs) (MkVarDoc rhs) = lhs == rhs
@@ -31,7 +31,7 @@ anyElemMatch a c = False
 -- does the law of excluded middle apply? in the presense of nulls
 -- i.e. allElemMatch a c <=> noElemMatch a (not c) ?
 
-data Document =
+newtype Document =
     MkDoc [(String, Variant)]
     deriving (Eq, Show)
 

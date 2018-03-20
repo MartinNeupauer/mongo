@@ -2,9 +2,8 @@ import Text.JSON
 import Text.JSON.Pretty
 import Mongo.Bool3VL
 import Mongo.EvalExpr
-import Mongo.Expression
+import Mongo.CoreExpr
 import Mongo.Util
-import Mongo.Variant
 import Data.Monoid
 import Data.List
 
@@ -18,7 +17,7 @@ data Variant2 =
     MkVarArray Array2
     deriving (Eq, Show)
 
-data Document2 =
+newtype Document2 =
     MkDoc [(String, Variant2)]
     deriving (Eq, Show)
 
@@ -37,27 +36,27 @@ toJSON v =
 
 toJSONDoc::Document2->String  
 toJSONDoc (MkDoc l) =
-    "{" ++ (toJSONDocFromList l "") ++ "}"
+    "{" ++ toJSONDocFromList l "" ++ "}"
 
 toJSONDocFromList::[(String, Variant2)]->String->String
-toJSONDocFromList [x] accum = (accum ++ "\"" ++ (fst x)++ "\": " ++ toJSON (snd x))
-toJSONDocFromList (x:xs) accum = toJSONDocFromList xs (accum ++ "\"" ++ (fst x)++ "\": " ++ toJSON (snd x) ++ ", ")
+toJSONDocFromList [x] accum = accum ++ "\"" ++ fst x ++ "\": " ++ toJSON (snd x)
+toJSONDocFromList (x:xs) accum = toJSONDocFromList xs (accum ++ "\"" ++ fst x ++ "\": " ++ toJSON (snd x) ++ ", ")
 toJSONDocFromList [] accum = accum
 
 toJSONArray::Array2->String
 toJSONArray a =
-    "[" ++ (toJSONArrayFromList a "") ++ "]"
+    "[" ++ toJSONArrayFromList a "" ++ "]"
 
 toJSONArrayFromList::Array2->String->String
-toJSONArrayFromList [x] accum = accum ++ (toJSON x)
-toJSONArrayFromList (x:xs) accum = toJSONArrayFromList xs (accum ++ (toJSON x) ++ ", ")
+toJSONArrayFromList [x] accum = accum ++ toJSON x
+toJSONArrayFromList (x:xs) accum = toJSONArrayFromList xs (accum ++ toJSON x ++ ", ")
 toJSONArrayFromList [] accum = accum
 
 type FilterFn = Variant2 -> Bool3VL
 
 getFieldFromList::[(String, Variant2)]->String->Maybe Variant2
 getFieldFromList (x:xs) fieldName =
-    if ((fst x) == fieldName)
+    if fst x == fieldName
     then
         Just (snd x)
     else
@@ -66,11 +65,11 @@ getFieldFromList (x:xs) fieldName =
 getFieldFromList [] _ = Nothing
 
 getField2::Document2->String->Maybe Variant2
-getField2 (MkDoc l) fieldName = getFieldFromList l fieldName
+getField2 (MkDoc l) = getFieldFromList l
 
 getElement2::Array2->Int->Maybe Variant2
 getElement2 a idx =
-    if (idx >=0 && idx < length a)
+    if idx >=0 && idx < length a
     then
         Just (a !! idx)
     else
@@ -88,18 +87,18 @@ data PathExpr =
 select::Variant2->PathExpr->Maybe Variant2
 select v path =
     case path of
-        (SelectIdentity) ->
+        SelectIdentity ->
             Just v
         (SelectField2 f) ->
             case v of
                 (MkVarDoc d) -> getField2 d f
-                otherwise -> Nothing
+                _ -> Nothing
         (SelectElement2 idx) ->
             case v of
                 (MkVarArray a) -> getElement2 a idx
-                otherwise -> Nothing
+                _ -> Nothing
         (SelectFilter f) ->
-            if (f v == True3VL)
+            if f v == True3VL
             then
                 Just v
             else
@@ -133,7 +132,7 @@ selectRec v path =
                         case result of
                             (x:xs) -> Just (MkVarArray (x:xs))
                             [] -> Nothing          
-                otherwise ->
+                _ ->
                     case accum of
                         (x:xs) -> Just (MkVarArray (x:xs))
                         [] -> Nothing          
@@ -144,7 +143,7 @@ selectFromArray (x:xs) path accum =
     let sel = selectRec x path
     in
         let newaccum = case sel of
-                            Just (MkVarArray (x:xs)) -> (x:xs ++ accum)
+                            Just (MkVarArray (x:xs)) -> x:xs ++ accum
                             Nothing -> accum
         in
             selectFromArray xs path newaccum
@@ -157,7 +156,7 @@ selectFromList (x:xs) path accum =
     let sel = selectRec (snd x) path
     in
         let newaccum = case sel of
-                            Just (MkVarArray (x:xs)) -> (x:xs ++ accum)
+                            Just (MkVarArray (x:xs)) -> x:xs ++ accum
                             Nothing -> accum
         in
             selectFromList xs path newaccum
@@ -165,7 +164,7 @@ selectFromList (x:xs) path accum =
 selectFromList [] _ accum =
     accum
 
-selectFromDocument (MkDoc l) path accum = selectFromList l path accum
+selectFromDocument (MkDoc l) = selectFromList l
 
 d1 = MkDoc []
 d2 = MkDoc [("a", MkInt 5), ("b", MkStr "bla"), ("c", MkVarDoc d1)]
@@ -181,7 +180,7 @@ s2 = select v2 (SelectField2 "c")
 s3 = select v3 (SelectField2 "c")
 s31 = select v3 (SelectRecur (SelectField2 "aa"))
 {-
-dafunc::Int->Expr a
+dafunc::Int->CoreExpr a
 dafunc a =
     if a == 0
     then
@@ -190,7 +189,7 @@ dafunc a =
         GetInt (Const (IntValue 5))
 -}
 
-dafunc::Expr a -> Int -> Expr a
+dafunc::CoreExpr a -> Int -> CoreExpr a
 dafunc x y = x
 
 testtest = 

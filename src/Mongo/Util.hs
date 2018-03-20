@@ -22,7 +22,7 @@ fromTextJson json =
                                     x | denominator x == 1 -> IntValue $ fromIntegral $ numerator x
                                     _ -> NullValue
         JSON.JSString v -> StringValue $ JSON.fromJSString v
-        JSON.JSArray v -> ArrayValue $ Array $ map (\x -> fromTextJson x) v
+        JSON.JSArray v -> ArrayValue $ Array $ map fromTextJson v
         JSON.JSObject v -> DocumentValue $ Document $
             map (\x -> (fst x, fromTextJson $ snd x)) (JSON.fromJSObject v)
 
@@ -38,7 +38,7 @@ fromString input =
 
 exprFromString :: String -> Either Error (CoreExpr Value)
 exprFromString s =
-    (fromString s) >>= parseP
+    fromString s >>= parseP
 
 
 -- A quick and dirty parser from a JSON object to a core expression.
@@ -48,102 +48,102 @@ class Parseable a where
 
 instance Parseable Int where
     parseP (DocumentValue d) =
-        case (getFields d) of
+        case getFields d of
             [] -> Left Error {
                 errCode = FailedToParse,
-                errReason = "Expected expression returning Int, but found empty document" }
-            head:_ -> return head >>= (\(token,args) -> case token of
-                "$const" -> return $ GetInt $ Const args
-                "$getint" -> parseP args >>= return . GetInt
-                "$plus" -> parsePlus args
-                "$minus" -> parseMinus args
-                _ -> Left Error {
-                        errCode = FailedToParse,
-                        errReason = "Unknown expression returning Int: " ++ token }
-                )
+                errReason = "Expected expression returning Int, but found empty document"
+            }
+            ("$const",args):_ -> return $ GetInt $ Const args
+            ("$getInt",args):_ -> GetInt <$> parseP args
+            ("$plus",args):_ -> parsePlus args
+            ("$minus",args):_ -> parseMinus args
+            (token, _):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning Int: " ++ token
+            }
 
 instance Parseable Bool where
     parseP (DocumentValue d) =
-        case (getFields d) of
+        case getFields d of
             [] -> Left Error {
                 errCode = FailedToParse,
-                errReason = "Expected expression returning Bool, but found empty document" }
-            head:_ -> return head >>= (\(token,args) -> case token of
-                "$const" -> return $ GetBool $ Const args
-                "$eq" -> parseEq args
-                _ -> Left Error {
-                    errCode = FailedToParse,
-                    errReason = "Unknown expression returning Bool: " ++ token }
-                )
+                errReason = "Expected expression returning Bool, but found empty document"
+            }
+            ("$const",args):_ -> return $ GetBool $ Const args
+            ("$eq",args):_ -> parseEq args
+            (token,_):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning Bool: " ++ token
+            }
 
 instance Parseable Value where
     parseP (DocumentValue d) =
-        case (getFields d) of
+        case getFields d of
             [] -> Left Error {
                 errCode = FailedToParse,
-                errReason = "Expected expression returning Value, but found empty document" }
-            head:_ -> return head >>= (\(token,args) -> case token of
-                "$const" -> return $ Const args
-                "$field" -> parseSelectField args
-                "$elem" -> parseSelectElem args
-                "$if" -> parseIf args
-                "$putint" -> parseP args >>= return . PutInt
-                "$putdocument" -> parseP args >>= return . PutDocument
-                _ -> Left Error {
-                    errCode = FailedToParse,
-                    errReason = "Unknown expression returning Value: " ++ token }
-                )
+                errReason = "Expected expression returning Value, but found empty document"
+            }
+            ("$const",args):_ -> return $ Const args
+            ("$field",args):_ -> parseSelectField args
+            ("$elem",args):_ -> parseSelectElem args
+            ("$if",args):_ -> parseIf args
+            ("$putint",args):_ -> PutInt <$> parseP args
+            ("$putdocument",args):_ -> PutDocument <$> parseP args
+            (token,_):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning Value: " ++ token
+            }
 
 instance Parseable Document where
     parseP (DocumentValue d) =
-        case (getFields d) of
+        case getFields d of
             [] -> Left Error {
                 errCode = FailedToParse,
-                errReason = "Expected expression returning Document, but found empty document" }
-            head:_ -> return head >>= (\(token,args) -> case token of
-                "$const" -> return $ GetDocument $ Const args
-                "$getdocument" -> parseP args >>= return . GetDocument
-                "$set" -> parseSetField args
-                "$remove" -> parseRemoveField args
-                _ -> Left Error {
-                    errCode = FailedToParse,
-                    errReason = "Unknown expression returning Document: " ++ token }
-                )
+                errReason = "Expected expression returning Document, but found empty document"
+            }
+            ("$const",args):_ -> return $ GetDocument $ Const args
+            ("$getdocument",args):_ -> GetDocument <$> parseP args
+            ("$set",args):_ -> parseSetField args
+            ("$remove",args):_ -> parseRemoveField args
+            (token,_):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning Document: " ++ token
+            }
 
 instance Parseable Array where
     parseP (DocumentValue d) =
-        case (getFields d) of
+        case getFields d of
             [] -> Left Error {
                 errCode = FailedToParse,
-                errReason = "Expected expression returning Array, but found empty document" }
-            head:_ -> return head >>= (\(token,args) -> case token of
-                "$const" -> return $ GetArray $ Const args
-                "$getarray" -> parseP args >>= return . GetArray
-                _ -> Left Error {
-                    errCode = FailedToParse,
-                    errReason = "Unknown expression returning Array: " ++ token }
-                )
+                errReason = "Expected expression returning Array, but found empty document"
+            }
+            ("$const",args):_ -> return $ GetArray $ Const args
+            ("$getarray",args):_ -> GetArray <$> parseP args
+            (token,_):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning Array: " ++ token
+            }
 
-parsePlus params =
+parseBinaryOp operator params =
     do
         pa <- getArrayValue params
         lhs <- parseP (getElements pa !! 0)
         rhs <- parseP (getElements pa !! 1)
-        return $ Plus lhs rhs
+        return $ operator lhs rhs
 
-parseMinus params =
-    do
-        pa <- getArrayValue params
-        lhs <- parseP (getElements pa !! 0)
-        rhs <- parseP (getElements pa !! 1)
-        return $ Minus lhs rhs
+parsePlus = parseBinaryOp Plus
+parseMinus = parseBinaryOp Minus
+parseEq = parseBinaryOp CompareEQ
 
-parseSelectField params =
+parseFieldOp operator params =
     do
         pa <- getArrayValue params
         field <- getStringValue (getElements pa !! 0)
         doc <- parseP (getElements pa !! 1)
-        return $ SelectField field doc
+        return $ operator field doc
+
+parseSelectField = parseFieldOp SelectField
+parseRemoveField = parseFieldOp RemoveField
 
 parseSelectElem params =
     do
@@ -160,13 +160,6 @@ parseSetField params =
         doc <- parseP (getElements pa !! 2)
         return $ SetField (field,val) doc
 
-parseRemoveField params =
-    do
-        pa <- getArrayValue params
-        field <- getStringValue (getElements pa !! 0)
-        doc <- parseP (getElements pa !! 1)
-        return $ RemoveField field doc
-
 parseIf params =
     do
         pa <- getArrayValue params
@@ -174,10 +167,3 @@ parseIf params =
         t <- parseP (getElements pa !! 1)
         e <- parseP (getElements pa !! 2)
         return $ If cond t e
-
-parseEq params =
-    do
-        pa <- getArrayValue params
-        lhs <- parseP (getElements pa !! 0)
-        rhs <- parseP (getElements pa !! 1)
-        return $ CompareEQ lhs rhs
