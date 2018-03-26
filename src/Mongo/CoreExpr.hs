@@ -50,5 +50,5 @@ data CoreExpr a where
     -- If <cond> <then expr> <else expr>
     If::CoreExpr Bool->CoreExpr Value->CoreExpr Value->CoreExpr Value
 
-    -- Access a variable in the current environment, operators ("stages") set e.g. "$$root" et al.
+    -- Access a variable in the current environment, operators ("stages") set e.g. "$$ROOT" et al.
     Var::String->CoreExpr Value

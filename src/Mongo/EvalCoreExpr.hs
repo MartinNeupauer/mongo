@@ -8,71 +8,79 @@ import Mongo.CoreExpr
 import Mongo.Error
 import Mongo.Value
 
-evalCoreExpr :: CoreExpr a -> Either Error a
-evalCoreExpr (Const c) = return c
+-- An environment maps a variable name to an associated bound value.
+type Environment = [(String, Value)]
+
+evalCoreExpr :: CoreExpr a -> Environment -> Either Error a
+evalCoreExpr (Const c) _ = return c
 
 -- Selectors
-evalCoreExpr (SelectField f v) =
-    evalCoreExpr v >>= getField f
+evalCoreExpr (SelectField f v) env =
+    evalCoreExpr v env >>= getField f
 
-evalCoreExpr (SelectElem i v) =
-    evalCoreExpr v >>= getElement i
+evalCoreExpr (SelectElem i v) env =
+    evalCoreExpr v env >>= getElement i
 
-evalCoreExpr (SetField (f,v) d) =
+evalCoreExpr (SetField (f,v) d) env =
     do
-        doc <- evalCoreExpr d
-        val <- evalCoreExpr v
+        doc <- evalCoreExpr d env
+        val <- evalCoreExpr v env
         return $ addField (f,val) (removeField f doc)
 
-evalCoreExpr (RemoveField f v) =
-    removeField f <$> evalCoreExpr v
+evalCoreExpr (RemoveField f v) env =
+    removeField f <$> evalCoreExpr v env
 
-evalCoreExpr (HasField f v) =
-    hasField f <$> evalCoreExpr v
+evalCoreExpr (HasField f v) env =
+    hasField f <$> evalCoreExpr v env
 
-evalCoreExpr (GetInt v) =
-    evalCoreExpr v >>= getIntValue
+evalCoreExpr (GetInt v) env =
+    evalCoreExpr v env >>= getIntValue
 
-evalCoreExpr (GetBool v) =
-    evalCoreExpr v >>= getBoolValue
+evalCoreExpr (GetBool v) env =
+    evalCoreExpr v env >>= getBoolValue
 
-evalCoreExpr (GetString v) =
-    evalCoreExpr v >>= getStringValue
+evalCoreExpr (GetString v) env =
+    evalCoreExpr v env >>= getStringValue
 
-evalCoreExpr (GetArray v) =
-    evalCoreExpr v >>= getArrayValue
+evalCoreExpr (GetArray v) env =
+    evalCoreExpr v env >>= getArrayValue
 
-evalCoreExpr (GetDocument v) =
-    evalCoreExpr v >>= getDocumentValue
+evalCoreExpr (GetDocument v) env =
+    evalCoreExpr v env >>= getDocumentValue
 
-evalCoreExpr (PutInt v) =
-    IntValue <$> evalCoreExpr v
+evalCoreExpr (PutInt v) env =
+    IntValue <$> evalCoreExpr v env
 
-evalCoreExpr (PutDocument v) =
-    DocumentValue <$> evalCoreExpr v
+evalCoreExpr (PutDocument v) env =
+    DocumentValue <$> evalCoreExpr v env
 
-evalCoreExpr (IsNull v) =
-    isNull <$> evalCoreExpr v
+evalCoreExpr (IsNull v) env =
+    isNull <$> evalCoreExpr v env
 
 -- Arithmetic
-evalCoreExpr (Plus lhs rhs) =
-    (+) <$> evalCoreExpr lhs <*> evalCoreExpr rhs
+evalCoreExpr (Plus lhs rhs) env =
+    (+) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
-evalCoreExpr (Minus lhs rhs) =
-    (-) <$> evalCoreExpr lhs <*> evalCoreExpr rhs
+evalCoreExpr (Minus lhs rhs) env =
+    (-) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
 -- Comparisons
-evalCoreExpr (CompareEQ lhs rhs) =
-    compareEQ <$> evalCoreExpr lhs <*> evalCoreExpr rhs
+evalCoreExpr (CompareEQ lhs rhs) env =
+    compareEQ <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
-evalCoreExpr (CompareEQ3VL lhs rhs) =
-    compareEQ3VL <$> evalCoreExpr lhs <*> evalCoreExpr rhs
+evalCoreExpr (CompareEQ3VL lhs rhs) env =
+    compareEQ3VL <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
-evalCoreExpr (If cond t e) =
+evalCoreExpr (If cond t e) env =
     do
-        condval <- evalCoreExpr cond
+        condval <- evalCoreExpr cond env
         if condval
         then
-            evalCoreExpr t
+            evalCoreExpr t env
         else
-            evalCoreExpr e
+            evalCoreExpr e env
+
+-- Extract the value of a variable from the environment.
+evalCoreExpr (Var var) env = case lookup var env of
+    Just v -> Right v
+    _ -> Left Error { errCode = UnboundVariable, errReason = "Unbound variable: " ++ var }

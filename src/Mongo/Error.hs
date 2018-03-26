@@ -10,6 +10,7 @@ data ErrorCode
     | MissingField
     | NotImplemented
     | TypeMismatch
+    | UnboundVariable
     deriving (Eq, Show)
 
 data Error = Error { errCode :: ErrorCode, errReason :: String } deriving (Eq, Show)
