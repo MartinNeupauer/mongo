@@ -39,3 +39,11 @@ Test-Suite mql-lint
   build-depends:       base >=4.8 && <4.11,
                        hlint ==2.*
   default-language:    Haskell2010
+
+Test-Suite mql-unittests
+  type:                exitcode-stdio-1.0
+  hs-source-dirs:      unit-tests
+  Main-is:             UnitTest.hs
+  build-depends:       base >=4.8 && <4.11,
+                       HUnit >=1.6
+  default-language:    Haskell2010
