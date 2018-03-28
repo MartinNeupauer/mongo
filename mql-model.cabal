@@ -60,6 +60,7 @@ Test-Suite mql-unittests
   Main-is:           UnitTest.hs
   other-modules:
     Mongo.MQLv1.PathTest
+    Mongo.ValueTest
   build-depends:
     base >=4.8 && <4.11,
     mql-model,

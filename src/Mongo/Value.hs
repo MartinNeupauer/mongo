@@ -22,18 +22,26 @@ module Mongo.Value (
 
     compareEQ,
     compareEQ3VL,
+
+    valueFromString,
+    valueFromTextJson,
     ) where
 
 import Data.List
 import Data.Monoid
+import Data.Ratio
 import Mongo.Bool3VL
 import Mongo.Error
 import qualified Data.Maybe
+import qualified Text.JSON as JSON
 
 -- Basic data structure that holds values. It should model BSON more closely (i.e. various int types)
 -- but it will do for now.
 data Value
     = NullValue
+    -- The deprecated Undefined BSON type (0x06). It is here for completeness. While undefined and
+    -- null probably shouldn't be separate values, this is useful for formalizing how the language
+    -- is supposed to behave for the Undefined values that already exist in the wild.
     | UndefinedValue
     | IntValue Int
     | BoolValue Bool
@@ -41,6 +49,12 @@ data Value
     | ArrayValue Array
     | DocumentValue Document
     deriving (Eq, Show)
+
+-- The Array and Document types are not particularly efficient now. We don't care much as it's an
+-- implementation detail and we are building a model not the best implementation of the model.
+-- TODO: Change the kind from * to *->* so they can be made instances of Functor and Applicative.
+newtype Array = Array { getElements::[Value] } deriving (Eq, Show)
+newtype Document = Document { getFields::[(String, Value)] } deriving (Eq, Show)
 
 -- Value selectors
 getIntValue :: Value -> Either Error Int
@@ -71,12 +85,6 @@ getDocumentValue val = Left
 isNull :: Value -> Bool
 isNull NullValue = True
 isNull _  = False
-
--- The Array and Document types are not particularly efficient now. We don't care much as it's an
--- implementation detail and we are building a model not the best implementation of the model.
--- TODO: Change the kind from * to *->* so they can be made instances of Functor and Applicative.
-newtype Array = Array { getElements::[Value] } deriving (Eq, Show)
-newtype Document = Document { getFields::[(String, Value)] } deriving (Eq, Show)
 
 instance Monoid Array where
     mempty = Array []
@@ -170,5 +178,26 @@ compareDocumentEQ (x:xs) (y:ys) =
     if fst x /= fst y
     then
         False3VL
-    else    
+    else
         and3VL (compareEQ3VL (snd x) (snd y)) (compareDocumentEQ xs ys)
+
+valueFromTextJson :: JSON.JSValue -> Value
+valueFromTextJson json =
+    case json of
+        JSON.JSNull -> NullValue
+        JSON.JSBool v -> BoolValue v
+        JSON.JSRational false v -> case v of
+                                    x | denominator x == 1 -> IntValue $ fromIntegral $ numerator x
+                                    _ -> NullValue
+        JSON.JSString v -> StringValue $ JSON.fromJSString v
+        JSON.JSArray v -> ArrayValue $ Array $ map valueFromTextJson v
+        JSON.JSObject v -> DocumentValue $ Document $
+            map (\x -> (fst x, valueFromTextJson $ snd x)) (JSON.fromJSObject v)
+
+valueFromString :: String -> Either Error Value
+valueFromString input =
+    case JSON.decode input of
+        JSON.Ok val -> Right $ valueFromTextJson val
+        JSON.Error jsonErrString -> Left Error {
+            errCode = InvalidJSON,
+            errReason = "JSON failed to parse: " ++ jsonErrString }

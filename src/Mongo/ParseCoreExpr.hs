@@ -6,39 +6,13 @@ module Mongo.ParseCoreExpr (
     ) where
 
 import Data.List
-import Data.Ratio
 import Mongo.CoreExpr
 import Mongo.Error
 import Mongo.Value
-import qualified Text.JSON as JSON
-
-fromTextJson :: JSON.JSValue -> Value
-fromTextJson json =
-    case json of
-        JSON.JSNull -> NullValue
-        JSON.JSBool v -> BoolValue v
-        JSON.JSRational false v -> case v of 
-                                    x | denominator x == 1 -> IntValue $ fromIntegral $ numerator x
-                                    _ -> NullValue
-        JSON.JSString v -> StringValue $ JSON.fromJSString v
-        JSON.JSArray v -> ArrayValue $ Array $ map fromTextJson v
-        JSON.JSObject v -> DocumentValue $ Document $
-            map (\x -> (fst x, fromTextJson $ snd x)) (JSON.fromJSObject v)
-
-fromString :: String -> Either Error Value
-fromString input =
-    let decoded = JSON.decode input :: JSON.Result (JSON.JSObject JSON.JSValue) in
-
-    case decoded of
-        JSON.Ok val -> Right $ fromTextJson $ JSON.JSObject val
-        JSON.Error jsonErrString -> Left Error {
-            errCode = InvalidJSON,
-            errReason = "JSON failed to parse: " ++ jsonErrString }
 
 coreExprFromString :: String -> Either Error (CoreExpr Value)
 coreExprFromString s =
-    fromString s >>= parseP
-
+    valueFromString s >>= parseP
 
 -- A quick and dirty parser from a JSON object to a core expression.
 class Parseable a where
