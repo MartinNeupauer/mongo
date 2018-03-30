@@ -21,6 +21,9 @@ data MatchExpr
 desugarMatchExpr :: MatchExpr -> CoreExpr Bool
 desugarMatchExpr _ = GetBool (Const $ BoolValue True)
 
+-- Returns true if the Value matches the MatchExpr. Otherwise returns false. Any Error return value
+-- is query-fatal.
 evalMatchExpr :: MatchExpr -> Value -> Either Error Bool
 evalMatchExpr matchExpr value =
-    evalCoreExpr (desugarMatchExpr matchExpr) [("ROOT", value)]
+    evalCoreExpr (desugarMatchExpr matchExpr)
+        Environment { boundVariables = [("ROOT", value)], definedFunctions = [] }
