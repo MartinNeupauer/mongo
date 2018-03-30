@@ -9,6 +9,8 @@ module Mongo.Value (
     getArrayValue,
     getDocumentValue,
 
+    isArray,
+    isDocument,
     isNull,
 
     addField,
@@ -16,13 +18,22 @@ module Mongo.Value (
     hasField,
     removeField,
 
+    arrayLength,
+
     addElement,
     getElement,
     removeElement,
 
-    compareEQ,
     compareEQ3VL,
 
+    compareEQ,
+    compareLT,
+    compareLTE,
+    compareGT,
+    compareGTE,
+    compareValues,
+
+    parseValueOrDie,
     valueFromString,
     valueFromTextJson,
     ) where
@@ -86,6 +97,14 @@ isNull :: Value -> Bool
 isNull NullValue = True
 isNull _  = False
 
+isDocument :: Value -> Bool
+isDocument (DocumentValue _) = True
+isDocument _ = False
+
+isArray :: Value -> Bool
+isArray (ArrayValue _) = True
+isArray _ = False
+
 instance Monoid Array where
     mempty = Array []
     mappend lhs rhs = Array $ getElements lhs ++ getElements rhs
@@ -112,6 +131,9 @@ removeField field (Document document) = Document $ deleteBy (\lhs rhs -> fst lhs
 addElement::Value->Array->Array
 addElement value (Array array) = Array $ array ++ [value]
 
+arrayLength :: Array -> Int
+arrayLength Array { getElements = arr } = length arr
+
 getElement :: Int -> Array -> Either Error Value
 getElement index (Array array)
     | index < 0 = Left Error {
@@ -136,16 +158,65 @@ removeElement index (Array array) =
         else
             Array array
 
+-- Maps from a Value to a numerical type code which is valid for use in Value comparison. These
+-- codes have no semantic value, other than that they establish an ordering of types.
+canonicalTypeCode :: Value -> Int
+canonicalTypeCode UndefinedValue = 1
+canonicalTypeCode NullValue = 2
+canonicalTypeCode (IntValue _) = 3
+canonicalTypeCode (StringValue _) = 4
+canonicalTypeCode (DocumentValue _) = 5
+canonicalTypeCode (ArrayValue _) = 6
+canonicalTypeCode (BoolValue _) = 7
 
-compareEQ::Value->Value->Bool
-compareEQ NullValue NullValue = True
-compareEQ (IntValue lhs) (IntValue rhs) = lhs == rhs
-compareEQ (BoolValue lhs) (BoolValue rhs) = lhs == rhs
-compareEQ (StringValue lhs) (StringValue rhs) = lhs == rhs -- lexicographical comparison, ignores collation
-compareEQ (ArrayValue lhs) (ArrayValue rhs) = lhs == rhs -- elementwise comparison
-compareEQ (DocumentValue lhs) (DocumentValue rhs) = 
-    (sortBy compareFieldNames . getFields) lhs == (sortBy compareFieldNames . getFields) rhs -- elementwise comparison
-compareEQ _ _ = False
+compareValues :: Value -> Value -> Ordering
+compareValues UndefinedValue UndefinedValue = EQ
+compareValues NullValue NullValue = EQ
+compareValues (IntValue lhs) (IntValue rhs) = lhs `compare` rhs
+compareValues (StringValue lhs) (StringValue rhs) = lhs `compare` rhs
+
+compareValues (DocumentValue Document {getFields=[]}) (DocumentValue Document {getFields=[]}) = EQ
+compareValues (DocumentValue Document {getFields=_}) (DocumentValue Document {getFields=[]}) = GT
+compareValues (DocumentValue Document {getFields=[]}) (DocumentValue Document {getFields=_}) = LT
+compareValues (DocumentValue Document { getFields = (lhsField, lhsValue) : lhsRest })
+    (DocumentValue Document { getFields = (rhsField, rhsValue) : rhsRest }) =
+    let fieldComparison = lhsField `compare` rhsField
+        valueComparison = lhsValue `compareValues` rhsValue in
+        case (fieldComparison, valueComparison) of
+            (EQ, EQ) -> DocumentValue Document { getFields = lhsRest }
+                `compareValues` DocumentValue Document { getFields = rhsRest }
+            (LT, _) -> LT
+            (GT, _) -> GT
+            (_, valueCmp) -> valueCmp
+
+compareValues (ArrayValue Array {getElements=[]}) (ArrayValue Array {getElements=[]}) = EQ
+compareValues (ArrayValue Array {getElements=_}) (ArrayValue Array {getElements=[]}) = GT
+compareValues (ArrayValue Array {getElements=[]}) (ArrayValue Array {getElements=_}) = LT
+compareValues (ArrayValue Array { getElements = lhsFirst : lhsRest })
+    (ArrayValue Array { getElements = rhsFirst : rhsRest })
+    | cmp == EQ = ArrayValue Array { getElements = lhsRest } `compareValues`
+        ArrayValue Array { getElements = rhsRest }
+    | otherwise = cmp
+    where cmp = lhsFirst `compareValues` rhsFirst
+
+compareValues (BoolValue lhs) (BoolValue rhs) = lhs `compare` rhs
+
+compareValues lhs rhs = canonicalTypeCode lhs `compare` canonicalTypeCode rhs
+
+compareEQ :: Value -> Value -> Bool
+compareEQ lhs rhs = (lhs `compareValues` rhs) == EQ
+
+compareLT :: Value -> Value -> Bool
+compareLT lhs rhs = (lhs `compareValues` rhs) == LT
+
+compareLTE :: Value -> Value -> Bool
+compareLTE lhs rhs = (lhs `compareValues` rhs) `elem` [LT, EQ]
+
+compareGT :: Value -> Value -> Bool
+compareGT lhs rhs = (lhs `compareValues` rhs) == GT
+
+compareGTE :: Value -> Value -> Bool
+compareGTE lhs rhs = (lhs `compareValues` rhs) `elem` [GT, EQ]
 
 compareEQ3VL::Value->Value->Bool3VL
 -- Anything compared to NULL is unknown
@@ -155,7 +226,7 @@ compareEQ3VL (IntValue lhs) (IntValue rhs) = convertTo3VL $ lhs == rhs
 compareEQ3VL (BoolValue lhs) (BoolValue rhs) = convertTo3VL $ lhs == rhs
 compareEQ3VL (StringValue lhs) (StringValue rhs) = convertTo3VL $ lhs == rhs -- lexicographical comparison, ignores collation
 compareEQ3VL (ArrayValue lhs) (ArrayValue rhs) = compareArrayEQ (getElements lhs) (getElements rhs)
-compareEQ3VL (DocumentValue lhs) (DocumentValue rhs) = 
+compareEQ3VL (DocumentValue lhs) (DocumentValue rhs) =
     compareDocumentEQ ((sortBy compareFieldNames . getFields) lhs) ((sortBy compareFieldNames . getFields) rhs)
 compareEQ3VL _ _ = False3VL
 
@@ -201,3 +272,10 @@ valueFromString input =
         JSON.Error jsonErrString -> Left Error {
             errCode = InvalidJSON,
             errReason = "JSON failed to parse: " ++ jsonErrString }
+
+-- Parses a JSON string to a value, or throws a fatal exception if parsing fails. Useful for
+-- testing.
+parseValueOrDie :: String -> Value
+parseValueOrDie str = case valueFromString str of
+    Right v -> v
+    Left Error { errCode = code, errReason = reason } -> error reason

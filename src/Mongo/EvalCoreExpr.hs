@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE GADTs, LambdaCase #-}
 
 module Mongo.EvalCoreExpr(
     Environment(..),
@@ -53,6 +53,25 @@ applyFunction (Function argNames body) argList env =
             newEnv = foldr (\x y -> uncurry (bindVar y) x) newEnvInit $ zip argNames resultVals in
                 evalCoreExpr body newEnv
 
+evalFoldBool :: Function -> Bool -> Value -> Environment -> Either Error Bool
+evalFoldBool _ initVal (ArrayValue Array { getElements = [] }) _ = Right initVal
+evalFoldBool func initVal (ArrayValue Array { getElements = hd:rest }) env =
+    applyFunction func [Const hd, Const (BoolValue initVal)] env >>=
+        (\case (BoolValue newInit) -> evalFoldBool func newInit
+                                        (ArrayValue Array { getElements = rest }) env)
+
+evalFoldBool _ initVal (DocumentValue Document { getFields = [] }) _ = Right initVal
+evalFoldBool func initVal (DocumentValue Document { getFields = (_, firstValue) : rest } ) env =
+    applyFunction func [Const firstValue, Const (BoolValue initVal)] env >>=
+        (\case (BoolValue newInit) -> evalFoldBool func newInit
+                                        (DocumentValue Document { getFields = rest }) env)
+
+-- Folding over scalars is allowed; this means that we simply apply the given function to the
+-- scalar.
+evalFoldBool func initVal scalarValue env =
+    applyFunction func [Const scalarValue, Const (BoolValue initVal)] env
+        >>= (\case (BoolValue result) -> Right result)
+
 evalCoreExpr :: CoreExpr a -> Environment -> Either Error a
 evalCoreExpr (Const c) _ = return c
 
@@ -74,6 +93,9 @@ evalCoreExpr (RemoveField f v) env =
 
 evalCoreExpr (HasField f v) env =
     hasField f <$> evalCoreExpr v env
+
+evalCoreExpr (ArrayLength arr) env =
+    arrayLength <$> evalCoreExpr arr env
 
 evalCoreExpr (GetInt v) env =
     evalCoreExpr v env >>= getIntValue
@@ -102,6 +124,12 @@ evalCoreExpr (PutDocument v) env =
 evalCoreExpr (IsNull v) env =
     isNull <$> evalCoreExpr v env
 
+evalCoreExpr (IsDocument d) env =
+    isDocument <$> evalCoreExpr d env
+
+evalCoreExpr (IsArray a) env =
+    isArray <$> evalCoreExpr a env
+
 -- Arithmetic
 evalCoreExpr (Plus lhs rhs) env =
     (+) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
@@ -109,9 +137,28 @@ evalCoreExpr (Plus lhs rhs) env =
 evalCoreExpr (Minus lhs rhs) env =
     (-) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
--- Comparisons
+-- Logical.
+evalCoreExpr (And lhs rhs) env =
+    (&&) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+evalCoreExpr (Or lhs rhs) env =
+    (||) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+-- Comparisons.
 evalCoreExpr (CompareEQ lhs rhs) env =
     compareEQ <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+evalCoreExpr (CompareLT lhs rhs) env =
+    compareLT <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+evalCoreExpr (CompareLTE lhs rhs) env =
+    compareLTE <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+evalCoreExpr (CompareGT lhs rhs) env =
+    compareGT <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+
+evalCoreExpr (CompareGTE lhs rhs) env =
+    compareGTE <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
 
 evalCoreExpr (CompareEQ3VL lhs rhs) env =
     compareEQ3VL <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
@@ -156,3 +203,10 @@ evalCoreExpr (FunctionApp name argList) env =
     do
         func <- lookupFunction name env
         applyFunction func argList env
+
+evalCoreExpr (FoldBool funcName init toFold) env =
+    do
+        func <- lookupFunction funcName env
+        initVal <- evalCoreExpr init env
+        toFoldVal <- evalCoreExpr toFold env
+        evalFoldBool func initVal toFoldVal env

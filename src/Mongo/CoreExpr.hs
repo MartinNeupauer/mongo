@@ -28,7 +28,9 @@ data CoreExpr a where
     RemoveField::String->CoreExpr Document->CoreExpr Document
     HasField::String->CoreExpr Document->CoreExpr Bool
 
-    -- Selectors for the Value
+    ArrayLength :: CoreExpr Array -> CoreExpr Int
+
+    -- Selectors for the Value.
     GetInt::CoreExpr Value->CoreExpr Int
     GetBool::CoreExpr Value->CoreExpr Bool
     GetString::CoreExpr Value->CoreExpr String
@@ -39,7 +41,14 @@ data CoreExpr a where
     PutInt::CoreExpr Int->CoreExpr Value
     PutDocument::CoreExpr Document ->CoreExpr Value
 
+    -- Type predicates.
+    IsArray :: CoreExpr Value -> CoreExpr Bool
+    IsDocument :: CoreExpr Value -> CoreExpr Bool
     IsNull::CoreExpr Value->CoreExpr Bool
+
+    -- Logical.
+    And :: CoreExpr Bool -> CoreExpr Bool -> CoreExpr Bool
+    Or :: CoreExpr Bool -> CoreExpr Bool -> CoreExpr Bool
 
     -- Constant expression
     Const::Value->CoreExpr Value
@@ -49,8 +58,13 @@ data CoreExpr a where
     Minus::CoreExpr Int->CoreExpr Int->CoreExpr Int
 
     -- Comparisons
-    CompareEQ::CoreExpr Value->CoreExpr Value->CoreExpr Bool
-    CompareEQ3VL::CoreExpr Value->CoreExpr Value->CoreExpr Bool3VL
+    -- TODO: Avoid polymorphic comparisons?
+    CompareEQ :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool
+    CompareLT :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool
+    CompareLTE :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool
+    CompareGT :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool
+    CompareGTE :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool
+    CompareEQ3VL :: CoreExpr Value -> CoreExpr Value -> CoreExpr Bool3VL
 
     -- If <cond> <then expr> <else expr>
     If::CoreExpr Bool->CoreExpr Value->CoreExpr Value->CoreExpr Value
@@ -70,3 +84,19 @@ data CoreExpr a where
     -- expressions whose resulting values will get bound to the formal parameters of the function.
     -- All arguments are evaluated eagerly.
     FunctionApp :: String -> [CoreExpr Value] -> CoreExpr Value
+
+    -- An expression for traversing a Value and returning the resulting Bool. The traversal is
+    -- single-level, *not* recursive.
+    --
+    -- Arguments are:
+    -- * The name of a two-argument function which returns a boolean.
+    -- * A sub-expression which returns the initial value of the fold.
+    -- * A sub-expression which returns the value to fold over.
+    --
+    -- Similar to the traditional fold from functional languages, except always returns a boolean.
+    -- All values are considered traversable. Scalars can be "traversed" as through they were
+    -- one-element lists.
+    --
+    -- Useful for determining whether all Values in an Array or Document match some predicate, or
+    -- whether any Value in an Array or Document matches some predicate.
+    FoldBool :: String -> CoreExpr Bool -> CoreExpr Value -> CoreExpr Bool

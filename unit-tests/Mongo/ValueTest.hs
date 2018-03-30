@@ -5,35 +5,66 @@ module Mongo.ValueTest(
 import Mongo.Value
 import Test.HUnit
 
-parseNullScalar = TestCase (assertEqual "" (Right NullValue) (valueFromString "null"))
+valueTest :: Test
+valueTest = TestList [
+    "parseNullScalar" ~: "" ~: Right NullValue ~=? valueFromString "null",
 
-parseIntValue = TestCase (assertEqual "" (Right $ IntValue 345) (valueFromString "345"))
+    "parseIntValue" ~: "" ~: Right (IntValue 345) ~=? valueFromString "345",
 
-parseTrueValue = TestCase (assertEqual "" (Right $ BoolValue True) (valueFromString "true"))
+    "parseTrueValue" ~: "" ~: Right (BoolValue True) ~=? valueFromString "true",
 
-parseFalseValue = TestCase (assertEqual "" (Right $ BoolValue False) (valueFromString "false"))
+    "parseFalseValue" ~: "" ~: Right (BoolValue False) ~=? valueFromString "false",
 
-parseStringValue = TestCase (assertEqual "" (Right $ StringValue "foo") (valueFromString "\"foo\""))
+    "parseStringValue" ~: "" ~: Right (StringValue "foo") ~=? valueFromString "\"foo\"",
 
-parseArrayValue = TestCase (assertEqual ""
-    (Right $ ArrayValue Array { getElements = [IntValue 1, IntValue 2] })
-    (valueFromString "[1, 2]"))
+    "parseArrayValue" ~: "" ~:
+        Right (ArrayValue Array { getElements = [IntValue 1, IntValue 2] }) ~=?
+            valueFromString "[1, 2]",
 
-parseDocumentValue = TestCase (assertEqual ""
-    (Right $ DocumentValue Document { getFields = [
+    "parseDocumentValue" ~: "" ~: Right (DocumentValue Document { getFields = [
         ("a", NullValue),
         ("b", ArrayValue Array { getElements = [] }),
         ("c", DocumentValue Document { getFields = [] }),
         ("d", BoolValue True)
-        ] })
-    (valueFromString "{\"a\": null, \"b\": [], \"c\": {}, \"d\": true}"))
+        ] }) ~=?
+            valueFromString "{\"a\": null, \"b\": [], \"c\": {}, \"d\": true}",
 
-valueTest :: Test
-valueTest = TestList [
-    TestLabel "parseNullScalar" parseNullScalar,
-    TestLabel "parseIntValue" parseIntValue,
-    TestLabel "parseTrueValue" parseTrueValue,
-    TestLabel "parseFalseValue" parseFalseValue,
-    TestLabel "parseArrayValue" parseArrayValue,
-    TestLabel "parseDocumentValue" parseDocumentValue
+    "nullEqualsNull" ~: "" ~: True ~=? parseValueOrDie "null" `compareEQ` parseValueOrDie "null",
+    "nullLTENull" ~: "" ~: True ~=? parseValueOrDie "null" `compareLTE` parseValueOrDie "null",
+    "nullGTENull" ~: "" ~: True ~=? parseValueOrDie "null" `compareGTE` parseValueOrDie "null",
+    "nullNotLTNull" ~: "" ~: False ~=? parseValueOrDie "null" `compareLT` parseValueOrDie "null",
+    "nullNotGTNull" ~: "" ~: False ~=? parseValueOrDie "null" `compareGT` parseValueOrDie "null",
+
+    "undefinedLTNull" ~: "" ~: LT ~=? UndefinedValue `compareValues` NullValue,
+    "nullGTUndefiend" ~: "" ~: GT ~=? NullValue `compareValues` UndefinedValue,
+
+    "int0LTInt5" ~: "" ~: LT ~=? parseValueOrDie "0" `compareValues` parseValueOrDie "5",
+
+    "emptyObjLTNonEmpty" ~: "" ~: LT ~=?
+        parseValueOrDie "{}" `compareValues` parseValueOrDie "{\"a\": 1}",
+
+    "nonEmptyObjGTEmpty" ~: "" ~: GT ~=?
+        parseValueOrDie "{\"a\": 1}" `compareValues` parseValueOrDie "{}",
+
+    "equalObjects" ~: "" ~: EQ ~=?
+        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
+        parseValueOrDie "{\"a\": 1, \"b\": 2}",
+
+    "objectLTDueToFieldName" ~: "" ~: LT ~=?
+        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
+        parseValueOrDie "{\"a\": 1, \"c\": 2}",
+
+    "objectLTDueToValue" ~: "" ~: LT ~=?
+        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
+        parseValueOrDie "{\"a\": 1, \"c\": 3}",
+
+    "emptyArrLTNonEmpty" ~: "" ~: LT ~=? parseValueOrDie "[]" `compareValues` parseValueOrDie "[1]",
+
+    "nonEmptyArrGTEmpty" ~: "" ~: GT ~=? parseValueOrDie "[1]" `compareValues` parseValueOrDie "[]",
+
+    "equalArrays" ~: "" ~: EQ ~=? parseValueOrDie "[1, 0, 3]" `compareValues`
+        parseValueOrDie "[1, 0, 3]",
+
+    "arrayLT" ~: "" ~: LT ~=? parseValueOrDie "[1, 0, 10]" `compareValues`
+        parseValueOrDie "[1, 3, 3]"
     ]
