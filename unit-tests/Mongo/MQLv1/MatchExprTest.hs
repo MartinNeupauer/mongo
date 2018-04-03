@@ -96,5 +96,41 @@ matchExprTest = TestList [
     "implicitArrayTraversalWithArrayIndexPathComponentNested" ~: "" ~: Right True ~=?
         evalMatchExpr
             (EqMatchExpr (pathFromStringForTest "$[0]*.$[1]*") (parseValueOrDie "2"))
-            (parseValueOrDie "[[[0, []], [1, [2]]]]")
+            (parseValueOrDie "[[[0, []], [1, [2]]]]"),
+
+    "fieldNameOrIndexCanActAsIndex" ~: "" ~: Right True ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>") (parseValueOrDie "1"))
+            (parseValueOrDie "[0, 1, 2]"),
+
+    "fieldNameOrIndexCanActAsIndexValueDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>") (parseValueOrDie "99"))
+            (parseValueOrDie "[0, 1, 2]"),
+
+    "fieldNameOrIndexCanActAsFieldName" ~: "" ~: Right True ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>") (parseValueOrDie "3"))
+            (parseValueOrDie "{\"1\": 3}"),
+
+    "repeatedFieldNameOrIndex" ~: "" ~: Right True ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<0>.$<0>") (parseValueOrDie "3"))
+            (parseValueOrDie "{\"0\": {\"0\": 3}}"),
+
+    "fieldNameOrIndexCanActAsFieldNameValueDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>") (parseValueOrDie "99"))
+            (parseValueOrDie "{\"1\": 3}"),
+
+    "fieldNameOrIndexActsAsFieldNameWithImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>*") (parseValueOrDie "3"))
+            (parseValueOrDie "{\"1\": [1, 2, 3]}"),
+
+    -- XXX: This is an odd special case in MQLv1.
+    "fieldNameOrIndexDoesNotUseImplicitTraversalWhenActsAsIndex" ~: "" ~: Right False ~=?
+        evalMatchExpr
+            (EqMatchExpr (pathFromStringForTest "$<1>*") (parseValueOrDie "3"))
+            (parseValueOrDie "[0, [1, 2, 3]]")
     ]

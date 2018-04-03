@@ -139,10 +139,14 @@ evalCoreExpr (Minus lhs rhs) env =
 
 -- Logical.
 evalCoreExpr (And lhs rhs) env =
-    (&&) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+    do
+        lhsVal <- evalCoreExpr lhs env
+        if not lhsVal then Right False else evalCoreExpr rhs env
 
 evalCoreExpr (Or lhs rhs) env =
-    (||) <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env
+    do
+        lhsVal <- evalCoreExpr lhs env
+        if lhsVal then Right True else evalCoreExpr rhs env
 
 -- Comparisons.
 evalCoreExpr (CompareEQ lhs rhs) env =

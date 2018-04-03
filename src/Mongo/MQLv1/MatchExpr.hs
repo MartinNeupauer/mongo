@@ -55,13 +55,33 @@ makeTraversePathExpr (PathComponent (FieldName f) arrayTraversal : rest) funcNam
 makeTraversePathExpr (PathComponent (ArrayIndex i) arrayTraversal : rest) funcName =
     let nextLevelFuncName = "get_" ++ show i ++ "_level_" ++ show (length rest)
         formalParam = "curVal"
-        retrievedVal = "value_of_" ++ show i in
+        retrievedVal = "arr_index_" ++ show i in
         FunctionDef nextLevelFuncName (Function [formalParam]
             (If (And (IsArray (Var formalParam)) (CompareLT (Const (IntValue i))
                         (PutInt (ArrayLength (GetArray (Var formalParam))))))
                 (Let retrievedVal (SelectElem i (GetArray (Var formalParam)))
                     (makeApplyFuncExpr arrayTraversal funcName retrievedVal))
                 (Const $ BoolValue False)))
+            (makeTraversePathExpr rest nextLevelFuncName)
+
+makeTraversePathExpr (PathComponent (FieldNameOrArrayIndex i) arrayTraversal : rest) funcName =
+    let nextLevelFuncName = "get_" ++ show i ++ "_level_" ++ show (length rest)
+        formalParam = "curVal"
+        retrievedVal = "arr_index_or_field_" ++ show i in
+        FunctionDef nextLevelFuncName (Function [formalParam]
+            (If (And (IsArray (Var formalParam)) (CompareLT (Const (IntValue i))
+                        (PutInt (ArrayLength (GetArray (Var formalParam))))))
+                (Let retrievedVal (SelectElem i (GetArray (Var formalParam)))
+                    -- XXX: In MQLv1, there is no implicit array traversal when a path component
+                    -- that can act as either an array index or a field name resolves to an array
+                    -- index. That is, the document {a: {0: [1, 2, 3]}} matches the query
+                    -- {"a.0": 3}, but the document {a: [[1, 2, 3]]} does not match.
+                    (FunctionApp funcName [Var retrievedVal]))
+                (If (And (IsDocument (Var formalParam))
+                        (HasField (show i) (GetDocument (Var formalParam))))
+                    (Let retrievedVal (SelectField (show i) (GetDocument (Var formalParam)))
+                        (makeApplyFuncExpr arrayTraversal funcName retrievedVal))
+                    (Const $ BoolValue False))))
             (makeTraversePathExpr rest nextLevelFuncName)
 
 -- Compiles a MatchExpr into a core language expression.

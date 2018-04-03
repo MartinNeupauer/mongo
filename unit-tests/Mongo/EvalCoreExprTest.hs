@@ -54,5 +54,13 @@ evalCoreExprTest = TestList [
     "functionDefinedFirstCanCallFunctionDefinedSecond" ~: "" ~: Right (IntValue 8) ~=?
         evalCoreExpr (FunctionDef "f" (Function ["x"] (FunctionApp "g" [Var "x"]))
             (FunctionDef "g" (Function ["y"] (Var "y"))
-                (FunctionApp "f" [Const (IntValue 8)]))) emptyEnv
+                (FunctionApp "f" [Const (IntValue 8)]))) emptyEnv,
+
+    "andExprShortCircuits" ~: "" ~: Right False ~=?
+        evalCoreExpr
+            (And (GetBool (Const (BoolValue False))) (GetBool (Const (IntValue 3)))) emptyEnv,
+
+    "orExprShortCircuits" ~: "" ~: Right True ~=?
+        evalCoreExpr
+            (Or (GetBool (Const (BoolValue True))) (GetBool (Const (IntValue 3)))) emptyEnv
     ]
