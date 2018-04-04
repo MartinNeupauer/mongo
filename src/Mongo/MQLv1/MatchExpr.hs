@@ -90,6 +90,22 @@ desugarMatchExpr (EqMatchExpr path val) =
     GetBool $ FunctionDef "eq" (Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val)))
         (makeTraversePathExpr (reverse path) "eq")
 
+desugarMatchExpr (LTMatchExpr path val) =
+    GetBool $ FunctionDef "lt" (Function ["x"] (PutBool $ CompareLT (Var "x") (Const val)))
+        (makeTraversePathExpr (reverse path) "lt")
+
+desugarMatchExpr (LTEMatchExpr path val) =
+    GetBool $ FunctionDef "lte" (Function ["x"] (PutBool $ CompareLTE (Var "x") (Const val)))
+        (makeTraversePathExpr (reverse path) "lte")
+
+desugarMatchExpr (GTMatchExpr path val) =
+    GetBool $ FunctionDef "gt" (Function ["x"] (PutBool $ CompareGT (Var "x") (Const val)))
+        (makeTraversePathExpr (reverse path) "gt")
+
+desugarMatchExpr (GTEMatchExpr path val) =
+    GetBool $ FunctionDef "gte" (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
+        (makeTraversePathExpr (reverse path) "gte")
+
 -- Returns true if the Value matches the MatchExpr. Otherwise returns false. Any Error return value
 -- is query-fatal.
 evalMatchExpr :: MatchExpr -> Value -> Either Error Bool

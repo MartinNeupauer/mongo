@@ -132,5 +132,45 @@ matchExprTest = TestList [
     "fieldNameOrIndexDoesNotUseImplicitTraversalWhenActsAsIndex" ~: "" ~: Right False ~=?
         evalMatchExpr
             (EqMatchExpr (pathFromStringForTest "$<1>*") (parseValueOrDie "3"))
-            (parseValueOrDie "[0, [1, 2, 3]]")
+            (parseValueOrDie "[0, [1, 2, 3]]"),
+
+    "ltMatches" ~: "" ~: Right True ~=? evalMatchExpr
+        (LTMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "-1"),
+
+    "ltDoesntMatch" ~: "" ~: Right False ~=? evalMatchExpr
+        (LTMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "1"),
+
+    "ltMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
+        (LTMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
+        (parseValueOrDie "{\"foo\": [1, 2, -1]}"),
+
+    "lteMatches" ~: "" ~: Right True ~=? evalMatchExpr
+        (LTEMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "0"),
+
+    "lteDoesntMatch" ~: "" ~: Right False ~=? evalMatchExpr
+        (LTEMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "2"),
+
+    "lteMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
+        (LTEMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
+        (parseValueOrDie "{\"foo\": [1, 2, -1]}"),
+
+    "gtMatches" ~: "" ~: Right True ~=? evalMatchExpr
+        (GTMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "1"),
+
+    "gtDoesntMatch" ~: "" ~: Right False ~=? evalMatchExpr
+        (GTMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "-1"),
+
+    "gtMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
+        (GTMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
+        (parseValueOrDie "{\"foo\": [0, 2, -1]}"),
+
+    "gteMatches" ~: "" ~: Right True ~=? evalMatchExpr
+        (GTEMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "0"),
+
+    "gteDoesntMatch" ~: "" ~: Right False ~=? evalMatchExpr
+        (GTEMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "-1"),
+
+    "gteMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
+        (GTMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
+        (parseValueOrDie "{\"foo\": [-3, 2, -1]}")
     ]
