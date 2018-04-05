@@ -16,6 +16,15 @@ data MatchExpr
     | LTMatchExpr Path Value
     | GTMatchExpr Path Value
     | GTEMatchExpr Path Value
+    -- This is $exists:true.
+    --
+    -- TODO: For now we assume that $exists:false is parsed to NotExpr (ExistsExpr ..). In the
+    -- future, we may wish to express $exists:false in terms of a flavor of match expression where
+    -- all selected elements must match (and the document vacuously matches if there are no such
+    -- elements). For the moment, however, match expressions always have "any selected element
+    -- matches" semantics.
+    | ExistsExpr Path
+    | NotExpr MatchExpr
 
 -- Given a flag indicating array traversal behavior, the name of a function to apply, and the name
 -- of a bound variable containing a value:
@@ -105,6 +114,11 @@ desugarMatchExpr (GTMatchExpr path val) =
 desugarMatchExpr (GTEMatchExpr path val) =
     GetBool $ FunctionDef "gte" (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
         (makeTraversePathExpr (reverse path) "gte")
+desugarMatchExpr (ExistsExpr path) =
+    GetBool $ FunctionDef "exists" (Function ["x"] (Const $ BoolValue True))
+        (makeTraversePathExpr (reverse $ convertPathToNotTraverseTrailingArrays path) "exists")
+
+desugarMatchExpr (NotExpr expr) = Not $ desugarMatchExpr expr
 
 -- Returns true if the Value matches the MatchExpr. Otherwise returns false. Any Error return value
 -- is query-fatal.

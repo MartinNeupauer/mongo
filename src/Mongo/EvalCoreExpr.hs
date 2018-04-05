@@ -148,6 +148,9 @@ evalCoreExpr (Or lhs rhs) env =
         lhsVal <- evalCoreExpr lhs env
         if lhsVal then Right True else evalCoreExpr rhs env
 
+evalCoreExpr (Not e) env =
+    not <$> evalCoreExpr e env
+
 -- Comparisons.
 evalCoreExpr (CompareEQ lhs rhs) env =
     compareEQ <$> evalCoreExpr lhs env <*> evalCoreExpr rhs env

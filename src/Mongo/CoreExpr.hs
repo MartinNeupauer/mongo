@@ -49,6 +49,7 @@ data CoreExpr a where
     -- Logical.
     And :: CoreExpr Bool -> CoreExpr Bool -> CoreExpr Bool
     Or :: CoreExpr Bool -> CoreExpr Bool -> CoreExpr Bool
+    Not :: CoreExpr Bool -> CoreExpr Bool
 
     -- Constant expression
     Const::Value->CoreExpr Value

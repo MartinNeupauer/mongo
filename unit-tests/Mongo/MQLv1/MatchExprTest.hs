@@ -8,8 +8,10 @@ import Mongo.MQLv1.Path
 import Mongo.Value
 import Test.HUnit
 
-matchExprTest :: Test
-matchExprTest = TestList [
+-- Tests for basic aspects of MatchExpr path traversal semantics, using an equality match
+-- expression.
+basicTests :: Test
+basicTests = TestList [
     "equalityMatchEmptyPath" ~: "" ~: Right True ~=?
         evalMatchExpr (EqMatchExpr [] (parseValueOrDie "3")) (parseValueOrDie "3"),
 
@@ -132,8 +134,12 @@ matchExprTest = TestList [
     "fieldNameOrIndexDoesNotUseImplicitTraversalWhenActsAsIndex" ~: "" ~: Right False ~=?
         evalMatchExpr
             (EqMatchExpr (pathFromStringForTest "$<1>*") (parseValueOrDie "3"))
-            (parseValueOrDie "[0, [1, 2, 3]]"),
+            (parseValueOrDie "[0, [1, 2, 3]]")
+    ]
 
+-- Tests for $lt, $lte, $gt, and $gte.
+inequalityTests :: Test
+inequalityTests = TestList [
     "ltMatches" ~: "" ~: Right True ~=? evalMatchExpr
         (LTMatchExpr [] (parseValueOrDie "0")) (parseValueOrDie "-1"),
 
@@ -173,4 +179,75 @@ matchExprTest = TestList [
     "gteMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
         (GTMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
         (parseValueOrDie "{\"foo\": [-3, 2, -1]}")
+    ]
+
+-- Tests for $exists:true and $exists:false.
+existsTests :: Test
+existsTests = TestList [
+    "existsMatchesIntWithNoPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr []) (parseValueOrDie "3"),
+
+    "existsMatchesNullWithNoPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr []) (parseValueOrDie "null"),
+
+    "existsMatchesUndefinedWithNoPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr []) UndefinedValue,
+
+    "existsMatchesEmptyArrayWithNoPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr []) (parseValueOrDie "[]"),
+
+    "existsDoesNotMatchWhenPathDoesntExist" ~: "" ~: Right False ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a.b") (parseValueOrDie "{\"a\": 1}"),
+
+    "existsDoesNotMatchWhenPathDoesntExistWithImplicitTraversal" ~: "" ~: Right False ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
+            (parseValueOrDie "{\"a\": [1, {\"c\": 2}]}"),
+
+    "existsMatchesWhenPathExistsWithImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
+            (parseValueOrDie "{\"a\": [1, {\"b\": 2}]}"),
+
+    "existsMatchesWhenPathExistsWithImplicitTraversalTrailingEmptyArray" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
+            (parseValueOrDie "{\"a\": [1, {\"b\": []}]}"),
+
+    "existsMatchesWhenPathExistsWithImplicitTraversalArrIndexPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<1>*.$<1>*")
+            (parseValueOrDie "[0, [1, []], 2]"),
+
+    "existsMatchesArrIndexResolvesToFieldName" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<1>*.$<1>*")
+            (parseValueOrDie "{\"1\": {\"1\": []}}"),
+
+    "existsDoesNotMatchWhenArrIndexToHigh" ~: "" ~: Right False ~=?
+        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<8>*")
+            (parseValueOrDie "[1, 2, 3]"),
+
+    "notExistsDoesNotMatchInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "3"),
+
+    "notExistsDoesNotMatchNull" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "null"),
+
+    "notExistsDoesNotMatchUndefined" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "undefined"),
+
+    "notExistsDoesNotMatchWhenObjectPathExists" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a.b"))
+            (parseValueOrDie "{\"a\": {\"b\": 1}}"),
+
+    "notExistsMatchesWhenObjectPathDoesNotExist" ~: "" ~: Right True ~=?
+        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a.b"))
+            (parseValueOrDie "{\"a\": {\"c\": 1}}"),
+
+    "notExistsDoesNotMatchEmptyArrayWithImplicitTraversal" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a*"))
+            (parseValueOrDie "{\"a\": []}")
+    ]
+
+matchExprTest :: Test
+matchExprTest = TestList [
+    basicTests,
+    existsTests,
+    inequalityTests
     ]

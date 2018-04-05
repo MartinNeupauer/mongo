@@ -6,6 +6,7 @@ module Mongo.MQLv1.Path(
     PathComponent(..),
     PathComponentType(..),
 
+    convertPathToNotTraverseTrailingArrays,
     pathFromStringForTest,
     ) where
 
@@ -83,3 +84,15 @@ pathComponentFromString str =
 -- If the input is malformed, throws an exception.
 pathFromStringForTest :: String -> Path
 pathFromStringForTest str = map pathComponentFromString (splitOn "." str)
+
+-- Modifies the final component of a path to always have NoImplicitTraversal as its array traversal
+-- behavior.
+--
+-- XXX: In some contexts in MQL, the final path component should *never* implicitly traverse arrays.
+-- For example, this is true for match expression predicates {$type: "array"} and {$exists: true}.
+-- The user should probably have to explicitly encode the "don't traverse trailing arrays" behavior
+-- in the path, rather than having the predicate itself encode path traversal behavior.
+convertPathToNotTraverseTrailingArrays :: Path -> Path
+convertPathToNotTraverseTrailingArrays [] = []
+convertPathToNotTraverseTrailingArrays p =
+    case last p of (PathComponent t _) -> init p ++ [PathComponent t NoImplicitTraversal]
