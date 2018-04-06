@@ -323,9 +323,65 @@ logicalExprTests = TestList [
                 (parseValueOrDie "{\"a\": [0, 1, 2, 3]}")
     ]
 
+comparisonToArrayTests :: Test
+comparisonToArrayTests = TestList [
+    "eqArrayWithoutImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (EqMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2, 3]}"),
+
+    "eqArrayWithoutImplicitTraversalDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (EqMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2, 99]}"),
+
+    "eqWholeArrayWithImplicitTraversalMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2, 3]}"),
+
+    "eqNestedArrayWithImplicitTraversalMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [0, [1, 2, 3]]}"),
+
+    "eqNestedArrayWithImplicitTraversalDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [0, [1, 2, 3, 4]]}"),
+
+    "ltArrayMatchesWhenFirstEltIsSmaller" ~: "" ~: Right True ~=?
+        evalMatchExpr (LTMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [0, 2, 3]}"),
+
+    "ltArrayDoesntMatchWhenFirstEltIsLarger" ~: "" ~: Right False ~=?
+        evalMatchExpr (LTMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [8, 2, 3]}"),
+
+    "ltArrayMatchesWhenArrayIsShorter" ~: "" ~: Right True ~=?
+        evalMatchExpr (LTMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2]}"),
+
+    "ltArrayDoesntMatchWhenArrayIsLonger" ~: "" ~: Right False ~=?
+        evalMatchExpr (LTMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2, 3, 4]}"),
+
+    "gtArrayMatchesWholeArrayWithImplicitArrayTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (GTMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2]"))
+            (parseValueOrDie "{\"a\": [1, 2, 3]}"),
+
+    "gtArrayDoesNotMatchWholeArrayWithImplicitArrayTraversal" ~: "" ~: Right False ~=?
+        evalMatchExpr (GTMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [1, 2]}"),
+
+    "gtArrayMatchesWithImplicitTraversalDueToInnerArray" ~: "" ~: Right True ~=?
+        evalMatchExpr (GTMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [0, [1, 2, 3, 4]]}"),
+
+    "gtArrayDoesNotMatchWithoutImplicitTraversalDespiteMatchingInnerArray" ~: "" ~: Right False ~=?
+        evalMatchExpr (GTMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[1, 2, 3]"))
+            (parseValueOrDie "{\"a\": [0, [1, 2, 3, 4]]}")
+    ]
+
 matchExprTest :: Test
 matchExprTest = TestList [
     basicTests,
+    comparisonToArrayTests,
     existsTests,
     inequalityTests,
     logicalExprTests

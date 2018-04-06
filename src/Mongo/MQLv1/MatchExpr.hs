@@ -99,27 +99,49 @@ makeTraversePathExpr (PathComponent (FieldNameOrArrayIndex i) arrayTraversal : r
                     (Const $ BoolValue False))))
             (makeTraversePathExpr rest nextLevelFuncName)
 
+-- Helper for desugaring $lt, $lte, $gt, $gte, and $eq. The passed Function is the leaf predicate
+-- that should be applied to each of the elements selected by the Path. The Value is the value which
+-- the match expr is comparing against.
+--
+-- Returns the CoreExpr resulting from desugaring.
+desugarComparisonMatchExpr :: Path -> Value -> Function -> CoreExpr Bool
+
+-- XXX: Comparing to an array in MQLv1 matches if either any of the elements in the array matches,
+-- or if the array as a whole matches. For example, {a: {$eq: [1, 2, 3]}} matches both the documents
+-- {a: [1, 2, 3]} and {a: [0, [1, 2, 3]]}. The path selection behavior is therefore implicitly
+-- encoded in the fact that this is an array comparison. Instead, users should probably have to say
+-- explicitly "find me documents where 'a' is an array containing an element [1, 2, 3]" or "find me
+-- documents where field 'a' contains exactly the array [1, 2, 3]".
+desugarComparisonMatchExpr path (ArrayValue _) pred =
+    GetBool $ FunctionDef "pred" pred (PutBool
+        (Or (GetBool (makeTraversePathExpr (reverse path) "pred"))
+            (GetBool (makeTraversePathExpr
+                (reverse $ convertPathToNotTraverseTrailingArrays path) "pred"))))
+
+desugarComparisonMatchExpr path val pred =
+    GetBool $ FunctionDef "pred" pred (makeTraversePathExpr (reverse path) "pred")
+
 -- Compiles a MatchExpr into a core language expression.
 desugarMatchExpr :: MatchExpr -> CoreExpr Bool
 desugarMatchExpr (EqMatchExpr path val) =
-    GetBool $ FunctionDef "eq" (Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val)))
-        (makeTraversePathExpr (reverse path) "eq")
+    desugarComparisonMatchExpr
+        path val (Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val)))
 
 desugarMatchExpr (LTMatchExpr path val) =
-    GetBool $ FunctionDef "lt" (Function ["x"] (PutBool $ CompareLT (Var "x") (Const val)))
-        (makeTraversePathExpr (reverse path) "lt")
+    desugarComparisonMatchExpr
+        path val (Function ["x"] (PutBool $ CompareLT (Var "x") (Const val)))
 
 desugarMatchExpr (LTEMatchExpr path val) =
-    GetBool $ FunctionDef "lte" (Function ["x"] (PutBool $ CompareLTE (Var "x") (Const val)))
-        (makeTraversePathExpr (reverse path) "lte")
+    desugarComparisonMatchExpr
+        path val (Function ["x"] (PutBool $ CompareLTE (Var "x") (Const val)))
 
 desugarMatchExpr (GTMatchExpr path val) =
-    GetBool $ FunctionDef "gt" (Function ["x"] (PutBool $ CompareGT (Var "x") (Const val)))
-        (makeTraversePathExpr (reverse path) "gt")
+    desugarComparisonMatchExpr
+        path val (Function ["x"] (PutBool $ CompareGT (Var "x") (Const val)))
 
 desugarMatchExpr (GTEMatchExpr path val) =
-    GetBool $ FunctionDef "gte" (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
-        (makeTraversePathExpr (reverse path) "gte")
+    desugarComparisonMatchExpr
+        path val (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
 
 desugarMatchExpr (ExistsMatchExpr path) =
     GetBool $ FunctionDef "exists" (Function ["x"] (Const $ BoolValue True))
