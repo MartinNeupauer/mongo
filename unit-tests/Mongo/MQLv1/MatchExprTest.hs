@@ -185,69 +185,148 @@ inequalityTests = TestList [
 existsTests :: Test
 existsTests = TestList [
     "existsMatchesIntWithNoPath" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr []) (parseValueOrDie "3"),
+        evalMatchExpr (ExistsMatchExpr []) (parseValueOrDie "3"),
 
     "existsMatchesNullWithNoPath" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr []) (parseValueOrDie "null"),
+        evalMatchExpr (ExistsMatchExpr []) (parseValueOrDie "null"),
 
     "existsMatchesUndefinedWithNoPath" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr []) UndefinedValue,
+        evalMatchExpr (ExistsMatchExpr []) UndefinedValue,
 
     "existsMatchesEmptyArrayWithNoPath" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr []) (parseValueOrDie "[]"),
+        evalMatchExpr (ExistsMatchExpr []) (parseValueOrDie "[]"),
 
     "existsDoesNotMatchWhenPathDoesntExist" ~: "" ~: Right False ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a.b") (parseValueOrDie "{\"a\": 1}"),
+        evalMatchExpr
+            (ExistsMatchExpr $ pathFromStringForTest "a.b")
+            (parseValueOrDie "{\"a\": 1}"),
 
     "existsDoesNotMatchWhenPathDoesntExistWithImplicitTraversal" ~: "" ~: Right False ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
+        evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a*.b*")
             (parseValueOrDie "{\"a\": [1, {\"c\": 2}]}"),
 
-    "existsMatchesWhenPathExistsWithImplicitTraversal" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
+    "existsMatchesWhenPathExistsMatchExprWithImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a*.b*")
             (parseValueOrDie "{\"a\": [1, {\"b\": 2}]}"),
 
-    "existsMatchesWhenPathExistsWithImplicitTraversalTrailingEmptyArray" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "a*.b*")
-            (parseValueOrDie "{\"a\": [1, {\"b\": []}]}"),
+    "existsMatchesWhenPathExistsMatchExprWithImplicitTraversalTrailingEmptyArray" ~: "" ~:
+        Right True ~=?
+            evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a*.b*")
+                (parseValueOrDie "{\"a\": [1, {\"b\": []}]}"),
 
-    "existsMatchesWhenPathExistsWithImplicitTraversalArrIndexPath" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<1>*.$<1>*")
+    "existsMatchesWhenPathExistsMatchExprWithImplicitTraversalArrIndexPath" ~: "" ~: Right True ~=?
+        evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "$<1>*.$<1>*")
             (parseValueOrDie "[0, [1, []], 2]"),
 
     "existsMatchesArrIndexResolvesToFieldName" ~: "" ~: Right True ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<1>*.$<1>*")
+        evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "$<1>*.$<1>*")
             (parseValueOrDie "{\"1\": {\"1\": []}}"),
 
     "existsDoesNotMatchWhenArrIndexToHigh" ~: "" ~: Right False ~=?
-        evalMatchExpr (ExistsExpr $ pathFromStringForTest "$<8>*")
+        evalMatchExpr (ExistsMatchExpr $ pathFromStringForTest "$<8>*")
             (parseValueOrDie "[1, 2, 3]"),
 
-    "notExistsDoesNotMatchInt" ~: "" ~: Right False ~=?
-        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "3"),
+    "notExistsMatchExprDoesNotMatchInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr [])) (parseValueOrDie "3"),
 
-    "notExistsDoesNotMatchNull" ~: "" ~: Right False ~=?
-        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "null"),
+    "notExistsMatchExprDoesNotMatchNull" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr [])) (parseValueOrDie "null"),
 
-    "notExistsDoesNotMatchUndefined" ~: "" ~: Right False ~=?
-        evalMatchExpr (NotExpr (ExistsExpr [])) (parseValueOrDie "undefined"),
+    "notExistsMatchExprDoesNotMatchUndefined" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr [])) (parseValueOrDie "undefined"),
 
-    "notExistsDoesNotMatchWhenObjectPathExists" ~: "" ~: Right False ~=?
-        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a.b"))
+    "notExistsMatchExprDoesNotMatchWhenObjectPathExistsMatchExpr" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a.b"))
             (parseValueOrDie "{\"a\": {\"b\": 1}}"),
 
-    "notExistsMatchesWhenObjectPathDoesNotExist" ~: "" ~: Right True ~=?
-        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a.b"))
+    "notExistsMatchExprMatchesWhenObjectPathDoesNotExist" ~: "" ~: Right True ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a.b"))
             (parseValueOrDie "{\"a\": {\"c\": 1}}"),
 
-    "notExistsDoesNotMatchEmptyArrayWithImplicitTraversal" ~: "" ~: Right False ~=?
-        evalMatchExpr (NotExpr (ExistsExpr $ pathFromStringForTest "a*"))
+    "notExistsMatchExprDoesNotMatchEmptyArrayWithImplicitTraversal" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (ExistsMatchExpr $ pathFromStringForTest "a*"))
             (parseValueOrDie "{\"a\": []}")
+    ]
+
+-- Tests for $and, $or, $not, and $nor.
+logicalExprTests :: Test
+logicalExprTests = TestList [
+    "emptyAndMatchesInt" ~: "" ~: Right True ~=?
+        evalMatchExpr (AndMatchExpr []) (parseValueOrDie "1"),
+
+    "andOfOneThingIsTheThingMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (AndMatchExpr [EqMatchExpr [] (parseValueOrDie "1")]) (parseValueOrDie "1"),
+
+    "andOfOneThingIsTheThingDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (AndMatchExpr [EqMatchExpr [] (parseValueOrDie "99")]) (parseValueOrDie "1"),
+
+    "andOfSeveralThingsMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (AndMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "2"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "1"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "3")])
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}"),
+
+    "andOfSeveralThingsDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (AndMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "2"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "99"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "3")])
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}"),
+
+    "emptyOrDoesntMatchInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (OrMatchExpr []) (parseValueOrDie "1"),
+
+    "orOfOneThingIsTheThingMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (OrMatchExpr [EqMatchExpr [] (parseValueOrDie "1")]) (parseValueOrDie "1"),
+
+    "orOfOneThingIsTheThingDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (OrMatchExpr [EqMatchExpr [] (parseValueOrDie "99")]) (parseValueOrDie "1"),
+
+    "orOfSeveralThingsMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (OrMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "8"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "1"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "9")])
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}"),
+
+    "orOfSeveralThingsDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (OrMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "8"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "7"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "9")])
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}"),
+
+    "emptyNorMatchesInt" ~: "" ~: Right True ~=?
+        evalMatchExpr (NotMatchExpr (OrMatchExpr [])) (parseValueOrDie "1"),
+
+    "norOfOneThingIsNotMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (NotMatchExpr (OrMatchExpr [EqMatchExpr [] (parseValueOrDie "99")]))
+            (parseValueOrDie "1"),
+
+    "norOfOneThingIsNotDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (OrMatchExpr [EqMatchExpr [] (parseValueOrDie "1")]))
+            (parseValueOrDie "1"),
+
+    "norOfSeveralThingsMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (NotMatchExpr (OrMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "8"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "7"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "9")]))
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}"),
+
+    "norOfSeveralThingsDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (NotMatchExpr (OrMatchExpr [
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "8"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "1"),
+            EqMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "9")]))
+                (parseValueOrDie "{\"a\": [0, 1, 2, 3]}")
     ]
 
 matchExprTest :: Test
 matchExprTest = TestList [
     basicTests,
     existsTests,
-    inequalityTests
+    inequalityTests,
+    logicalExprTests
     ]

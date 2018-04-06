@@ -11,20 +11,26 @@ import Mongo.MQLv1.Path
 import Mongo.Value
 
 data MatchExpr
+    -- Comparisons.
     = EqMatchExpr Path Value
     | LTEMatchExpr Path Value
     | LTMatchExpr Path Value
     | GTMatchExpr Path Value
     | GTEMatchExpr Path Value
+
     -- This is $exists:true.
     --
-    -- TODO: For now we assume that $exists:false is parsed to NotExpr (ExistsExpr ..). In the
+    -- TODO: For now we assume that $exists:false is parsed to NotExpr (ExistsMatchExpr ..). In the
     -- future, we may wish to express $exists:false in terms of a flavor of match expression where
     -- all selected elements must match (and the document vacuously matches if there are no such
     -- elements). For the moment, however, match expressions always have "any selected element
     -- matches" semantics.
-    | ExistsExpr Path
-    | NotExpr MatchExpr
+    | ExistsMatchExpr Path
+
+    -- Logical match expressions. The parser is responsible for converting $nor into $not -> $or.
+    | AndMatchExpr [MatchExpr]
+    | OrMatchExpr [MatchExpr]
+    | NotMatchExpr MatchExpr
 
 -- Given a flag indicating array traversal behavior, the name of a function to apply, and the name
 -- of a bound variable containing a value:
@@ -114,11 +120,22 @@ desugarMatchExpr (GTMatchExpr path val) =
 desugarMatchExpr (GTEMatchExpr path val) =
     GetBool $ FunctionDef "gte" (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
         (makeTraversePathExpr (reverse path) "gte")
-desugarMatchExpr (ExistsExpr path) =
+
+desugarMatchExpr (ExistsMatchExpr path) =
     GetBool $ FunctionDef "exists" (Function ["x"] (Const $ BoolValue True))
         (makeTraversePathExpr (reverse $ convertPathToNotTraverseTrailingArrays path) "exists")
 
-desugarMatchExpr (NotExpr expr) = Not $ desugarMatchExpr expr
+desugarMatchExpr (NotMatchExpr expr) = Not $ desugarMatchExpr expr
+
+desugarMatchExpr (AndMatchExpr []) = GetBool $ Const (BoolValue True)
+desugarMatchExpr (AndMatchExpr [hd]) = desugarMatchExpr hd
+desugarMatchExpr (AndMatchExpr (hd:tail)) =
+    And (desugarMatchExpr hd) (desugarMatchExpr (AndMatchExpr tail))
+
+desugarMatchExpr (OrMatchExpr []) = GetBool $ Const (BoolValue False)
+desugarMatchExpr (OrMatchExpr [hd]) = desugarMatchExpr hd
+desugarMatchExpr (OrMatchExpr (hd:tail)) =
+    Or (desugarMatchExpr hd) (desugarMatchExpr (OrMatchExpr tail))
 
 -- Returns true if the Value matches the MatchExpr. Otherwise returns false. Any Error return value
 -- is query-fatal.
