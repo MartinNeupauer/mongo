@@ -42,9 +42,13 @@ data CoreExpr a where
     PutDocument::CoreExpr Document ->CoreExpr Value
 
     -- Type predicates.
+    IsNull :: CoreExpr Value -> CoreExpr Bool
+    IsUndefined :: CoreExpr Value -> CoreExpr Bool
+    IsInt :: CoreExpr Value -> CoreExpr Bool
+    IsBool :: CoreExpr Value -> CoreExpr Bool
+    IsString :: CoreExpr Value -> CoreExpr Bool
     IsArray :: CoreExpr Value -> CoreExpr Bool
     IsDocument :: CoreExpr Value -> CoreExpr Bool
-    IsNull::CoreExpr Value->CoreExpr Bool
 
     -- Logical.
     And :: CoreExpr Bool -> CoreExpr Bool -> CoreExpr Bool

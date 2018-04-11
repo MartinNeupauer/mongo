@@ -408,11 +408,27 @@ comparisonToArrayTests = TestList [
             (parseValueOrDie "{\"a\": [0, [1, 2, 3, 4]]}")
     ]
 
+typeBracketingTest :: Test
+typeBracketingTest = TestList [
+    "intIsNotLessThanString" ~: "" ~: Right False ~=?
+        evalMatchExpr (LTMatchExpr [] (parseValueOrDie "\"foo\"")) (parseValueOrDie "1"),
+
+    "intIsNotLessThanOrEqaulToString" ~: "" ~: Right False ~=?
+        evalMatchExpr (LTEMatchExpr [] (parseValueOrDie "\"foo\"")) (parseValueOrDie "1"),
+
+    "stringIsNotGreaterThanInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (GTMatchExpr [] (parseValueOrDie "1")) (parseValueOrDie "\"foo\""),
+
+    "stringIsNotGreaterThanOrEqualToInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (GTEMatchExpr [] (parseValueOrDie "1")) (parseValueOrDie "\"foo\"")
+    ]
+
 matchExprTest :: Test
 matchExprTest = TestList [
     basicTests,
     comparisonToArrayTests,
     existsTests,
     inequalityTests,
-    logicalExprTests
+    logicalExprTests,
+    typeBracketingTest
     ]

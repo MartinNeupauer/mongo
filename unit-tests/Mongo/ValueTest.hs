@@ -66,5 +66,11 @@ valueTest = TestList [
         parseValueOrDie "[1, 0, 3]",
 
     "arrayLT" ~: "" ~: LT ~=? parseValueOrDie "[1, 0, 10]" `compareValues`
-        parseValueOrDie "[1, 3, 3]"
+        parseValueOrDie "[1, 3, 3]",
+
+    "stringIsGreaterThanInt" ~: "" ~: GT ~=?
+        parseValueOrDie "\"foo\"" `compareValues` parseValueOrDie "1",
+
+    "intIsLessThanString" ~: "" ~: LT ~=?
+        parseValueOrDie "1" `compareValues` parseValueOrDie "\"foo\""
     ]

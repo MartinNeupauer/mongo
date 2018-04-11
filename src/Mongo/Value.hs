@@ -9,9 +9,13 @@ module Mongo.Value (
     getArrayValue,
     getDocumentValue,
 
+    isNull,
+    isUndefined,
+    isInt,
+    isBool,
+    isString,
     isArray,
     isDocument,
-    isNull,
 
     addField,
     getField,
@@ -97,13 +101,29 @@ isNull :: Value -> Bool
 isNull NullValue = True
 isNull _  = False
 
-isDocument :: Value -> Bool
-isDocument (DocumentValue _) = True
-isDocument _ = False
+isUndefined :: Value -> Bool
+isUndefined UndefinedValue = True
+isUndefined _  = False
+
+isInt :: Value -> Bool
+isInt (IntValue _) = True
+isInt _  = False
+
+isBool :: Value -> Bool
+isBool (BoolValue _) = True
+isBool _  = False
+
+isString :: Value -> Bool
+isString (StringValue _) = True
+isString _  = False
 
 isArray :: Value -> Bool
 isArray (ArrayValue _) = True
 isArray _ = False
+
+isDocument :: Value -> Bool
+isDocument (DocumentValue _) = True
+isDocument _ = False
 
 instance Monoid Array where
     mempty = Array []

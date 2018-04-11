@@ -121,14 +121,30 @@ evalCoreExpr (PutBool b) env =
 evalCoreExpr (PutDocument v) env =
     DocumentValue <$> evalCoreExpr v env
 
+--
+-- Type predicates.
+--
+
 evalCoreExpr (IsNull v) env =
     isNull <$> evalCoreExpr v env
 
-evalCoreExpr (IsDocument d) env =
-    isDocument <$> evalCoreExpr d env
+evalCoreExpr (IsUndefined expr) env =
+    isUndefined <$> evalCoreExpr expr env
+
+evalCoreExpr (IsInt expr) env =
+    isInt <$> evalCoreExpr expr env
+
+evalCoreExpr (IsBool expr) env =
+    isBool <$> evalCoreExpr expr env
+
+evalCoreExpr (IsString expr) env =
+    isString <$> evalCoreExpr expr env
 
 evalCoreExpr (IsArray a) env =
     isArray <$> evalCoreExpr a env
+
+evalCoreExpr (IsDocument d) env =
+    isDocument <$> evalCoreExpr d env
 
 -- Arithmetic
 evalCoreExpr (Plus lhs rhs) env =

@@ -122,6 +122,23 @@ desugarComparisonMatchExpr path (ArrayValue _) pred =
 desugarComparisonMatchExpr path val pred =
     GetBool $ FunctionDef "pred" pred (makeTraversePathExpr (reverse path) "pred")
 
+-- XXX: Do we really want type bracketing going forward? The aggregation subsystem doesn't do it,
+-- and this behavior is implicit and therefore non-obvious. We might want to make users explicitly
+-- write type checks, or add new sugar which means "compare and also check type".
+--
+-- TODO: Type bracketing obeys the notion of "canonical type", but the model currently only supports
+-- Value types whose canonical type codes are distinct. When we add two types which have the same
+-- canonical type code (i.e. once we support both Int and Long), we will have to adjust the type
+-- bracketing implementation to check canonical type.
+makeTypeBracketingCheck :: Value -> CoreExpr Value -> CoreExpr Bool
+makeTypeBracketingCheck NullValue expr = IsNull expr
+makeTypeBracketingCheck UndefinedValue expr = IsUndefined expr
+makeTypeBracketingCheck (IntValue _) expr = IsInt expr
+makeTypeBracketingCheck (BoolValue _) expr = IsBool expr
+makeTypeBracketingCheck (StringValue _) expr = IsString expr
+makeTypeBracketingCheck (ArrayValue _) expr = IsArray expr
+makeTypeBracketingCheck (DocumentValue _) expr = IsDocument expr
+
 -- Compiles a MatchExpr into a core language expression.
 desugarMatchExpr :: MatchExpr -> CoreExpr Bool
 desugarMatchExpr (EqMatchExpr path val) =
@@ -129,20 +146,24 @@ desugarMatchExpr (EqMatchExpr path val) =
         path val (Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val)))
 
 desugarMatchExpr (LTMatchExpr path val) =
-    desugarComparisonMatchExpr
-        path val (Function ["x"] (PutBool $ CompareLT (Var "x") (Const val)))
+    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
+        (CompareLT (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x")))))
 
 desugarMatchExpr (LTEMatchExpr path val) =
-    desugarComparisonMatchExpr
-        path val (Function ["x"] (PutBool $ CompareLTE (Var "x") (Const val)))
+    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
+        (CompareLTE (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x")))))
 
 desugarMatchExpr (GTMatchExpr path val) =
-    desugarComparisonMatchExpr
-        path val (Function ["x"] (PutBool $ CompareGT (Var "x") (Const val)))
+    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
+        (CompareGT (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x")))))
 
 desugarMatchExpr (GTEMatchExpr path val) =
-    desugarComparisonMatchExpr
-        path val (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
+    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
+        (CompareGTE (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x")))))
 
 desugarMatchExpr (NEMatchExpr path val) =
     Not $ desugarMatchExpr (EqMatchExpr path val)
