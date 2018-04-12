@@ -29,7 +29,7 @@ data CoreExpr a where
     HasField::String->CoreExpr Document->CoreExpr Bool
 
     -- When needed, the array is extended with NullValue until i <= the length of the array.
-    SetElem::(Int, CoreExpr Value)->CoreExpr Array->CoreExpr Array
+    SetElem::(CoreExpr Int, CoreExpr Value)->CoreExpr Array->CoreExpr Array
 
     ArrayLength :: CoreExpr Array -> CoreExpr Int
 
@@ -98,17 +98,23 @@ data CoreExpr a where
     -- All arguments are evaluated eagerly.
     FunctionApp :: String -> [CoreExpr Value] -> CoreExpr Value
 
-    -- An expression for traversing a Value and returning the resulting Bool. The traversal is
+    -- An expression for traversing a Value and returning another Value. The traversal is
     -- single-level, *not* recursive.
     --
     -- Arguments are:
-    -- * The name of a two-argument function which returns a boolean.
+    -- * The name of a two-argument function which returns a Value. The first argument is one of the
+    --   Values being traversed, and the second is the accumulator.
     -- * A sub-expression which returns the initial value of the fold.
     -- * A sub-expression which returns the value to fold over.
     --
-    -- Similar to the traditional fold from functional languages, except always returns a boolean.
-    -- All values are considered traversable. Scalars can be "traversed" as through they were
-    -- one-element lists.
+    -- Similar to the traditional fold from functional languages. All values are considered
+    -- traversable. Scalars can be "traversed" as through they were one-element lists.
+    --
+    -- Useful for determining whether all Values in an Array or Document match some predicate, or
+    -- whether any Value in an Array or Document matches some predicate.
+    FoldValue :: String -> CoreExpr Value -> CoreExpr Value -> CoreExpr Value
+
+    -- A variant of FoldValue where the return value is a Bool.
     --
     -- Useful for determining whether all Values in an Array or Document match some predicate, or
     -- whether any Value in an Array or Document matches some predicate.

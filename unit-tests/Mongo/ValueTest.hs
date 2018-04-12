@@ -9,10 +9,6 @@ import Mongo.Value
 import Test.HUnit
 import Text.RawString.QQ
 
-getErrCode :: Either Error a -> ErrorCode
-getErrCode (Left err) = errCode err
-getErrCode _ = error "Expected an error, but did not get one"
-
 basicTests :: Test
 basicTests = TestList [
     "parseNullScalar" ~: "" ~: Right NullValue ~=? valueFromString "null",

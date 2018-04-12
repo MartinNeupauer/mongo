@@ -3,6 +3,7 @@ module Main where
 import Mongo.EvalCoreExprTest (evalCoreExprTest)
 import Mongo.MQLv1.MatchExprTest (matchExprTest)
 import Mongo.MQLv1.PathTest (pathTest)
+import Mongo.MQLv1.ProjectionTest (projectionTest)
 import Mongo.ValueTest (valueTest)
 import System.Exit (exitFailure, exitSuccess)
 import Test.HUnit
@@ -13,6 +14,7 @@ allTests = TestList [
     evalCoreExprTest,
     matchExprTest,
     pathTest,
+    projectionTest,
     valueTest
     ]
 

@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs, LambdaCase #-}
+{-# LANGUAGE GADTs #-}
 
 module Mongo.EvalCoreExpr(
     Environment(..),
@@ -61,24 +61,26 @@ applyFunction (Function argNames body) argList env =
             newEnv = foldr (\x y -> uncurry (bindVar y) x) newEnvInit $ zip argNames resultVals in
                 evalCoreExpr body newEnv
 
-evalFoldBool :: Function -> Bool -> Value -> Environment -> Either Error Bool
-evalFoldBool _ initVal (ArrayValue Array { getElements = [] }) _ = Right initVal
-evalFoldBool func initVal (ArrayValue Array { getElements = hd:rest }) env =
-    applyFunction func [Const hd, Const (BoolValue initVal)] env >>=
-        (\case (BoolValue newInit) -> evalFoldBool func newInit
-                                        (ArrayValue Array { getElements = rest }) env)
+evalFold :: Function -> Value -> Value -> Environment -> Either Error Value
+evalFold _ initVal (ArrayValue Array { getElements = [] }) _ = Right initVal
+evalFold func initVal (ArrayValue Array { getElements = hd:rest }) env =
+    applyFunction func [Const hd, Const initVal] env >>=
+        (\newInit -> evalFold func newInit (ArrayValue Array { getElements = rest }) env)
 
-evalFoldBool _ initVal (DocumentValue Document { getFields = [] }) _ = Right initVal
-evalFoldBool func initVal (DocumentValue Document { getFields = (_, firstValue) : rest } ) env =
-    applyFunction func [Const firstValue, Const (BoolValue initVal)] env >>=
-        (\case (BoolValue newInit) -> evalFoldBool func newInit
-                                        (DocumentValue Document { getFields = rest }) env)
+evalFold _ initVal (DocumentValue Document { getFields = [] }) _ = Right initVal
+evalFold func initVal (DocumentValue Document { getFields = (firstField, firstValue):rest } ) env =
+    -- We repackage each (fieldName, value) pair into a two-element array, where the field name is
+    -- first and the value is second.
+    applyFunction func [
+        Const (ArrayValue Array { getElements = [StringValue firstField, firstValue] }),
+        Const initVal]
+        env >>=
+            (\newInit -> evalFold func newInit (DocumentValue Document { getFields = rest }) env)
 
 -- Folding over scalars is allowed; this means that we simply apply the given function to the
 -- scalar.
-evalFoldBool func initVal scalarValue env =
-    applyFunction func [Const scalarValue, Const (BoolValue initVal)] env
-        >>= (\case (BoolValue result) -> Right result)
+evalFold func initVal scalarValue env =
+    applyFunction func [Const scalarValue, Const initVal] env
 
 evalCoreExpr :: CoreExpr a -> Environment -> Either Error a
 evalCoreExpr (Const c) _ = return c
@@ -100,7 +102,8 @@ evalCoreExpr (SetElem (i,v) a) env =
     do
         arr <- getElements <$> evalCoreExpr a env
         val <- evalCoreExpr v env
-        let updatedArr = case (take i (arr ++ repeat NullValue), drop i arr) of
+        index <- evalCoreExpr i env
+        let updatedArr = case (take index (arr ++ repeat NullValue), drop index arr) of
                             (x,y:ys) -> x ++ (val:ys)
                             (x,[]) -> x ++ [val]
         return Array { getElements = updatedArr }
@@ -236,8 +239,11 @@ evalCoreExpr (FunctionApp name argList) env =
         applyFunction func argList env
 
 evalCoreExpr (FoldBool funcName init toFold) env =
+    evalCoreExpr (FoldValue funcName (PutBool init) toFold) env >>= getBoolValue
+
+evalCoreExpr (FoldValue funcName init toFold) env =
     do
         func <- lookupFunction funcName env
         initVal <- evalCoreExpr init env
         toFoldVal <- evalCoreExpr toFold env
-        evalFoldBool func initVal toFoldVal env
+        evalFold func initVal toFoldVal env

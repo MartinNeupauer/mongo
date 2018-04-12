@@ -7,6 +7,7 @@ module Mongo.MQLv1.Path(
     PathComponentType(..),
 
     convertPathToNotTraverseTrailingArrays,
+    pathCompFromStringForTest,
     pathFromStringForTest,
     ) where
 
@@ -39,8 +40,8 @@ type Path = [PathComponent]
 
 -- Parses a string to a single path component. See pathFromStringForTest for details on the accepted
 -- syntax.
-pathComponentFromString :: String -> PathComponent
-pathComponentFromString ('$' : '{' : rest) =
+pathCompFromStringForTest :: String -> PathComponent
+pathCompFromStringForTest ('$' : '{' : rest) =
     case reverse rest of
         ('}' : reversedField) ->
             PathComponent (FieldName $ reverse reversedField) NoImplicitTraversal
@@ -48,7 +49,7 @@ pathComponentFromString ('$' : '{' : rest) =
             PathComponent (FieldName $ reverse reversedField) ImplicitlyTraverseArrays
         _ -> error $ "Bad path component: " ++ "${" ++ rest
 
-pathComponentFromString ('$' : '<' : rest) =
+pathCompFromStringForTest ('$' : '<' : rest) =
     case reverse rest of
         ('>' : reversedField) -> let asInt = read (reverse reversedField) in
             PathComponent (FieldNameOrArrayIndex asInt) NoImplicitTraversal
@@ -56,7 +57,7 @@ pathComponentFromString ('$' : '<' : rest) =
             PathComponent (FieldNameOrArrayIndex asInt) ImplicitlyTraverseArrays
         _ -> error $ "Bad path component: " ++ "$<" ++ rest
 
-pathComponentFromString ('$' : '[' : rest) =
+pathCompFromStringForTest ('$' : '[' : rest) =
     case reverse rest of
         (']' : reversedField) -> let arrIndex = read (reverse reversedField) in
             PathComponent (ArrayIndex arrIndex) NoImplicitTraversal
@@ -64,7 +65,7 @@ pathComponentFromString ('$' : '[' : rest) =
             PathComponent (ArrayIndex arrIndex) ImplicitlyTraverseArrays
         _ -> error $ "Bad path component: " ++ "$[" ++ rest
 
-pathComponentFromString str =
+pathCompFromStringForTest str =
     case reverse str of
         [] -> error "empty path component"
         ('*' : reversedField) ->
@@ -83,7 +84,7 @@ pathComponentFromString str =
 --
 -- If the input is malformed, throws an exception.
 pathFromStringForTest :: String -> Path
-pathFromStringForTest str = map pathComponentFromString (splitOn "." str)
+pathFromStringForTest str = map pathCompFromStringForTest (splitOn "." str)
 
 -- Modifies the final component of a path to always have NoImplicitTraversal as its array traversal
 -- behavior.

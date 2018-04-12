@@ -25,12 +25,12 @@ library
     Mongo.EvalCoreExpr
     Mongo.MQLv1.MatchExpr
     Mongo.MQLv1.Path
+    Mongo.MQLv1.Projection
     Mongo.ParseCoreExpr
     Mongo.Value
   other-extensions:
     FlexibleInstances
     GADTs
-    LambdaCase
   build-depends:
     base >=4.8 && <4.11,
     json >=0.9 && <0.10,
@@ -63,6 +63,7 @@ Test-Suite mql-unittests
     Mongo.EvalCoreExprTest
     Mongo.MQLv1.MatchExprTest
     Mongo.MQLv1.PathTest
+    Mongo.MQLv1.ProjectionTest
     Mongo.ValueTest
   build-depends:
     base >=4.8 && <4.11,

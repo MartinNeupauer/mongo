@@ -73,7 +73,7 @@ evalCoreExprTest = TestList [
     "setFirstElem" ~: "" ~: Right Array { getElements = [IntValue 10, IntValue 1, IntValue 2] } ~=?
         evalCoreExpr
             (SetElem
-                (0, Const (IntValue 10))
+                (GetInt (Const (IntValue 0)), Const (IntValue 10))
                 (GetArray (Const (ArrayValue Array { getElements = [
                     IntValue 0,
                     IntValue 1,
@@ -83,7 +83,7 @@ evalCoreExprTest = TestList [
     "setMidElem" ~: "" ~: Right Array { getElements = [IntValue 0, IntValue 11, IntValue 2] } ~=?
         evalCoreExpr
             (SetElem
-                (1, Const (IntValue 11))
+                (GetInt (Const (IntValue 1)), Const (IntValue 11))
                 (GetArray (Const (ArrayValue Array { getElements = [
                     IntValue 0,
                     IntValue 1,
@@ -93,7 +93,7 @@ evalCoreExprTest = TestList [
     "setLastElem" ~: "" ~: Right Array { getElements = [IntValue 0, IntValue 1, IntValue 12] } ~=?
         evalCoreExpr
             (SetElem
-                (2, Const (IntValue 12))
+                (GetInt (Const (IntValue 2)), Const (IntValue 12))
                 (GetArray (Const (ArrayValue Array { getElements = [
                     IntValue 0,
                     IntValue 1,
@@ -104,7 +104,7 @@ evalCoreExprTest = TestList [
         Right Array { getElements = [IntValue 0, IntValue 1, IntValue 2, IntValue 13] } ~=?
         evalCoreExpr
             (SetElem
-                (3, Const (IntValue 13))
+                (GetInt (Const (IntValue 3)), Const (IntValue 13))
                 (GetArray (Const (ArrayValue Array { getElements = [
                     IntValue 0,
                     IntValue 1,
@@ -121,7 +121,7 @@ evalCoreExprTest = TestList [
             IntValue 15] } ~=?
         evalCoreExpr
             (SetElem
-                (5, Const (IntValue 15))
+                (GetInt (Const (IntValue 5)), Const (IntValue 15))
                 (GetArray (Const (ArrayValue Array { getElements = [
                     IntValue 0,
                     IntValue 1,
