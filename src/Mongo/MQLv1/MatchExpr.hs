@@ -17,6 +17,7 @@ data MatchExpr
     | LTMatchExpr Path Value
     | GTMatchExpr Path Value
     | GTEMatchExpr Path Value
+    | NEMatchExpr Path Value
 
     -- This is $exists:true.
     --
@@ -142,6 +143,9 @@ desugarMatchExpr (GTMatchExpr path val) =
 desugarMatchExpr (GTEMatchExpr path val) =
     desugarComparisonMatchExpr
         path val (Function ["x"] (PutBool $ CompareGTE (Var "x") (Const val)))
+
+desugarMatchExpr (NEMatchExpr path val) =
+    Not $ desugarMatchExpr (EqMatchExpr path val)
 
 desugarMatchExpr (ExistsMatchExpr path) =
     GetBool $ FunctionDef "exists" (Function ["x"] (Const $ BoolValue True))

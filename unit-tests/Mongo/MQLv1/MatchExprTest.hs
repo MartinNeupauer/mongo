@@ -137,7 +137,7 @@ basicTests = TestList [
             (parseValueOrDie "[0, [1, 2, 3]]")
     ]
 
--- Tests for $lt, $lte, $gt, and $gte.
+-- Tests for $lt, $lte, $gt, $gte, and $ne.
 inequalityTests :: Test
 inequalityTests = TestList [
     "ltMatches" ~: "" ~: Right True ~=? evalMatchExpr
@@ -178,7 +178,37 @@ inequalityTests = TestList [
 
     "gteMatchesWithImplicitTraversal" ~: "" ~: Right True ~=? evalMatchExpr
         (GTMatchExpr (pathFromStringForTest "foo*") (parseValueOrDie "0"))
-        (parseValueOrDie "{\"foo\": [-3, 2, -1]}")
+        (parseValueOrDie "{\"foo\": [-3, 2, -1]}"),
+
+    "neMatchesUnequalInt" ~: "" ~: Right True ~=?
+        evalMatchExpr (NEMatchExpr [] (parseValueOrDie "1")) (parseValueOrDie "2"),
+
+    "neDoesntMatchEqualInt" ~: "" ~: Right False ~=?
+        evalMatchExpr (NEMatchExpr [] (parseValueOrDie "2")) (parseValueOrDie "2"),
+
+    "neMatchesArrayWithImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "5"))
+        (parseValueOrDie "{\"a\": [3, 4]}"),
+
+    "neDoesntMatchArrayWithImplicitTraversal" ~: "" ~: Right False ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "4"))
+        (parseValueOrDie "{\"a\": [3, 4]}"),
+
+    "arrayNEArrayWithImplicitTraversalDoesntMatch" ~: "" ~: Right False ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[3, 4]"))
+        (parseValueOrDie "{\"a\": [3, 4]}"),
+
+    "arrayNEArrayWithImplicitTraversalDoesntMatchNested" ~: "" ~: Right False ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[3, 4]"))
+        (parseValueOrDie "{\"a\": [0, [3, 4]]}"),
+
+    "arrayNEArrayWithImplicitTraversalMatches" ~: "" ~: Right True ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a*") (parseValueOrDie "[3, 4]"))
+        (parseValueOrDie "{\"a\": [3, 5]}"),
+
+    "arrayNEArrayWithoutImplicitTraversal" ~: "" ~: Right True ~=?
+        evalMatchExpr (NEMatchExpr (pathFromStringForTest "a") (parseValueOrDie "[3, 4]"))
+        (parseValueOrDie "{\"a\": [0, [3, 4]]}")
     ]
 
 -- Tests for $exists:true and $exists:false.
