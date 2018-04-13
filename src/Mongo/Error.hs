@@ -6,7 +6,6 @@ module Mongo.Error(
 data ErrorCode
     = ArrayIndexOutOfBounds
     | FailedToParse
-    | FunctionRedefinition
     | InvalidJSON
     | MissingField
     | NotImplemented

@@ -81,8 +81,12 @@ data CoreExpr a where
     Let :: String -> CoreExpr Value -> CoreExpr Value -> CoreExpr Value
 
     -- A function definition consists of the function name, a list of formal arguments, the function
-    -- body, and the remainder of the expression. Functions have global scope and closures are not
-    -- supported (the only bound variables in the body of a function are its arguments).
+    -- body, and the remainder of the expression. Functions are available only within the scope of
+    -- their subexpression, and function names can be shadowed (just like variables in Let
+    -- expressions).
+    --
+    -- However, functions do not support closures. When a function is called, the only in-scope
+    -- variables are the bindings for the function's formal parameters.
     FunctionDef :: String -> Function -> CoreExpr Value -> CoreExpr Value
 
     -- Function application. Consists of the name of the function being applied and a list of

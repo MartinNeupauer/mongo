@@ -19,12 +19,20 @@ data Environment = Environment {
     }
 
 -- Adds a (variable name => Value) mapping to the given environment. It is _not_ an error if a
--- binding for the variable already exists in the input Enviornment. In this case, the old binding
+-- binding for the variable already exists in the input Environment. In this case, the old binding
 -- is replaced with a binding to the new value in the returned Environment.
 bindVar :: Environment -> String -> Value -> Environment
 bindVar env var bindVal =
     let newVarBindings = (var, bindVal) : filter (\(x, _) -> x /= var) (boundVariables env) in
         Environment { boundVariables = newVarBindings, definedFunctions = definedFunctions env }
+
+-- Adds a (function name => Function) mapping to the given environment. It is _not_ an error if a
+-- binding for the functionalready exists in the input Environment. In this case, the old function
+-- binding is replaced with the new one in the returned Environment.
+bindFunc :: Environment -> String -> Function -> Environment
+bindFunc env name func =
+    let newFuncBindings = (name, func) : filter (\(x, _) -> x /= name) (definedFunctions env) in
+        Environment { boundVariables = boundVariables env, definedFunctions = newFuncBindings }
 
 -- Get a function out of the given environment, or error if no such function exists.
 lookupFunction :: String -> Environment -> Either Error Function
@@ -208,19 +216,7 @@ evalCoreExpr (Let var bindExpr inExpr) env =
         evalCoreExpr inExpr (bindVar env var bindVal)
 
 evalCoreExpr (FunctionDef name f rest) env =
-    -- Functions have expression-global scope, so it is illegal to redefine a function name.
-    if Data.Maybe.isJust (lookup name (definedFunctions env))
-    then Left Error {
-        errCode = FunctionRedefinition,
-        errReason = "Function defined multiple times: " ++ name }
-    -- Add the function to the environment, replacing any existing function of the same name.
-    else
-        let newFuncBindings = (name, f) : definedFunctions env
-            newEnv = Environment {
-            boundVariables = boundVariables env,
-            definedFunctions =  newFuncBindings } in
-                -- Evaluate the 'in' expression using the *new* environment.
-                evalCoreExpr rest newEnv
+    evalCoreExpr rest (bindFunc env name f)
 
 evalCoreExpr (FunctionApp name argList) env =
     do

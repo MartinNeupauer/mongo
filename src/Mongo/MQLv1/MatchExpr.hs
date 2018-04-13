@@ -1,5 +1,6 @@
 module Mongo.MQLv1.MatchExpr(
     MatchExpr(..),
+    MatchPredicate(..),
 
     evalMatchExpr,
     ) where
@@ -10,14 +11,16 @@ import Mongo.EvalCoreExpr
 import Mongo.MQLv1.Path
 import Mongo.Value
 
-data MatchExpr
+-- The portion of a match expression which expresses a simple predicate over a Value, e.g. {$lt: 3}
+-- or {$exists: true}.
+data MatchPredicate
     -- Comparisons.
-    = EqMatchExpr Path Value
-    | LTEMatchExpr Path Value
-    | LTMatchExpr Path Value
-    | GTMatchExpr Path Value
-    | GTEMatchExpr Path Value
-    | NEMatchExpr Path Value
+    = EqMatchExpr Value
+    | LTEMatchExpr Value
+    | LTMatchExpr Value
+    | GTMatchExpr Value
+    | GTEMatchExpr Value
+    | NEMatchExpr Value
 
     -- This is $exists:true.
     --
@@ -26,7 +29,15 @@ data MatchExpr
     -- all selected elements must match (and the document vacuously matches if there are no such
     -- elements). For the moment, however, match expressions always have "any selected element
     -- matches" semantics.
-    | ExistsMatchExpr Path
+    | ExistsMatchExpr
+
+    -- $elemMatch.
+    | ElemMatchObjectExpr MatchExpr
+    | ElemMatchValueExpr [MatchPredicate]
+
+data MatchExpr
+    -- Represents any predicate of the form {"path.to.match": {$example: <predicate>}}.
+    = PathAcceptingExpr Path MatchPredicate
 
     -- Logical match expressions. The parser is responsible for converting $nor into $not -> $or.
     | AndMatchExpr [MatchExpr]
@@ -139,38 +150,118 @@ makeTypeBracketingCheck (StringValue _) expr = IsString expr
 makeTypeBracketingCheck (ArrayValue _) expr = IsArray expr
 makeTypeBracketingCheck (DocumentValue _) expr = IsDocument expr
 
+-- Returns a one-argument core language function which implements the match predicate. The function
+-- accepts a value and returns a boolean indicating whether or not the value matches.
+makeMatchPredicateFunction :: MatchPredicate -> Function
+makeMatchPredicateFunction (EqMatchExpr val) =
+    Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val))
+
+makeMatchPredicateFunction (LTMatchExpr val) =
+    Function ["x"] (PutBool (And
+        (CompareLT (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x"))))
+
+makeMatchPredicateFunction (LTEMatchExpr val) =
+    Function ["x"] (PutBool (And
+        (CompareLTE (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x"))))
+
+makeMatchPredicateFunction (GTMatchExpr val) =
+    Function ["x"] (PutBool (And
+        (CompareGT (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x"))))
+
+makeMatchPredicateFunction (GTEMatchExpr val) =
+    Function ["x"] (PutBool (And
+        (CompareGTE (Var "x") (Const val))
+        (makeTypeBracketingCheck val (Var "x"))))
+
+makeMatchPredicateFunction (NEMatchExpr val) =
+    Function ["x"] (PutBool $ Not (CompareEQ (Var "x") (Const val)))
+
+makeMatchPredicateFunction ExistsMatchExpr =
+    Function ["x"] (Const $ BoolValue True)
+
+makeMatchPredicateFunction (ElemMatchObjectExpr subexpr) =
+    let desugaredSubExpr = desugarMatchExpr subexpr
+        -- The value on which we're calling the desugared subexpression becomes the new root.
+        subexprFunc = Function ["ROOT"] (PutBool desugaredSubExpr) in
+        Function ["x"] (If (IsArray (Var "x"))
+            (FunctionDef "runDesugaredElemMatch" subexprFunc
+                (FunctionDef "foldFunc"
+                    (Function ["v", "init"] (PutBool (Or
+                        (GetBool (Var "init"))
+                        (GetBool (FunctionApp "runDesugaredElemMatch" [Var "v"])))))
+                    (PutBool (FoldBool "foldFunc"
+                        (GetBool (Const (BoolValue False))) (Var "x")))))
+            (Const $ BoolValue False))
+
+makeMatchPredicateFunction (ElemMatchValueExpr preds) =
+    let subFuncs = map makeMatchPredicateFunction preds
+        -- Generate an expression which is the AND of applying all of the match predicate functions
+        -- to the variable "x".
+        applySubFuncsExpr = foldl
+            (\expr f ->
+                (And (GetBool (FunctionDef "subfunc" f (FunctionApp "subfunc" [Var "x"]))) expr))
+            (GetBool $ Const (BoolValue True))
+            subFuncs
+        applySubFuncsFunc = Function ["x"] (PutBool applySubFuncsExpr)
+    in Function ["x"] (If (IsArray (Var "x"))
+        (FunctionDef "runDesugaredElemMatch" applySubFuncsFunc
+            (FunctionDef "foldFunc"
+                (Function ["v", "init"] (PutBool (Or
+                    (GetBool (Var "init"))
+                    (GetBool (FunctionApp "runDesugaredElemMatch" [Var "v"])))))
+                (PutBool (FoldBool "foldFunc"
+                    (GetBool (Const (BoolValue False))) (Var "x")))))
+        (Const $ BoolValue False))
+
+-- Compiles a MatchExpr which accepts a path into a core language expression.
+desugarPathAcceptingExpr :: Path -> MatchPredicate -> CoreExpr Bool
+desugarPathAcceptingExpr path (EqMatchExpr val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (EqMatchExpr val))
+
+desugarPathAcceptingExpr path (LTMatchExpr val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LTMatchExpr val))
+
+desugarPathAcceptingExpr path (LTEMatchExpr val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LTEMatchExpr val))
+
+desugarPathAcceptingExpr path (GTMatchExpr val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GTMatchExpr val))
+
+desugarPathAcceptingExpr path (GTEMatchExpr val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GTEMatchExpr val))
+
+desugarPathAcceptingExpr path (NEMatchExpr val) =
+    Not $ desugarMatchExpr (PathAcceptingExpr path (EqMatchExpr val))
+
+desugarPathAcceptingExpr path ExistsMatchExpr =
+    GetBool $ FunctionDef "exists" (makeMatchPredicateFunction ExistsMatchExpr)
+        (makeTraversePathExpr (reverse $ convertPathToNotTraverseTrailingArrays path) "exists")
+
+desugarPathAcceptingExpr path (ElemMatchObjectExpr subexpr) =
+    GetBool $ FunctionDef "elemMatchObj" (makeMatchPredicateFunction (ElemMatchObjectExpr subexpr))
+        -- XXX: Right now $elemMatch isn't applied to each element of an array, e.g. the document
+        -- {a: [[{b: 1, c: 1}]]} does not match the query {a: {$elemMatch: {b: 1, c: 1}}}. We should
+        -- probably allow users to express array behavior, just as we would for any other match
+        -- expression.
+        (makeTraversePathExpr
+            (reverse $ convertPathToNotTraverseTrailingArrays path) "elemMatchObj")
+
+desugarPathAcceptingExpr path (ElemMatchValueExpr preds) =
+    GetBool $ FunctionDef "elemMatchValue" (makeMatchPredicateFunction (ElemMatchValueExpr preds))
+        -- XXX: Right now $elemMatch isn't applied to each element of an array, e.g. the document
+        -- {a: [[1, 8]]} does not match the query {a: {$elemMatch: {$gt: 5, $lt: 10}}}. We should
+        -- probably allow users to express array behavior, just as we would for any other match
+        -- expression.
+        (makeTraversePathExpr
+            (reverse $ convertPathToNotTraverseTrailingArrays path) "elemMatchValue")
+
 -- Compiles a MatchExpr into a core language expression.
 desugarMatchExpr :: MatchExpr -> CoreExpr Bool
-desugarMatchExpr (EqMatchExpr path val) =
-    desugarComparisonMatchExpr
-        path val (Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val)))
 
-desugarMatchExpr (LTMatchExpr path val) =
-    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
-        (CompareLT (Var "x") (Const val))
-        (makeTypeBracketingCheck val (Var "x")))))
-
-desugarMatchExpr (LTEMatchExpr path val) =
-    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
-        (CompareLTE (Var "x") (Const val))
-        (makeTypeBracketingCheck val (Var "x")))))
-
-desugarMatchExpr (GTMatchExpr path val) =
-    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
-        (CompareGT (Var "x") (Const val))
-        (makeTypeBracketingCheck val (Var "x")))))
-
-desugarMatchExpr (GTEMatchExpr path val) =
-    desugarComparisonMatchExpr path val (Function ["x"] (PutBool (And
-        (CompareGTE (Var "x") (Const val))
-        (makeTypeBracketingCheck val (Var "x")))))
-
-desugarMatchExpr (NEMatchExpr path val) =
-    Not $ desugarMatchExpr (EqMatchExpr path val)
-
-desugarMatchExpr (ExistsMatchExpr path) =
-    GetBool $ FunctionDef "exists" (Function ["x"] (Const $ BoolValue True))
-        (makeTraversePathExpr (reverse $ convertPathToNotTraverseTrailingArrays path) "exists")
+desugarMatchExpr (PathAcceptingExpr path pred) = desugarPathAcceptingExpr path pred
 
 desugarMatchExpr (NotMatchExpr expr) = Not $ desugarMatchExpr expr
 
