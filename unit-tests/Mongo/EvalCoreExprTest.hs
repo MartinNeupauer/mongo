@@ -15,6 +15,13 @@ emptyEnv = Environment { boundVariables = [], definedFunctions = [] }
 emptyErr :: Error
 emptyErr = Error { errCode = NotImplemented, errReason = "" }
 
+asErr :: Either Error a -> Error
+asErr (Left err) =
+    err
+
+asErr _ =
+    emptyErr
+
 evalCoreExprTest :: Test
 evalCoreExprTest = TestList [
     "letBasic" ~: "" ~: Right (IntValue 3) ~=?
@@ -25,7 +32,7 @@ evalCoreExprTest = TestList [
             (Let "x" (Const (IntValue 5)) (Var "x"))) emptyEnv,
 
     "unboundVariable" ~: "" ~: UnboundVariable ~=?
-        errCode (Data.Either.fromLeft emptyErr (evalCoreExpr (Var "y") Environment {
+        errCode (asErr (evalCoreExpr (Var "y") Environment {
             boundVariables = [("x", IntValue 5)],
             definedFunctions = [] })),
 
@@ -45,7 +52,7 @@ evalCoreExprTest = TestList [
             (FunctionApp "f" [Const (IntValue 3), Const (IntValue 5)])) emptyEnv,
 
     "functionsDoNotSupportClosures" ~: "" ~: UnboundVariable ~=?
-        errCode (Data.Either.fromLeft emptyErr
+        errCode (asErr
             (evalCoreExpr (Let "x" (Const (IntValue 3))
                 (FunctionDef "f" (Function [] (Var "x"))
                     (FunctionApp "f" []))) emptyEnv)),
@@ -61,5 +68,63 @@ evalCoreExprTest = TestList [
 
     "orExprShortCircuits" ~: "" ~: Right True ~=?
         evalCoreExpr
-            (Or (GetBool (Const (BoolValue True))) (GetBool (Const (IntValue 3)))) emptyEnv
+            (Or (GetBool (Const (BoolValue True))) (GetBool (Const (IntValue 3)))) emptyEnv,
+
+    "setFirstElem" ~: "" ~: Right Array { getElements = [IntValue 10, IntValue 1, IntValue 2] } ~=?
+        evalCoreExpr
+            (SetElem
+                (0, Const (IntValue 10))
+                (GetArray (Const (ArrayValue Array { getElements = [
+                    IntValue 0,
+                    IntValue 1,
+                    IntValue 2] }))))
+            emptyEnv,
+
+    "setMidElem" ~: "" ~: Right Array { getElements = [IntValue 0, IntValue 11, IntValue 2] } ~=?
+        evalCoreExpr
+            (SetElem
+                (1, Const (IntValue 11))
+                (GetArray (Const (ArrayValue Array { getElements = [
+                    IntValue 0,
+                    IntValue 1,
+                    IntValue 2] }))))
+            emptyEnv,
+
+    "setLastElem" ~: "" ~: Right Array { getElements = [IntValue 0, IntValue 1, IntValue 12] } ~=?
+        evalCoreExpr
+            (SetElem
+                (2, Const (IntValue 12))
+                (GetArray (Const (ArrayValue Array { getElements = [
+                    IntValue 0,
+                    IntValue 1,
+                    IntValue 2] }))))
+            emptyEnv,
+
+    "appendElem" ~: "" ~:
+        Right Array { getElements = [IntValue 0, IntValue 1, IntValue 2, IntValue 13] } ~=?
+        evalCoreExpr
+            (SetElem
+                (3, Const (IntValue 13))
+                (GetArray (Const (ArrayValue Array { getElements = [
+                    IntValue 0,
+                    IntValue 1,
+                    IntValue 2] }))))
+            emptyEnv,
+
+    "nullFill" ~: "" ~:
+        Right Array { getElements = [
+            IntValue 0,
+            IntValue 1,
+            IntValue 2,
+            NullValue,
+            NullValue,
+            IntValue 15] } ~=?
+        evalCoreExpr
+            (SetElem
+                (5, Const (IntValue 15))
+                (GetArray (Const (ArrayValue Array { getElements = [
+                    IntValue 0,
+                    IntValue 1,
+                    IntValue 2] }))))
+            emptyEnv
     ]

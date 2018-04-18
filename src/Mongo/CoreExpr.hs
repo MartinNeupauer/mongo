@@ -28,6 +28,9 @@ data CoreExpr a where
     RemoveField::String->CoreExpr Document->CoreExpr Document
     HasField::String->CoreExpr Document->CoreExpr Bool
 
+    -- When needed, the array is extended with NullValue until i <= the length of the array.
+    SetElem::(Int, CoreExpr Value)->CoreExpr Array->CoreExpr Array
+
     ArrayLength :: CoreExpr Array -> CoreExpr Int
 
     -- Selectors for the Value.
@@ -39,6 +42,7 @@ data CoreExpr a where
 
     PutBool :: CoreExpr Bool -> CoreExpr Value
     PutInt::CoreExpr Int->CoreExpr Value
+    PutArray::CoreExpr Array->CoreExpr Value
     PutDocument::CoreExpr Document ->CoreExpr Value
 
     -- Type predicates.

@@ -96,6 +96,15 @@ evalCoreExpr (SetField (f,v) d) env =
         val <- evalCoreExpr v env
         return $ addField (f,val) (removeField f doc)
 
+evalCoreExpr (SetElem (i,v) a) env =
+    do
+        arr <- getElements <$> evalCoreExpr a env
+        val <- evalCoreExpr v env
+        let updatedArr = case (take i (arr ++ repeat NullValue), drop i arr) of
+                            (x,y:ys) -> x ++ (val:ys)
+                            (x,[]) -> x ++ [val]
+        return Array { getElements = updatedArr }
+
 evalCoreExpr (RemoveField f v) env =
     removeField f <$> evalCoreExpr v env
 
@@ -125,6 +134,9 @@ evalCoreExpr (PutInt v) env =
 
 evalCoreExpr (PutBool b) env =
     BoolValue <$> evalCoreExpr b env
+
+evalCoreExpr (PutArray v) env =
+    ArrayValue <$> evalCoreExpr v env
 
 evalCoreExpr (PutDocument v) env =
     DocumentValue <$> evalCoreExpr v env
