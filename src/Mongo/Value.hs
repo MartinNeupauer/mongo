@@ -272,23 +272,50 @@ compareDocumentEQ (x:xs) (y:ys) =
     else
         and3VL (compareEQ3VL (snd x) (snd y)) (compareDocumentEQ xs ys)
 
-valueFromTextJson :: JSON.JSValue -> Value
+decodeJSONNumber :: Rational -> Either Error Value
+decodeJSONNumber x
+    | denominator x == 1 = Right $ IntValue $ fromIntegral $ numerator x
+    | otherwise = Left Error {
+        errCode = FailedToParse,
+        errReason = "Non-integral JSON numbers not yet supported" }
+
+-- Decodes an extended JSON type wrapper object, e.g. {$numberInt: 42}, to the appropriate Value, or
+-- returns an error if the type wrapper object is not well-formed.
+decodeExtendedJSONTypeWrapper :: [(String, JSON.JSValue)] -> Either Error Value
+decodeExtendedJSONTypeWrapper [("$numberInt", JSON.JSRational false v)] = decodeJSONNumber v
+decodeExtendedJSONTypeWrapper [("$undefined", JSON.JSBool True)] = Right UndefinedValue
+decodeExtendedJSONTypeWrapper _ =
+    Left Error { errCode = FailedToParse, errReason = "Invalid extended JSON type wrapper" }
+
+-- Decodes a JSON object, represented as a list of (string, JSON value) pairs, into a Value. Since
+-- we support the extended JSON format, the JSON object could represent any Value (not just a
+-- Document).
+--
+-- Returns an error if the object is not valid extended JSON.
+decodeJSONObj :: [(String, JSON.JSValue)] -> Either Error Value
+decodeJSONObj (('$':keyword, v):rest) = decodeExtendedJSONTypeWrapper (('$':keyword, v):rest)
+decodeJSONObj obj = mapM (\x -> do
+    subVal <- valueFromTextJson $ snd x
+    Right (fst x, subVal)) obj
+        >>= (Right . DocumentValue . Document)
+
+valueFromTextJson :: JSON.JSValue -> Either Error Value
 valueFromTextJson json =
     case json of
-        JSON.JSNull -> NullValue
-        JSON.JSBool v -> BoolValue v
-        JSON.JSRational false v -> case v of
-                                    x | denominator x == 1 -> IntValue $ fromIntegral $ numerator x
-                                    _ -> NullValue
-        JSON.JSString v -> StringValue $ JSON.fromJSString v
-        JSON.JSArray v -> ArrayValue $ Array $ map valueFromTextJson v
-        JSON.JSObject v -> DocumentValue $ Document $
-            map (\x -> (fst x, valueFromTextJson $ snd x)) (JSON.fromJSObject v)
+        JSON.JSNull -> Right NullValue
+        JSON.JSBool v -> Right (BoolValue v)
+        JSON.JSRational false v -> decodeJSONNumber v
+        JSON.JSString v -> Right $ StringValue $ JSON.fromJSString v
+        JSON.JSArray v -> mapM valueFromTextJson v >>= (Right . ArrayValue . Array)
+        JSON.JSObject v -> decodeJSONObj (JSON.fromJSObject v)
 
+-- Parses an extended JSON 2.0.0 string to a Value.
+--
+-- See https://github.com/mongodb/specifications/blob/master/source/extended-json.rst.
 valueFromString :: String -> Either Error Value
 valueFromString input =
     case JSON.decode input of
-        JSON.Ok val -> Right $ valueFromTextJson val
+        JSON.Ok val -> valueFromTextJson val
         JSON.Error jsonErrString -> Left Error {
             errCode = InvalidJSON,
             errReason = "JSON failed to parse: " ++ jsonErrString }
