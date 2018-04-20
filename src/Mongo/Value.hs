@@ -12,13 +12,14 @@ module Mongo.Value (
     getArrayValue,
     getDocumentValue,
 
-    isNull,
-    isUndefined,
-    isInt,
-    isBool,
-    isString,
     isArray,
+    isBool,
     isDocument,
+    isInt,
+    isNull,
+    isString,
+    isUndefined,
+    isValueTruthy,
 
     addField,
     getField,
@@ -135,6 +136,14 @@ isArray _ = False
 isDocument :: Value -> Bool
 isDocument (DocumentValue _) = True
 isDocument _ = False
+
+-- Various pieces of MQL assign a true or false value to an arbitrary Value.
+isValueTruthy :: Value -> Bool
+isValueTruthy NullValue = False
+isValueTruthy UndefinedValue = False
+isValueTruthy (IntValue i) = i /= 0
+isValueTruthy (BoolValue b) = b
+isValueTruthy _ = True
 
 instance Monoid Array where
     mempty = Array []

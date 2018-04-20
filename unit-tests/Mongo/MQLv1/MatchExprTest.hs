@@ -196,45 +196,51 @@ inequalityTests = TestList [
 
     "neMatchesUnequalInt" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr [] (NEMatchExpr (parseValueOrDie "1")))
+            (PathAcceptingExpr [] (NotMatchPred (EqMatchExpr (parseValueOrDie "1"))))
             (parseValueOrDie "2"),
 
     "neDoesntMatchEqualInt" ~: "" ~: Right False ~=?
         evalMatchExpr
-            (PathAcceptingExpr [] (NEMatchExpr (parseValueOrDie "2")))
+            (PathAcceptingExpr [] (NotMatchPred (EqMatchExpr (parseValueOrDie "2"))))
             (parseValueOrDie "2"),
 
     "neMatchesArrayWithImplicitTraversal" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a*") (NEMatchExpr (parseValueOrDie "5")))
+            (PathAcceptingExpr (pathFromStringForTest "a*")
+                (NotMatchPred (EqMatchExpr (parseValueOrDie "5"))))
             (parseValueOrDie [r|{"a": [3, 4]}|]),
 
     "neDoesntMatchArrayWithImplicitTraversal" ~: "" ~: Right False ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a*") (NEMatchExpr (parseValueOrDie "4")))
+            (PathAcceptingExpr (pathFromStringForTest "a*")
+                (NotMatchPred (EqMatchExpr (parseValueOrDie "4"))))
             (parseValueOrDie [r|{"a": [3, 4]}|]),
 
     "arrayNEArrayWithImplicitTraversalDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
             (PathAcceptingExpr
-                (pathFromStringForTest "a*") (NEMatchExpr (parseValueOrDie "[3, 4]")))
+                (pathFromStringForTest "a*")
+                    (NotMatchPred (EqMatchExpr (parseValueOrDie "[3, 4]"))))
             (parseValueOrDie [r|{"a": [3, 4]}|]),
 
     "arrayNEArrayWithImplicitTraversalDoesntMatchNested" ~: "" ~: Right False ~=?
         evalMatchExpr
             (PathAcceptingExpr
-                (pathFromStringForTest "a*") (NEMatchExpr (parseValueOrDie "[3, 4]")))
+                (pathFromStringForTest "a*")
+                    (NotMatchPred (EqMatchExpr (parseValueOrDie "[3, 4]"))))
             (parseValueOrDie [r|{"a": [0, [3, 4]]}|]),
 
     "arrayNEArrayWithImplicitTraversalMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
             (PathAcceptingExpr
-                (pathFromStringForTest "a*") (NEMatchExpr (parseValueOrDie "[3, 4]")))
+                (pathFromStringForTest "a*")
+                    (NotMatchPred (EqMatchExpr (parseValueOrDie "[3, 4]"))))
             (parseValueOrDie [r|{"a": [3, 5]}|]),
 
     "arrayNEArrayWithoutImplicitTraversal" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a") (NEMatchExpr (parseValueOrDie "[3, 4]")))
+            (PathAcceptingExpr (pathFromStringForTest "a")
+                (NotMatchPred (EqMatchExpr (parseValueOrDie "[3, 4]"))))
             (parseValueOrDie [r|{"a": [0, [3, 4]]}|])
     ]
 
@@ -576,66 +582,265 @@ elemMatchTests = TestList [
     "elemMatchValueBasicMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
             (PathAcceptingExpr (pathFromStringForTest "a")
-                (ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "3")]))
+                (ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "3")])))
             (parseValueOrDie [r|{"a": [2, 3]}|]),
 
     "elemMatchValueBasicDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
             (PathAcceptingExpr (pathFromStringForTest "a")
-                (ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "99")]))
+                (ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "99")])))
             (parseValueOrDie [r|{"a": [2, 3]}|]),
 
     "elemMatchValueMultiplePredsMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr [
+            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr (AndMatchPred [
                 GTMatchExpr (parseValueOrDie "5"),
-                LTMatchExpr (parseValueOrDie "10")]))
+                LTMatchExpr (parseValueOrDie "10")])))
             (parseValueOrDie [r|{"a": [2, 7, 12]}|]),
 
     "elemMatchValueMultiplePredsDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr [
+            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr (AndMatchPred [
                 GTMatchExpr (parseValueOrDie "5"),
-                LTMatchExpr (parseValueOrDie "10")]))
+                LTMatchExpr (parseValueOrDie "10")])))
             (parseValueOrDie [r|{"a": [2, -1, 12]}|]),
 
     "elemMatchValueWithNoPathMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr [] (ElemMatchValueExpr [
+            (PathAcceptingExpr [] (ElemMatchValueExpr (AndMatchPred [
                 GTMatchExpr (parseValueOrDie "5"),
-                LTMatchExpr (parseValueOrDie "10")]))
+                LTMatchExpr (parseValueOrDie "10")])))
             (parseValueOrDie "[2, 7, 12]"),
 
     "elemMatchValueWithNoPathDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
-            (PathAcceptingExpr [] (ElemMatchValueExpr [
+            (PathAcceptingExpr [] (ElemMatchValueExpr (AndMatchPred [
                 GTMatchExpr (parseValueOrDie "5"),
-                LTMatchExpr (parseValueOrDie "10")]))
+                LTMatchExpr (parseValueOrDie "10")])))
             (parseValueOrDie "[2, -1, 12]"),
 
     "elemMatchValueNestedMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr [
-                ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "2")]]))
+            (PathAcceptingExpr (pathFromStringForTest "a")
+                (ElemMatchValueExpr (AndMatchPred [
+                    ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "2")])])))
             (parseValueOrDie [r|{"a": [0, [1, 2, 3]]}|]),
 
     "elemMatchValueNestedDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
-            (PathAcceptingExpr (pathFromStringForTest "a") (ElemMatchValueExpr [
-                ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "2")]]))
+            (PathAcceptingExpr (pathFromStringForTest "a")
+                (ElemMatchValueExpr (AndMatchPred [
+                    ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "2")])])))
             (parseValueOrDie [r|{"a": [0, [1, 3]]}|]),
 
     "elemMatchValueWithImplicitArrayTraversalMatches" ~: "" ~: Right True ~=?
         evalMatchExpr
             (PathAcceptingExpr (pathFromStringForTest "a*")
-                (ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "2")]))
+                (ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "2")])))
             (parseValueOrDie [r|{"a": [1, 2, 3]}|]),
 
     "elemMatchValueWithImplicitArrayTraversalDoesntMatch" ~: "" ~: Right False ~=?
         evalMatchExpr
             (PathAcceptingExpr (pathFromStringForTest "a*")
-                (ElemMatchValueExpr [EqMatchExpr (parseValueOrDie "2")]))
+                (ElemMatchValueExpr (AndMatchPred [EqMatchExpr (parseValueOrDie "2")])))
             (parseValueOrDie [r|{"a": [[1, 2, 3]]}|])
+    ]
+
+-- Tests for the MatchExpr parser.
+parserTests :: Test
+parserTests = TestList [
+    "invalidJSONFailsToParse" ~: "" ~: InvalidJSON ~=? getErrCode (parseMatchExprString "{"),
+
+    "scalarMatchExprFailsToParse" ~: "" ~: FailedToParse ~=? getErrCode (parseMatchExprString "1"),
+
+    "unknownTopLevelOperatorFailsToParse" ~: "" ~: FailedToParse ~=?
+        getErrCode (parseMatchExprString [r|{"$unknown": 1}|]),
+
+    "unknownPathAcceptingMatchExprFailsToParse" ~: "" ~: FailedToParse ~=?
+        getErrCode (parseMatchExprString [r|{"path": {"$unknown": 1}}|]),
+
+    "explicitEqParses" ~: "" ~:
+        Right (PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+            (EqMatchExpr (IntValue 3))) ~=?
+        parseMatchExprString [r|{"a": {"$eq": 3}}|],
+
+    "implicitEqParses" ~: "" ~:
+        Right (PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+            (EqMatchExpr (IntValue 3))) ~=?
+        parseMatchExprString [r|{"a": 3}|],
+
+    "twoImplicitEqWithImplicitAnd" ~: "" ~:
+        Right (AndMatchExpr [
+            PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3)),
+            PathAcceptingExpr [PathComponent (FieldName "b") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 4))]) ~=?
+        parseMatchExprString [r|{"a": 3, "b": 4}|],
+
+    "parseExplicitSingletonAnd" ~: "" ~:
+        Right (AndMatchExpr [
+            PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3))])  ~=?
+        parseMatchExprString [r|{"$and": [{"a": {"$eq": 3}}]}|],
+
+    "zeroCanActAsArrayIndex" ~: "" ~:
+        Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldNameOrArrayIndex 0) ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3)))  ~=?
+        parseMatchExprString [r|{"a.0":  3}|],
+
+    "tenCanActAsArrayIndex" ~: "" ~:
+        Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldNameOrArrayIndex 10) ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3)))  ~=?
+        parseMatchExprString [r|{"a.10":  3}|],
+
+    "zeroZeroCannotActAsArrayIndex" ~: "" ~:
+        Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldName "00") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3)))  ~=?
+        parseMatchExprString [r|{"a.00":  3}|],
+
+    "zeroOneCannotActAsArrayIndex" ~: "" ~:
+        Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldName "01") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 3)))  ~=?
+        parseMatchExprString [r|{"a.01":  3}|],
+
+    "notWithScalarFailsToParse" ~: "" ~: FailedToParse ~=?
+        getErrCode (parseMatchExprString [r|{"a": {"$not": 1}}|]),
+
+    "notWithEmptyObjectFailsToParse" ~: "" ~: FailedToParse ~=?
+        getErrCode (parseMatchExprString [r|{"a": {"$not": {}}}|]),
+
+    "notWithTopLevelExprOperatorFailsToParse" ~: "" ~: FailedToParse ~=?
+        getErrCode (parseMatchExprString [r|{"a": {"$not": {"$and": [{"b": 1}]}}}|]),
+
+    "notWithLtParses" ~: "" ~:
+        Right (NotMatchExpr (PathAcceptingExpr
+            [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+            (AndMatchPred [LTMatchExpr (IntValue 0)]))) ~=?
+        parseMatchExprString [r|{"a": {"$not": {"$lt": 0}}}|],
+
+    "notWithLtAndGtParses" ~: "" ~:
+        Right (NotMatchExpr (PathAcceptingExpr
+            [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+            (AndMatchPred [LTMatchExpr (IntValue 0), GTMatchExpr (IntValue 0)]))) ~=?
+        parseMatchExprString [r|{"a": {"$not": {"$lt": 0, "$gt": 0}}}|],
+
+    "notAsSiblingOfNonNotParses" ~: "" ~:
+        Right (AndMatchExpr [
+            NotMatchExpr (PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+                (AndMatchPred [LTMatchExpr (IntValue 0)])),
+            PathAcceptingExpr [PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 8))]) ~=?
+        parseMatchExprString [r|{"a": {"$not": {"$lt": 0}, "$eq": 8}}|],
+
+    "canParseNe" ~: "" ~: Right (NotMatchExpr (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] (EqMatchExpr (IntValue 8)))) ~=?
+        parseMatchExprString [r|{"a": {"$ne": 8}}|],
+
+    "canParseLt" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] (LTMatchExpr (IntValue 8))) ~=?
+        parseMatchExprString [r|{"a": {"$lt": 8}}|],
+
+    "canParseLte" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] (LTEMatchExpr (IntValue 8))) ~=?
+        parseMatchExprString [r|{"a": {"$lte": 8}}|],
+
+    "canParseGt" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] (GTMatchExpr (IntValue 8))) ~=?
+        parseMatchExprString [r|{"a": {"$gt": 8}}|],
+
+    "canParseGte" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] (GTEMatchExpr (IntValue 8))) ~=?
+        parseMatchExprString [r|{"a": {"$gte": 8}}|],
+
+    "canParseExistsTrue" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] ExistsMatchExpr) ~=?
+        parseMatchExprString [r|{"a": {"$exists": true}}|],
+
+    "canParseExistsWithTruthyValue" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] ExistsMatchExpr) ~=?
+        parseMatchExprString [r|{"a": {"$exists": {}}}|],
+
+    "canParseExistsFalse" ~: "" ~: Right (NotMatchExpr (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] ExistsMatchExpr)) ~=?
+        parseMatchExprString [r|{"a": {"$exists": false}}|],
+
+    "canParseExistsFalsyValue" ~: "" ~: Right (NotMatchExpr (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays] ExistsMatchExpr)) ~=?
+        parseMatchExprString [r|{"a": {"$exists": 0}}|],
+
+    "canParseElemMatchObject" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+                (ElemMatchObjectExpr (PathAcceptingExpr [
+                    PathComponent (FieldName "b") ImplicitlyTraverseArrays,
+                    PathComponent (FieldName "c") ImplicitlyTraverseArrays]
+                        (EqMatchExpr (IntValue 0))))) ~=?
+        parseMatchExprString [r|{"a": {"$elemMatch": {"b.c": 0}}}|],
+
+    "canParseElemMatchValue" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldName "b") ImplicitlyTraverseArrays]
+                (ElemMatchValueExpr (AndMatchPred [
+                    GTMatchExpr (IntValue 0),
+                    LTMatchExpr (IntValue 9)]))) ~=?
+        parseMatchExprString [r|{"a.b": {"$elemMatch": {"$gt": 0, "$lt": 9}}}|],
+
+    "canParseElemMatchValueWithNot" ~: "" ~: Right (PathAcceptingExpr [
+            PathComponent (FieldName "a") ImplicitlyTraverseArrays,
+            PathComponent (FieldName "b") ImplicitlyTraverseArrays]
+                (ElemMatchValueExpr (AndMatchPred
+                    [NotMatchPred (AndMatchPred [LTMatchExpr (IntValue 0)])]))) ~=?
+        parseMatchExprString [r|{"a.b": {"$elemMatch": {"$not": {"$lt": 0}}}}|],
+
+    "canParseElemMatchValueInsideElemMatchObject" ~: "" ~: Right (PathAcceptingExpr [
+        PathComponent (FieldName "a") ImplicitlyTraverseArrays]
+        (ElemMatchObjectExpr (AndMatchExpr [
+            PathAcceptingExpr [PathComponent (FieldName "b") ImplicitlyTraverseArrays]
+                (EqMatchExpr (IntValue 1)),
+            PathAcceptingExpr [PathComponent (FieldName "c") ImplicitlyTraverseArrays]
+                (ElemMatchValueExpr (AndMatchPred [
+                GTEMatchExpr (IntValue 2),
+                LTEMatchExpr (IntValue 3)]))]))) ~=?
+        parseMatchExprString [r|{"a": {"$elemMatch":
+            {"b": 1, "c": {"$elemMatch": {"$gte": 2, "$lte": 3}}}}}|]
+    ]
+
+-- Tests that we can perform match expression evaluation correctly where the match expression and
+-- the document to match are both represented as extended JSON strings.
+endToEndTests :: Test
+endToEndTests = TestList [
+    "eqMatches" ~: "" ~: Right True ~=?
+        evalStringMatchExpr [r|{"a": 3}|] [r|{"a": 3}|],
+
+    "eqDoesntMatch" ~: "" ~: Right False ~=?
+        evalStringMatchExpr [r|{"a": 3}|] [r|{"a": 99}|],
+
+    "elemMatchValueDoesntLiftNotMatches" ~: "" ~: Right True ~=?
+        evalStringMatchExpr
+            [r|{"a": {"$elemMatch": {"$not": {"$gt": 0}}}}|]
+            [r|{"a": [1, -3, 2]}|],
+
+    "elemMatchValueDoesntLiftNotNoMatch" ~: "" ~: Right False ~=?
+        evalStringMatchExpr
+            [r|{"a": {"$elemMatch": {"$not": {"$gt": 0}}}}|]
+            [r|{"a": [1, 3, 2]}|],
+
+    "elemMatchObjectWithExistsMatches" ~: "" ~: Right True ~=?
+        evalStringMatchExpr
+            [r|{"a": {"$elemMatch": {"b": {"$exists": true}, "c": 1}}}|]
+            [r|{"a": [{"b": 1}, {"b": 1, "c": 1}, {"c": 1}]}|],
+
+    "elemMatchObjectWithExistsDoesntMatch" ~: "" ~: Right False ~=?
+        evalStringMatchExpr
+            [r|{"a": {"$elemMatch": {"b": {"$exists": true}, "c": 1}}}|]
+            [r|{"a": [{"b": 1}, {"c": 1}]}|]
     ]
 
 matchExprTest :: Test
@@ -643,8 +848,10 @@ matchExprTest = TestList [
     basicTests,
     comparisonToArrayTests,
     elemMatchTests,
+    endToEndTests,
     existsTests,
     inequalityTests,
     logicalExprTests,
+    parserTests,
     typeBracketingTest
     ]

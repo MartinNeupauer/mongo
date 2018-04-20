@@ -1,15 +1,24 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Mongo.MQLv1.MatchExpr(
     MatchExpr(..),
     MatchPredicate(..),
 
     evalMatchExpr,
+    evalJsonMatchExpr,
+    evalStringMatchExpr,
+    parseMatchExprJson,
+    parseMatchExprString,
     ) where
 
+import Data.Char (isDigit)
+import Data.List.Split
 import Mongo.CoreExpr
 import Mongo.Error
 import Mongo.EvalCoreExpr
 import Mongo.MQLv1.Path
 import Mongo.Value
+import qualified Text.JSON as JSON
 
 -- The portion of a match expression which expresses a simple predicate over a Value, e.g. {$lt: 3}
 -- or {$exists: true}.
@@ -20,7 +29,17 @@ data MatchPredicate
     | LTMatchExpr Value
     | GTMatchExpr Value
     | GTEMatchExpr Value
-    | NEMatchExpr Value
+
+    -- XXX: This is quite subtle. While {a: {$not: {$gt: 0, $lt: 0}}} is logically more like
+    -- {$not: {a: {$gt: 0, $lt: 0}}}, and should be rewritten into a top-level NotMatchExpr, $not
+    -- behaves differently in the context of $elemMatch value. Consider the following example:
+    --
+    -- {a: {$elemMatch: {$not: {$gt: 0, $lt: 0}}}
+    --
+    -- Here, $not acts as a modifier to the predicate that gets applied to each array element, as
+    -- opposed to acting as the logical negation of an entire MatchExpr.
+    | NotMatchPred MatchPredicate
+    | AndMatchPred [MatchPredicate]
 
     -- This is $exists:true.
     --
@@ -33,7 +52,8 @@ data MatchPredicate
 
     -- $elemMatch.
     | ElemMatchObjectExpr MatchExpr
-    | ElemMatchValueExpr [MatchPredicate]
+    | ElemMatchValueExpr MatchPredicate
+    deriving (Eq, Show)
 
 data MatchExpr
     -- Represents any predicate of the form {"path.to.match": {$example: <predicate>}}.
@@ -43,6 +63,7 @@ data MatchExpr
     | AndMatchExpr [MatchExpr]
     | OrMatchExpr [MatchExpr]
     | NotMatchExpr MatchExpr
+    deriving (Eq, Show)
 
 -- Given a flag indicating array traversal behavior, the name of a function to apply, and the name
 -- of a bound variable containing a value:
@@ -180,8 +201,21 @@ makeMatchPredicateFunction (GTEMatchExpr val) =
         (CompareGTE (Var "x") (Const val))
         (makeTypeBracketingCheck val (Var "x"))))
 
-makeMatchPredicateFunction (NEMatchExpr val) =
-    Function ["x"] (PutBool $ Not (CompareEQ (Var "x") (Const val)))
+makeMatchPredicateFunction (NotMatchPred pred) =
+    let subfunc = makeMatchPredicateFunction pred in
+        Function ["x"] (FunctionDef "subfunc" subfunc
+            (PutBool $ Not $ GetBool (FunctionApp "subfunc" [Var "x"])))
+
+makeMatchPredicateFunction (AndMatchPred subPreds) =
+    let subFuncs = map makeMatchPredicateFunction subPreds
+        -- Generate an expression which is the AND of applying all of the match predicate functions
+        -- to the variable "x".
+        applySubFuncsExpr = foldl
+            (\expr f ->
+                (And (GetBool (FunctionDef "subfunc" f (FunctionApp "subfunc" [Var "x"]))) expr))
+            (GetBool $ Const (BoolValue True))
+            subFuncs in
+                Function ["x"] (PutBool applySubFuncsExpr)
 
 makeMatchPredicateFunction ExistsMatchExpr =
     Function ["x"] (Const $ BoolValue True)
@@ -200,18 +234,12 @@ makeMatchPredicateFunction (ElemMatchObjectExpr subexpr) =
                         (GetBool (Const (BoolValue False))) (Var "x")))))
             (Const $ BoolValue False))
 
-makeMatchPredicateFunction (ElemMatchValueExpr preds) =
-    let subFuncs = map makeMatchPredicateFunction preds
-        -- Generate an expression which is the AND of applying all of the match predicate functions
-        -- to the variable "x".
-        applySubFuncsExpr = foldl
-            (\expr f ->
-                (And (GetBool (FunctionDef "subfunc" f (FunctionApp "subfunc" [Var "x"]))) expr))
-            (GetBool $ Const (BoolValue True))
-            subFuncs
-        applySubFuncsFunc = Function ["x"] (PutBool applySubFuncsExpr)
+makeMatchPredicateFunction (ElemMatchValueExpr pred) =
+    let subfunc = makeMatchPredicateFunction pred
+        applySubfuncFunc = Function ["x"]
+            (FunctionDef "subfunc" subfunc (FunctionApp "subfunc" [Var "x"]))
     in Function ["x"] (If (IsArray (Var "x"))
-        (FunctionDef "runDesugaredElemMatch" applySubFuncsFunc
+        (FunctionDef "runDesugaredElemMatch" applySubfuncFunc
             (FunctionDef "foldFunc"
                 (Function ["v", "init"] (PutBool (Or
                     (GetBool (Var "init"))
@@ -237,8 +265,8 @@ desugarPathAcceptingExpr path (GTMatchExpr val) =
 desugarPathAcceptingExpr path (GTEMatchExpr val) =
     desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GTEMatchExpr val))
 
-desugarPathAcceptingExpr path (NEMatchExpr val) =
-    Not $ desugarMatchExpr (PathAcceptingExpr path (EqMatchExpr val))
+desugarPathAcceptingExpr path (NotMatchPred pred) =
+    Not $ desugarMatchExpr (PathAcceptingExpr path pred)
 
 desugarPathAcceptingExpr path ExistsMatchExpr =
     GetBool $ FunctionDef "exists" (makeMatchPredicateFunction ExistsMatchExpr)
@@ -253,8 +281,8 @@ desugarPathAcceptingExpr path (ElemMatchObjectExpr subexpr) =
         (makeTraversePathExpr
             (reverse $ convertPathToNotTraverseTrailingArrays path) "elemMatchObj")
 
-desugarPathAcceptingExpr path (ElemMatchValueExpr preds) =
-    GetBool $ FunctionDef "elemMatchValue" (makeMatchPredicateFunction (ElemMatchValueExpr preds))
+desugarPathAcceptingExpr path (ElemMatchValueExpr pred) =
+    GetBool $ FunctionDef "elemMatchValue" (makeMatchPredicateFunction (ElemMatchValueExpr pred))
         -- XXX: Right now $elemMatch isn't applied to each element of an array, e.g. the document
         -- {a: [[1, 8]]} does not match the query {a: {$elemMatch: {$gt: 5, $lt: 10}}}. We should
         -- probably allow users to express array behavior, just as we would for any other match
@@ -285,3 +313,187 @@ evalMatchExpr :: MatchExpr -> Value -> Either Error Bool
 evalMatchExpr matchExpr value =
     evalCoreExpr (desugarMatchExpr matchExpr)
         Environment { boundVariables = [("ROOT", value)], definedFunctions = [] }
+
+-- Parses the contents of a $not. The input Document is the "body" in {... $not: { <body> }, ... }.
+parseNotBody :: Document -> Either Error MatchPredicate
+parseNotBody Document { getFields = [] } =
+    Left Error { errCode = FailedToParse, errReason = "$not cannot contain an empty document" }
+
+parseNotBody Document { getFields = subexprs } =
+    do
+        matchPreds <- mapM parseMatchPredicate subexprs
+        Right $ AndMatchPred matchPreds
+
+-- Parses a match expression leaf predicate such as $eq, $lt, $exists, and so on.
+parseMatchPredicate :: (String, Value) -> Either Error MatchPredicate
+parseMatchPredicate ("$eq", v) = Right $ EqMatchExpr v
+parseMatchPredicate ("$lt", v) = Right $ LTMatchExpr v
+parseMatchPredicate ("$lte", v) = Right $ LTEMatchExpr v
+parseMatchPredicate ("$gt", v) = Right $ GTMatchExpr v
+parseMatchPredicate ("$gte", v) = Right $ GTEMatchExpr v
+parseMatchPredicate ("$ne", v) = Right $ NotMatchPred $ EqMatchExpr v
+
+parseMatchPredicate ("$not", DocumentValue subexpr) =
+    parseNotBody subexpr >>= (Right . NotMatchPred)
+
+parseMatchPredicate ("$not", v) = Left Error {
+    errCode = FailedToParse,
+    errReason = "$not requires object but found: " ++ show v }
+
+-- XXX: $exists accepts an arbitrary value as its argument, and interprets whether it is
+-- $exists:true or $exists:false by coercing its argument to a boolean. It should probably only
+-- accept a boolean as its input.
+parseMatchPredicate ("$exists", v) =
+    if isValueTruthy v
+    then Right ExistsMatchExpr
+    else Right $ NotMatchPred ExistsMatchExpr
+
+-- $elemMatch:{} is an $elemMatch object whose subexpression is an empty AND.
+parseMatchPredicate ("$elemMatch", DocumentValue Document { getFields = [] }) =
+    Right $ ElemMatchObjectExpr $ AndMatchExpr []
+
+-- XXX: $elemMatch object and $elemMatch value are very much different things, but they are spelled
+-- the same way in the user-facing language. This requires parsers to do some awkward
+-- disambiguation.
+parseMatchPredicate ("$elemMatch", DocumentValue doc) =
+    let hd = head (getFields doc) in
+        -- Decide whether this is $elemMatch object or $elemMatch value based on whether we can
+        -- parse the first field of the subobject as a MatchPredicate.
+        case parseMatchPredicate hd of
+            Left _ -> matchExprFromDocument doc >>= (Right . ElemMatchObjectExpr)
+            Right _ -> mapM parseMatchPredicate (getFields doc)
+                >>= (Right . ElemMatchValueExpr . AndMatchPred)
+
+parseMatchPredicate ("$elemMatch", v) = Left Error {
+    errCode = FailedToParse,
+    errReason = "Expected nested Document inside $elemMatch but found: " ++ show v }
+
+parseMatchPredicate (p, _) = Left Error {
+    errCode = FailedToParse,
+    errReason = "Unknown path-accepting match expression operator: " ++ p }
+
+-- XXX: Path components in the matcher always explicitly traverse arrays. Users should be able to
+-- indicate whether they want their path component to traverse arrays or not.
+parsePathComponent :: String -> PathComponent
+parsePathComponent ['0'] = PathComponent (FieldNameOrArrayIndex 0) ImplicitlyTraverseArrays
+parsePathComponent (firstChar:rest) =
+    if isDigit firstChar && firstChar /= '0' && all isDigit rest
+    -- XXX: The FieldNameOrArrayIndex path component probably shouldn't exist in the first place,
+    -- but the rules for when a path component is of this type are also surprising. A path component
+    -- string might act as an array index if it is formatted as [1-9][0-9]*. Strings like "00",
+    -- "01", "+1", and "1.0" do not act as array indexes.
+    then PathComponent (FieldNameOrArrayIndex $ read (firstChar:rest)) ImplicitlyTraverseArrays
+    else PathComponent (FieldName (firstChar:rest)) ImplicitlyTraverseArrays
+
+-- Parses a string representation of a path, e.g. "a.b.c" to our internal Path representation.
+parsePath :: String -> Path
+parsePath str = map parsePathComponent (splitOn "." str)
+
+-- Helper for parsing logical match expressions that accept an array of sub-expressions such as
+-- $and, $or, and $nor.
+parseLogicalExpr :: (String, Value) -> Either Error MatchExpr
+parseLogicalExpr (op, ArrayValue Array { getElements = [] }) = Left Error {
+    errCode = FailedToParse,
+    errReason = "$and/$or/$nor must be a nonempty array" }
+
+parseLogicalExpr (op, ArrayValue Array { getElements = elts }) =
+    do
+        subExprs <- mapM (\case
+            (DocumentValue d) -> matchExprFromDocument d
+            val -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Found non-document inside $and/$or/$nor: " ++ show val }) elts
+        case op of
+            "$and" -> Right $ AndMatchExpr subExprs
+            "$nor" -> Right $ NotMatchExpr $ OrMatchExpr subExprs
+            "$or" -> Right $ OrMatchExpr subExprs
+
+parseLogicalExpr (op, val) = Left Error {
+    errCode = FailedToParse,
+    errReason = "$and/$or/$nor must accept an array, but found: " ++ show val }
+
+-- Special handling for {<path>: {$not: <match predicate>}}. The semantics of $not act to negate the
+-- path match expression as a whole, rather than meaning "apply the negative of the match predicate
+-- to each element selected by the path".
+--
+-- XXX: These semantics of $not are fine, but the syntax makes it confusing to users. Users should
+-- probably position the $not on the outside, to make the meaning of the match expression more
+-- clear. That is, {a: {$not: {$gt: 3}}} should probably be written as {$not: {a: {$gt: 3}}}.
+liftNotPred :: Path -> [MatchPredicate] -> MatchExpr
+liftNotPred path [NotMatchPred subPred] = NotMatchExpr $ PathAcceptingExpr path subPred
+liftNotPred path [pred] = PathAcceptingExpr path pred
+
+liftNotPred path (NotMatchPred subPred : tail) =
+    AndMatchExpr $ NotMatchExpr (PathAcceptingExpr path subPred) : [liftNotPred path tail]
+
+liftNotPred path (hd:tail) =
+    AndMatchExpr $ PathAcceptingExpr path hd : [liftNotPred path tail]
+
+-- Parse one (field, value) pair of a match expression document to a MatchExpr.
+--
+-- The semantics of the language is that there is an implicit AND. That is, the match expression
+-- {<path1>: <pred1>, <path2>: <pred2>} is an implicit AND of pred1 and pred2.
+parseOneExpr :: (String, Value) -> Either Error MatchExpr
+-- XXX: I don't see any reason for {$and: []} to be illegal.
+parseOneExpr ("$and", val) = parseLogicalExpr ("$and", val)
+parseOneExpr ("$nor", val) = parseLogicalExpr ("$nor", val)
+parseOneExpr ("$or", val) = parseLogicalExpr ("$or", val)
+
+parseOneExpr ('$':keyword, v) = Left Error {
+        errCode = FailedToParse,
+        errReason = "Unknown top-level match expr: " ++ "$" ++ keyword }
+
+-- XXX: We distinguish between implicit equality and all other path-accepting operators based on
+-- inspection of the first (fieldname, value) pair in the subdocument. This is subject to injection.
+parseOneExpr (path, DocumentValue Document { getFields = ('$':keyword, val):rest }) =
+    let subexprs = ('$':keyword, val):rest in do
+        preds <- mapM parseMatchPredicate subexprs
+        Right $ liftNotPred (parsePath path) preds
+
+-- The implicit equality case. For instance, {a: 9} is implicitly a match expression for whether "a"
+-- is equal to 9.
+parseOneExpr (path, value) =
+    Right $ PathAcceptingExpr (parsePath path) (EqMatchExpr value)
+
+-- Parses a Document to a MatchExpr.
+matchExprFromDocument :: Document -> Either Error MatchExpr
+matchExprFromDocument Document { getFields = [oneField] } = parseOneExpr oneField
+matchExprFromDocument Document { getFields = fields } =
+    mapM parseOneExpr fields >>= (Right . AndMatchExpr)
+
+-- Parses a Value to a match expression. It is important that the data model admits representation
+-- of queries themselves. This is necessary so that queries can be represented as data (e.g. for
+-- serializing them in RPC messages, or for the server's system.profile collection).
+matchExprFromValue :: Value -> Either Error MatchExpr
+matchExprFromValue (DocumentValue d) = matchExprFromDocument d
+matchExprFromValue val = Left Error {
+    errCode = FailedToParse,
+    errReason = "A MatchExpr must be specified as a Document, but found: " ++ show val }
+
+-- Parses an extended JSON string to a match expression.
+parseMatchExprString :: String -> Either Error MatchExpr
+parseMatchExprString str =
+    valueFromString str >>= matchExprFromValue
+
+-- Parses a JSON value to a match expression.
+parseMatchExprJson :: JSON.JSValue -> Either Error MatchExpr
+parseMatchExprJson match =
+    valueFromTextJson match >>= matchExprFromValue
+
+-- Given a match expression and value represented as extended JSON strings, returns whether the
+-- value matches (or an error if the match expression is invalid or cannot be applied).
+evalStringMatchExpr :: String -> String -> Either Error Bool
+evalStringMatchExpr expr value =
+    do
+        parsedExpr <- parseMatchExprString expr
+        parsedVal <- valueFromString value
+        evalMatchExpr parsedExpr parsedVal
+
+-- Given a match expression and value represented as JSON, returns whether the value matches (or an
+-- error if the match expression is invalid or cannot be applied).
+evalJsonMatchExpr :: JSON.JSValue -> JSON.JSValue -> Either Error Bool
+evalJsonMatchExpr expr value =
+    do
+        parsedExpr <- parseMatchExprJson expr
+        parsedVal <- valueFromTextJson value
+        evalMatchExpr parsedExpr parsedVal
