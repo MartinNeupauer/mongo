@@ -90,13 +90,31 @@ extendedJSONTests = TestList [
         getErrCode (valueFromString "1.23"),
 
     "canParseCanonicalExtendedJSONNumberInt" ~: "" ~: Right (IntValue 3) ~=?
-        valueFromString [r|{"$numberInt": 3}|],
+        valueFromString [r|{"$numberInt": "3"}|],
 
-    "parseCanonicalExtendedJSONFailsToParseWhenValueIsString" ~: "" ~: FailedToParse ~=?
+    "parseCanonicalExtendedJSONFailsToParseWhenValueIsJSONNumber" ~: "" ~: FailedToParse ~=?
+        getErrCode (valueFromString [r|{"$numberInt": 3}|]),
+
+    "parseCanonicalExtendedJSONFailsToParseWhenValueIsNonNumericString" ~: "" ~: FailedToParse ~=?
         getErrCode (valueFromString [r|{"$numberInt": "foo"}|]),
 
+    "parseCanonicalExtendedJSONFailsToParseWhenValueIsNotAnInteger" ~: "" ~: FailedToParse ~=?
+        getErrCode (valueFromString [r|{"$numberInt": "3.14"}|]),
+
+    "parseCanonicalExtendedJSONFailsToParseWhenIntOverflowsPositive" ~: "" ~: Overflow ~=?
+        getErrCode (valueFromString [r|{"$numberInt": "100000000000"}|]),
+
+    "parseRelaxedExtendedJSONFailsToParseWhenIntOverflowsPositive" ~: "" ~: Overflow ~=?
+        getErrCode (valueFromString "100000000000"),
+
+    "parseCanonicalExtendedJSONFailsToParseWhenIntOverflowsNegative" ~: "" ~: Overflow ~=?
+        getErrCode (valueFromString [r|{"$numberInt": "-100000000000"}|]),
+
+    "parseRelaxedExtendedJSONFailsToParseWhenIntOverflowsNegative" ~: "" ~: Overflow ~=?
+        getErrCode (valueFromString "-100000000000"),
+
     "parseCanonicalExtendedJSONFailsToParseWithExtraKey" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString [r|{"$numberInt": 3, "$extra": 3}|]),
+        getErrCode (valueFromString [r|{"$numberInt": "3", "$extra": 3}|]),
 
     "canParseCanonicalExtendedJSONUndefined" ~: "" ~: Right UndefinedValue ~=?
         valueFromString [r|{"$undefined": true}|],
@@ -110,20 +128,23 @@ extendedJSONTests = TestList [
     "parseCanonicalExtendedJSONUndefinedFailsWhenThereIsAnExtraKey" ~: "" ~: FailedToParse ~=?
         getErrCode (valueFromString [r|{"$undefined": true, "$extra": true}|]),
 
-    -- XXX: This behavior prevents us from encoding objects that have $-prefixed field names. We
-    -- want the query language to have full expressivity over all valid BSON documents, regardless
-    -- of the contents of their key names, so this restriction should be eliminated.
-    "unknownCanonicalJSONKeywordResultsInError" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString [r|{"$unknown": 3}|]),
+    "unknownCanonicalJSONKeywordIsPermitted" ~: "" ~:
+        Right (DocumentValue Document { getFields = [("$unknown", IntValue 3)] }) ~=?
+        valueFromString [r|{"$unknown": 3}|],
+
+    "canParseQueryPredicateToValue" ~: "" ~:
+        Right (DocumentValue Document { getFields = [("foo",
+            DocumentValue Document { getFields = [("$gt", IntValue 3)]})]}) ~=?
+        valueFromString [r|{"foo": {"$gt": 3}}|],
 
     "canParseArrayContainingCanonicalExtendedJSONEncodings" ~: "" ~:
         Right (ArrayValue Array { getElements = [IntValue (-8), UndefinedValue] }) ~=?
-        valueFromString [r|[{"$numberInt": -8}, {"$undefined": true}]|],
+        valueFromString [r|[{"$numberInt": "-8"}, {"$undefined": true}]|],
 
     "canParseObjectContainingCanonicalExtendedJSONEncodings" ~: "" ~:
         Right (DocumentValue Document {
             getFields = [("foo", IntValue (-8)), ("bar", UndefinedValue)] }) ~=?
-        valueFromString [r|{"foo": {"$numberInt": -8}, "bar": {"$undefined": true}}|]
+        valueFromString [r|{"foo": {"$numberInt": "-8"}, "bar": {"$undefined": true}}|]
     ]
 
 valueTest :: Test

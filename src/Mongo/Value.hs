@@ -42,6 +42,7 @@ module Mongo.Value (
     valueFromTextJson,
     ) where
 
+import Data.Int (Int32)
 import Data.List
 import Data.Monoid
 import Data.Ratio
@@ -58,6 +59,8 @@ data Value
     -- null probably shouldn't be separate values, this is useful for formalizing how the language
     -- is supposed to behave for the Undefined values that already exist in the wild.
     | UndefinedValue
+    -- TODO WRITING-2753: We should use Int32 rather than a regular Int, since BSON int is a 32 bit
+    -- signed integer.
     | IntValue Int
     | BoolValue Bool
     | StringValue String
@@ -272,28 +275,51 @@ compareDocumentEQ (x:xs) (y:ys) =
     else
         and3VL (compareEQ3VL (snd x) (snd y)) (compareDocumentEQ xs ys)
 
+checkForIntOverflow :: Int -> Either Error Int
+checkForIntOverflow myInt =
+    if myInt == (fromIntegral (fromIntegral myInt :: Int32) :: Int)
+    then Right myInt
+    else Left Error { errCode = Overflow, errReason = "Integer overflow: " ++ show myInt }
+
+parseStringToInt :: String -> Either Error Int
+parseStringToInt str = case reads str of
+    [(res, "")] -> checkForIntOverflow res
+    _ -> Left Error {
+        errCode = FailedToParse,
+        errReason = "Could not parse string to int: " ++ str }
+
 decodeJSONNumber :: Rational -> Either Error Value
 decodeJSONNumber x
-    | denominator x == 1 = Right $ IntValue $ fromIntegral $ numerator x
+    | denominator x == 1 = checkForIntOverflow (fromIntegral $ numerator x) >>= (Right . IntValue)
     | otherwise = Left Error {
         errCode = FailedToParse,
         errReason = "Non-integral JSON numbers not yet supported" }
-
--- Decodes an extended JSON type wrapper object, e.g. {$numberInt: 42}, to the appropriate Value, or
--- returns an error if the type wrapper object is not well-formed.
-decodeExtendedJSONTypeWrapper :: [(String, JSON.JSValue)] -> Either Error Value
-decodeExtendedJSONTypeWrapper [("$numberInt", JSON.JSRational false v)] = decodeJSONNumber v
-decodeExtendedJSONTypeWrapper [("$undefined", JSON.JSBool True)] = Right UndefinedValue
-decodeExtendedJSONTypeWrapper _ =
-    Left Error { errCode = FailedToParse, errReason = "Invalid extended JSON type wrapper" }
 
 -- Decodes a JSON object, represented as a list of (string, JSON value) pairs, into a Value. Since
 -- we support the extended JSON format, the JSON object could represent any Value (not just a
 -- Document).
 --
+-- XXX: Extended JSON type wrapper objects which are not recognized just get parsed like normal
+-- objects. This permits extended JSON to be used to encode queries (so long as there are no naming
+-- conflicts between MQL and extended JSON). Instead, extended JSON should probably be improved so
+-- that it has an escaping mechanism for representing objects with $-prefixed keys. Furthermore, we
+-- might want to consider a special character other than "$" in extended JSON, so that it becomes
+-- easier to encode MQL queries.
+--
 -- Returns an error if the object is not valid extended JSON.
 decodeJSONObj :: [(String, JSON.JSValue)] -> Either Error Value
-decodeJSONObj (('$':keyword, v):rest) = decodeExtendedJSONTypeWrapper (('$':keyword, v):rest)
+
+decodeJSONObj [("$numberInt", JSON.JSString s)] =
+    parseStringToInt (JSON.fromJSString s) >>= (Right . IntValue)
+decodeJSONObj (("$numberInt", _):_) = Left Error {
+    errCode = FailedToParse,
+    errReason = "could not parse $numberInt" }
+
+decodeJSONObj [("$undefined", JSON.JSBool True)] = Right UndefinedValue
+decodeJSONObj (("$undefined", _):_) = Left Error {
+    errCode = FailedToParse,
+    errReason = "could not parse $undefined" }
+
 decodeJSONObj obj = mapM (\x -> do
     subVal <- valueFromTextJson $ snd x
     Right (fst x, subVal)) obj

@@ -9,6 +9,7 @@ data ErrorCode
     | InvalidJSON
     | MissingField
     | NotImplemented
+    | Overflow
     | TypeMismatch
     | UnboundVariable
     | UnknownFunction
