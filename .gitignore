@@ -1,6 +1,8 @@
 /dist
+/dist-newstyle
 /.cabal-sandbox
 
+cabal.project.local
 cabal.sandbox.config
 
 *~

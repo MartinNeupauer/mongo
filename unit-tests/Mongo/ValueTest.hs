@@ -1,3 +1,5 @@
+{-# LANGUAGE QuasiQuotes #-}
+
 module Mongo.ValueTest(
     valueTest
     ) where
@@ -5,6 +7,7 @@ module Mongo.ValueTest(
 import Mongo.Error
 import Mongo.Value
 import Test.HUnit
+import Text.RawString.QQ
 
 getErrCode :: Either Error a -> ErrorCode
 getErrCode (Left err) = errCode err
@@ -20,7 +23,7 @@ basicTests = TestList [
 
     "parseFalseValue" ~: "" ~: Right (BoolValue False) ~=? valueFromString "false",
 
-    "parseStringValue" ~: "" ~: Right (StringValue "foo") ~=? valueFromString "\"foo\"",
+    "parseStringValue" ~: "" ~: Right (StringValue "foo") ~=? valueFromString [r|"foo"|],
 
     "parseArrayValue" ~: "" ~:
         Right (ArrayValue Array { getElements = [IntValue 1, IntValue 2] }) ~=?
@@ -32,7 +35,7 @@ basicTests = TestList [
         ("c", DocumentValue Document { getFields = [] }),
         ("d", BoolValue True)
         ] }) ~=?
-            valueFromString "{\"a\": null, \"b\": [], \"c\": {}, \"d\": true}",
+            valueFromString [r|{"a": null, "b": [], "c": {}, "d": true}|],
 
     "nullEqualsNull" ~: "" ~: True ~=? parseValueOrDie "null" `compareEQ` parseValueOrDie "null",
     "nullLTENull" ~: "" ~: True ~=? parseValueOrDie "null" `compareLTE` parseValueOrDie "null",
@@ -46,22 +49,22 @@ basicTests = TestList [
     "int0LTInt5" ~: "" ~: LT ~=? parseValueOrDie "0" `compareValues` parseValueOrDie "5",
 
     "emptyObjLTNonEmpty" ~: "" ~: LT ~=?
-        parseValueOrDie "{}" `compareValues` parseValueOrDie "{\"a\": 1}",
+        parseValueOrDie [r|{}|] `compareValues` parseValueOrDie [r|{"a": 1}|],
 
     "nonEmptyObjGTEmpty" ~: "" ~: GT ~=?
-        parseValueOrDie "{\"a\": 1}" `compareValues` parseValueOrDie "{}",
+        parseValueOrDie [r|{"a": 1}|] `compareValues` parseValueOrDie [r|{}|],
 
     "equalObjects" ~: "" ~: EQ ~=?
-        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
-        parseValueOrDie "{\"a\": 1, \"b\": 2}",
+        parseValueOrDie [r|{"a": 1, "b": 2}|] `compareValues`
+        parseValueOrDie [r|{"a": 1, "b": 2}|],
 
     "objectLTDueToFieldName" ~: "" ~: LT ~=?
-        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
-        parseValueOrDie "{\"a\": 1, \"c\": 2}",
+        parseValueOrDie [r|{"a": 1, "b": 2}|] `compareValues`
+        parseValueOrDie [r|{"a": 1, "c": 2}|],
 
     "objectLTDueToValue" ~: "" ~: LT ~=?
-        parseValueOrDie "{\"a\": 1, \"b\": 2}" `compareValues`
-        parseValueOrDie "{\"a\": 1, \"c\": 3}",
+        parseValueOrDie [r|{"a": 1, "b": 2}|] `compareValues`
+        parseValueOrDie [r|{"a": 1, "c": 3}|],
 
     "emptyArrLTNonEmpty" ~: "" ~: LT ~=? parseValueOrDie "[]" `compareValues` parseValueOrDie "[1]",
 
@@ -74,10 +77,10 @@ basicTests = TestList [
         parseValueOrDie "[1, 3, 3]",
 
     "stringIsGreaterThanInt" ~: "" ~: GT ~=?
-        parseValueOrDie "\"foo\"" `compareValues` parseValueOrDie "1",
+        parseValueOrDie [r|"foo"|] `compareValues` parseValueOrDie "1",
 
     "intIsLessThanString" ~: "" ~: LT ~=?
-        parseValueOrDie "1" `compareValues` parseValueOrDie "\"foo\""
+        parseValueOrDie "1" `compareValues` parseValueOrDie [r|"foo"|]
     ]
 
 extendedJSONTests :: Test
@@ -87,40 +90,40 @@ extendedJSONTests = TestList [
         getErrCode (valueFromString "1.23"),
 
     "canParseCanonicalExtendedJSONNumberInt" ~: "" ~: Right (IntValue 3) ~=?
-        valueFromString "{\"$numberInt\": 3}",
+        valueFromString [r|{"$numberInt": 3}|],
 
     "parseCanonicalExtendedJSONFailsToParseWhenValueIsString" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$numberInt\": \"foo\"}"),
+        getErrCode (valueFromString [r|{"$numberInt": "foo"}|]),
 
     "parseCanonicalExtendedJSONFailsToParseWithExtraKey" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$numberInt\": 3, \"$extra\": 3}"),
+        getErrCode (valueFromString [r|{"$numberInt": 3, "$extra": 3}|]),
 
     "canParseCanonicalExtendedJSONUndefined" ~: "" ~: Right UndefinedValue ~=?
-        valueFromString "{\"$undefined\": true}",
+        valueFromString [r|{"$undefined": true}|],
 
     "parseCanonicalExtendedJSONUndefinedFailsWhenValueIsFalse" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$undefined\": false}"),
+        getErrCode (valueFromString [r|{"$undefined": false}|]),
 
     "parseCanonicalExtendedJSONUndefinedFailsWhenValueIsNumber" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$undefined\": 3}"),
+        getErrCode (valueFromString [r|{"$undefined": 3}|]),
 
     "parseCanonicalExtendedJSONUndefinedFailsWhenThereIsAnExtraKey" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$undefined\": true, \"$extra\": true}"),
+        getErrCode (valueFromString [r|{"$undefined": true, "$extra": true}|]),
 
     -- XXX: This behavior prevents us from encoding objects that have $-prefixed field names. We
     -- want the query language to have full expressivity over all valid BSON documents, regardless
     -- of the contents of their key names, so this restriction should be eliminated.
     "unknownCanonicalJSONKeywordResultsInError" ~: "" ~: FailedToParse ~=?
-        getErrCode (valueFromString "{\"$unknown\": 3}"),
+        getErrCode (valueFromString [r|{"$unknown": 3}|]),
 
     "canParseArrayContainingCanonicalExtendedJSONEncodings" ~: "" ~:
         Right (ArrayValue Array { getElements = [IntValue (-8), UndefinedValue] }) ~=?
-        valueFromString "[{\"$numberInt\": -8}, {\"$undefined\": true}]",
+        valueFromString [r|[{"$numberInt": -8}, {"$undefined": true}]|],
 
     "canParseObjectContainingCanonicalExtendedJSONEncodings" ~: "" ~:
         Right (DocumentValue Document {
             getFields = [("foo", IntValue (-8)), ("bar", UndefinedValue)] }) ~=?
-        valueFromString "{\"foo\": {\"$numberInt\": -8}, \"bar\": {\"$undefined\": true}}"
+        valueFromString [r|{"foo": {"$numberInt": -8}, "bar": {"$undefined": true}}|]
     ]
 
 valueTest :: Test
