@@ -1,7 +1,10 @@
+{-# LANGUAGE LambdaCase #-}
+
 module Mongo.Value (
     Value(..),
     Array(..),
     Document(..),
+    ExtendedJsonMode(..),
 
     getIntValue,
     getBoolValue,
@@ -40,6 +43,9 @@ module Mongo.Value (
     parseValueOrDie,
     valueFromString,
     valueFromTextJson,
+
+    valueToJson,
+    valueToString,
     ) where
 
 import Data.Int (Int32)
@@ -73,6 +79,8 @@ data Value
 -- TODO: Change the kind from * to *->* so they can be made instances of Functor and Applicative.
 newtype Array = Array { getElements::[Value] } deriving (Eq, Show)
 newtype Document = Document { getFields::[(String, Value)] } deriving (Eq, Show)
+
+data ExtendedJsonMode = Canonical | Relaxed
 
 -- Value selectors
 getIntValue :: Value -> Either Error Int
@@ -345,6 +353,34 @@ valueFromString input =
         JSON.Error jsonErrString -> Left Error {
             errCode = InvalidJSON,
             errReason = "JSON failed to parse: " ++ jsonErrString }
+
+-- Serializes a Value to extended JSON 2.0.0. The 'mode' argument indicates whether to serialize in
+-- the canonical or relaxed format.
+--
+-- See https://github.com/mongodb/specifications/blob/master/source/extended-json.rst.
+valueToJson :: Value -> ExtendedJsonMode -> JSON.JSValue
+valueToJson NullValue _ = JSON.JSNull
+valueToJson UndefinedValue _ = JSON.makeObj [("$undefined", JSON.JSBool True)]
+
+valueToJson (IntValue i) Canonical =
+    JSON.makeObj [("$numberInt", JSON.JSString $ JSON.toJSString $ show i)]
+valueToJson (IntValue i) Relaxed = JSON.JSRational False (fromIntegral i)
+
+valueToJson (BoolValue b) _ = JSON.JSBool b
+valueToJson (StringValue s) _ = JSON.JSString $ JSON.toJSString s
+
+valueToJson (ArrayValue Array { getElements = elts } ) mode =
+    JSON.JSArray $ map (`valueToJson` mode) elts
+
+valueToJson (DocumentValue Document { getFields = fields } ) mode =
+    JSON.makeObj $ map (\case (x, y) -> (x, valueToJson y mode)) fields
+
+-- Serializes a Value to extended JSON 2.0.0. The 'mode' argument indicates whether to serialize in
+-- the canonical or relaxed format.
+--
+-- See https://github.com/mongodb/specifications/blob/master/source/extended-json.rst.
+valueToString :: Value -> ExtendedJsonMode -> String
+valueToString str mode = JSON.encode $ valueToJson str mode
 
 -- Parses a JSON string to a value, or throws a fatal exception if parsing fails. Useful for
 -- testing.

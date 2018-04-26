@@ -4,6 +4,7 @@ module Mongo.ValueTest(
     valueTest
     ) where
 
+import Data.Char (isSeparator, isSpace)
 import Mongo.Error
 import Mongo.Value
 import Test.HUnit
@@ -140,7 +141,31 @@ extendedJSONTests = TestList [
     "canParseObjectContainingCanonicalExtendedJSONEncodings" ~: "" ~:
         Right (DocumentValue Document {
             getFields = [("foo", IntValue (-8)), ("bar", UndefinedValue)] }) ~=?
-        valueFromString [r|{"foo": {"$numberInt": "-8"}, "bar": {"$undefined": true}}|]
+        valueFromString [r|{"foo": {"$numberInt": "-8"}, "bar": {"$undefined": true}}|],
+
+    "canSerializeToStringInRelaxedMode" ~: "" ~:
+       [r|{"a":null,"b":{"$undefined":true},"c":42,"d":true,"e":[null,43]}|] ~=?
+        valueToString (DocumentValue Document { getFields = [
+            ("a", NullValue),
+            ("b", UndefinedValue),
+            ("c", IntValue 42),
+            ("d", BoolValue True),
+            ("e", ArrayValue Array { getElements = [NullValue, IntValue 43]})]}) Relaxed,
+
+    "canSerializeToStringInCanonicalMode" ~: "" ~:
+       filter (\x -> not (isSeparator x) && not (isSpace x)) [r|{
+           "a":null,
+           "b":{"$undefined":true},
+           "c":{"$numberInt":"42"},
+           "d":true,
+           "e":[null,{"$numberInt":"43"}]
+        }|] ~=?
+        valueToString (DocumentValue Document { getFields = [
+            ("a", NullValue),
+            ("b", UndefinedValue),
+            ("c", IntValue 42),
+            ("d", BoolValue True),
+            ("e", ArrayValue Array { getElements = [NullValue, IntValue 43]})]}) Canonical
     ]
 
 valueTest :: Test

@@ -31,6 +31,7 @@ library
   other-extensions:
     FlexibleInstances
     GADTs
+    LambdaCase
   build-depends:
     base >=4.8 && <4.11,
     json >=0.9 && <0.10,
