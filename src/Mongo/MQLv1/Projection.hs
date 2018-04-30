@@ -16,7 +16,8 @@ newtype InclusionProjectionNode = InclusionProjectionNode [(PathComponent, Inclu
 -- Generates a core language expression which sets the value of field 'f' in the result of running
 -- expression 'expr' to the Value bound to the variable 'varName'.
 addProjectedField :: String -> String -> CoreExpr Value -> CoreExpr Value
-addProjectedField f varName expr = PutDocument $ SetField (f, Var varName) (GetDocument expr)
+addProjectedField f varName expr =
+    PutDocument $ SetField (GetString (Const (StringValue f)), Var varName) (GetDocument expr)
 
 -- Given an expression that applies a projection subtree to the variable "ROOT", returns an
 -- expression which rebinds the value of the variable "value" to "ROOT", applies the projection, and
@@ -123,8 +124,9 @@ makeProjectSubtreeFunc :: InclusionProjectionNode -> Either Error Function
 makeProjectSubtreeFunc (InclusionProjectionNode inclusions) = do
     foldFuncBody <- foldM accumInclusion (Var "init") inclusions
     return $ Function ["x"] (FunctionDef "foldFunc" (Function ["foldVal", "init"]
-        (Let "fieldName" (SelectElem 0 (GetArray (Var "foldVal")))
-        (Let "value" (SelectElem 1 (GetArray (Var "foldVal"))) foldFuncBody)))
+        (Let "fieldName" (SelectElem (GetInt (Const (IntValue 0))) (GetArray (Var "foldVal")))
+        (Let "value" (SelectElem
+            (GetInt (Const (IntValue 1))) (GetArray (Var "foldVal"))) foldFuncBody)))
         (FoldValue "foldFunc" (Const $ DocumentValue Document { getFields = [] }) (Var "x")))
 
 -- Compiles the projection to a core language expression that returns the result of of applying the

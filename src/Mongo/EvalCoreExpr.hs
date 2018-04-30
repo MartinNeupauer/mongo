@@ -87,16 +87,23 @@ evalCoreExpr (Const c) _ = return c
 
 -- Selectors
 evalCoreExpr (SelectField f v) env =
-    evalCoreExpr v env >>= getField f
+    do
+        field <- evalCoreExpr f env
+        doc <- evalCoreExpr v env
+        getField field doc
 
 evalCoreExpr (SelectElem i v) env =
-    evalCoreExpr v env >>= getElement i
+    do
+        index <- evalCoreExpr i env
+        arr <- evalCoreExpr v env
+        getElement index arr
 
 evalCoreExpr (SetField (f,v) d) env =
     do
+        field <- evalCoreExpr f env
         doc <- evalCoreExpr d env
         val <- evalCoreExpr v env
-        return $ addField (f,val) (removeField f doc)
+        return $ addField (field,val) (removeField field doc)
 
 evalCoreExpr (SetElem (i,v) a) env =
     do
@@ -109,10 +116,16 @@ evalCoreExpr (SetElem (i,v) a) env =
         return Array { getElements = updatedArr }
 
 evalCoreExpr (RemoveField f v) env =
-    removeField f <$> evalCoreExpr v env
+    do
+        field <- evalCoreExpr f env
+        doc <- evalCoreExpr v env
+        return (removeField field doc)
 
 evalCoreExpr (HasField f v) env =
-    hasField f <$> evalCoreExpr v env
+    do
+        field <- evalCoreExpr f env
+        doc <- evalCoreExpr v env
+        return (hasField field doc)
 
 evalCoreExpr (ArrayLength arr) env =
     arrayLength <$> evalCoreExpr arr env

@@ -49,6 +49,20 @@ instance Parseable Bool where
                 errReason = "Unknown expression returning Bool: " ++ token
             }
 
+instance Parseable String where
+    parseP (DocumentValue d) =
+        case getFields d of
+            [] -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Expected expression returning String, but found empty document"
+            }
+            ("$const",args):_ -> return $ GetString $ Const args
+            -- TODO: handle string expressions ($concat, $toUpper/Lower, etc).
+            (token,_):_ -> Left Error {
+                errCode = FailedToParse,
+                errReason = "Unknown expression returning String: " ++ token
+            }
+
 instance Parseable Value where
     parseP (DocumentValue d) =
         case getFields d of
@@ -111,7 +125,7 @@ parseEq = parseBinaryOp CompareEQ
 parseFieldOp operator params =
     do
         pa <- getArrayValue params
-        field <- getStringValue (getElements pa !! 0)
+        field <- parseP (getElements pa !! 0)
         doc <- parseP (getElements pa !! 1)
         return $ operator field doc
 
@@ -121,14 +135,14 @@ parseRemoveField = parseFieldOp RemoveField
 parseSelectElem params =
     do
         pa <- getArrayValue params
-        elem <- getIntValue (getElements pa !! 0)
+        elem <- parseP (getElements pa !! 0)
         array <- parseP (getElements pa !! 1)
         return $ SelectElem elem array
         
 parseSetField params =
     do
         pa <- getArrayValue params
-        field <- getStringValue (getElements pa !! 0)
+        field <- parseP (getElements pa !! 0)
         val <- parseP (getElements pa !! 1)
         doc <- parseP (getElements pa !! 2)
         return $ SetField (field,val) doc

@@ -16,17 +16,13 @@ data Function = Function [String] (CoreExpr Value)
 -- expressions, agg expressions, projection, and updates should be implementable in terms of the
 -- core language.
 data CoreExpr a where
-    -- Note that the first parameter is String not CoreExpr (String). It means that the field names
-    -- are fixed in a query text and cannot by computed during the runtime. We may want to revisit
-    -- this assumption.
-    SelectField::String->CoreExpr Document->CoreExpr Value
-    -- Same applies to array indices
-    SelectElem::Int->CoreExpr Array->CoreExpr Value
+    SelectField::CoreExpr String->CoreExpr Document->CoreExpr Value
+    SelectElem::CoreExpr Int->CoreExpr Array->CoreExpr Value
 
     -- If the field does not exist in the document then it is added to it, otherwise it is overwritten
-    SetField::(String, CoreExpr Value)->CoreExpr Document->CoreExpr Document
-    RemoveField::String->CoreExpr Document->CoreExpr Document
-    HasField::String->CoreExpr Document->CoreExpr Bool
+    SetField::(CoreExpr String, CoreExpr Value)->CoreExpr Document->CoreExpr Document
+    RemoveField::CoreExpr String->CoreExpr Document->CoreExpr Document
+    HasField::CoreExpr String->CoreExpr Document->CoreExpr Bool
 
     -- When needed, the array is extended with NullValue until i <= the length of the array.
     SetElem::(CoreExpr Int, CoreExpr Value)->CoreExpr Array->CoreExpr Array
