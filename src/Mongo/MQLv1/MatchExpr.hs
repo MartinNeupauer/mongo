@@ -4,8 +4,8 @@ module Mongo.MQLv1.MatchExpr(
     MatchExpr(..),
     MatchPredicate(..),
 
-    evalMatchExpr,
     evalJsonMatchExpr,
+    evalMatchExpr,
     evalStringMatchExpr,
     parseMatchExprJson,
     parseMatchExprString,

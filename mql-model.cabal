@@ -23,6 +23,7 @@ library
     Mongo.CoreExpr
     Mongo.Error
     Mongo.EvalCoreExpr
+    Mongo.MQLv1.Find
     Mongo.MQLv1.MatchExpr
     Mongo.MQLv1.Path
     Mongo.MQLv1.Projection
