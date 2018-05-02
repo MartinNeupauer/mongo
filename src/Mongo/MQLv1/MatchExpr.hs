@@ -24,11 +24,11 @@ import qualified Text.JSON as JSON
 -- or {$exists: true}.
 data MatchPredicate
     -- Comparisons.
-    = EqMatchExpr Value
-    | LTEMatchExpr Value
-    | LTMatchExpr Value
-    | GTMatchExpr Value
-    | GTEMatchExpr Value
+    = EqMatchPred Value
+    | LteMatchPred Value
+    | LtMatchPred Value
+    | GtMatchPred Value
+    | GteMatchPred Value
 
     -- XXX: This is quite subtle. While {a: {$not: {$gt: 0, $lt: 0}}} is logically more like
     -- {$not: {a: {$gt: 0, $lt: 0}}}, and should be rewritten into a top-level NotMatchExpr, $not
@@ -43,16 +43,16 @@ data MatchPredicate
 
     -- This is $exists:true.
     --
-    -- TODO: For now we assume that $exists:false is parsed to NotExpr (ExistsMatchExpr ..). In the
+    -- TODO: For now we assume that $exists:false is parsed to NotExpr (ExistsMatchPred ..). In the
     -- future, we may wish to express $exists:false in terms of a flavor of match expression where
     -- all selected elements must match (and the document vacuously matches if there are no such
     -- elements). For the moment, however, match expressions always have "any selected element
     -- matches" semantics.
-    | ExistsMatchExpr
+    | ExistsMatchPred
 
     -- $elemMatch.
-    | ElemMatchObjectExpr MatchExpr
-    | ElemMatchValueExpr MatchPredicate
+    | ElemMatchObjectPred MatchExpr
+    | ElemMatchValuePred MatchPredicate
     deriving (Eq, Show)
 
 data MatchExpr
@@ -178,25 +178,25 @@ makeTypeBracketingCheck (DocumentValue _) expr = IsDocument expr
 -- Returns a one-argument core language function which implements the match predicate. The function
 -- accepts a value and returns a boolean indicating whether or not the value matches.
 makeMatchPredicateFunction :: MatchPredicate -> Function
-makeMatchPredicateFunction (EqMatchExpr val) =
+makeMatchPredicateFunction (EqMatchPred val) =
     Function ["x"] (PutBool $ CompareEQ (Var "x") (Const val))
 
-makeMatchPredicateFunction (LTMatchExpr val) =
+makeMatchPredicateFunction (LtMatchPred val) =
     Function ["x"] (PutBool (And
         (CompareLT (Var "x") (Const val))
         (makeTypeBracketingCheck val (Var "x"))))
 
-makeMatchPredicateFunction (LTEMatchExpr val) =
+makeMatchPredicateFunction (LteMatchPred val) =
     Function ["x"] (PutBool (And
         (CompareLTE (Var "x") (Const val))
         (makeTypeBracketingCheck val (Var "x"))))
 
-makeMatchPredicateFunction (GTMatchExpr val) =
+makeMatchPredicateFunction (GtMatchPred val) =
     Function ["x"] (PutBool (And
         (CompareGT (Var "x") (Const val))
         (makeTypeBracketingCheck val (Var "x"))))
 
-makeMatchPredicateFunction (GTEMatchExpr val) =
+makeMatchPredicateFunction (GteMatchPred val) =
     Function ["x"] (PutBool (And
         (CompareGTE (Var "x") (Const val))
         (makeTypeBracketingCheck val (Var "x"))))
@@ -217,10 +217,10 @@ makeMatchPredicateFunction (AndMatchPred subPreds) =
             subFuncs in
                 Function ["x"] (PutBool applySubFuncsExpr)
 
-makeMatchPredicateFunction ExistsMatchExpr =
+makeMatchPredicateFunction ExistsMatchPred =
     Function ["x"] (Const $ BoolValue True)
 
-makeMatchPredicateFunction (ElemMatchObjectExpr subexpr) =
+makeMatchPredicateFunction (ElemMatchObjectPred subexpr) =
     let desugaredSubExpr = desugarMatchExpr subexpr
         -- The value on which we're calling the desugared subexpression becomes the new root.
         subexprFunc = Function ["ROOT"] (PutBool desugaredSubExpr) in
@@ -234,7 +234,7 @@ makeMatchPredicateFunction (ElemMatchObjectExpr subexpr) =
                         (GetBool (Const (BoolValue False))) (Var "x")))))
             (Const $ BoolValue False))
 
-makeMatchPredicateFunction (ElemMatchValueExpr pred) =
+makeMatchPredicateFunction (ElemMatchValuePred pred) =
     let subfunc = makeMatchPredicateFunction pred
         applySubfuncFunc = Function ["x"]
             (FunctionDef "subfunc" subfunc (FunctionApp "subfunc" [Var "x"]))
@@ -250,30 +250,30 @@ makeMatchPredicateFunction (ElemMatchValueExpr pred) =
 
 -- Compiles a MatchExpr which accepts a path into a core language expression.
 desugarPathAcceptingExpr :: Path -> MatchPredicate -> CoreExpr Bool
-desugarPathAcceptingExpr path (EqMatchExpr val) =
-    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (EqMatchExpr val))
+desugarPathAcceptingExpr path (EqMatchPred val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (EqMatchPred val))
 
-desugarPathAcceptingExpr path (LTMatchExpr val) =
-    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LTMatchExpr val))
+desugarPathAcceptingExpr path (LtMatchPred val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LtMatchPred val))
 
-desugarPathAcceptingExpr path (LTEMatchExpr val) =
-    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LTEMatchExpr val))
+desugarPathAcceptingExpr path (LteMatchPred val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (LteMatchPred val))
 
-desugarPathAcceptingExpr path (GTMatchExpr val) =
-    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GTMatchExpr val))
+desugarPathAcceptingExpr path (GtMatchPred val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GtMatchPred val))
 
-desugarPathAcceptingExpr path (GTEMatchExpr val) =
-    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GTEMatchExpr val))
+desugarPathAcceptingExpr path (GteMatchPred val) =
+    desugarComparisonMatchExpr path val (makeMatchPredicateFunction (GteMatchPred val))
 
 desugarPathAcceptingExpr path (NotMatchPred pred) =
     Not $ desugarMatchExpr (PathAcceptingExpr path pred)
 
-desugarPathAcceptingExpr path ExistsMatchExpr =
-    GetBool $ FunctionDef "exists" (makeMatchPredicateFunction ExistsMatchExpr)
+desugarPathAcceptingExpr path ExistsMatchPred =
+    GetBool $ FunctionDef "exists" (makeMatchPredicateFunction ExistsMatchPred)
         (makeTraversePathExpr (reverse $ convertPathToNotTraverseTrailingArrays path) "exists")
 
-desugarPathAcceptingExpr path (ElemMatchObjectExpr subexpr) =
-    GetBool $ FunctionDef "elemMatchObj" (makeMatchPredicateFunction (ElemMatchObjectExpr subexpr))
+desugarPathAcceptingExpr path (ElemMatchObjectPred subexpr) =
+    GetBool $ FunctionDef "elemMatchObj" (makeMatchPredicateFunction (ElemMatchObjectPred subexpr))
         -- XXX: Right now $elemMatch isn't applied to each element of an array, e.g. the document
         -- {a: [[{b: 1, c: 1}]]} does not match the query {a: {$elemMatch: {b: 1, c: 1}}}. We should
         -- probably allow users to express array behavior, just as we would for any other match
@@ -281,8 +281,8 @@ desugarPathAcceptingExpr path (ElemMatchObjectExpr subexpr) =
         (makeTraversePathExpr
             (reverse $ convertPathToNotTraverseTrailingArrays path) "elemMatchObj")
 
-desugarPathAcceptingExpr path (ElemMatchValueExpr pred) =
-    GetBool $ FunctionDef "elemMatchValue" (makeMatchPredicateFunction (ElemMatchValueExpr pred))
+desugarPathAcceptingExpr path (ElemMatchValuePred pred) =
+    GetBool $ FunctionDef "elemMatchValue" (makeMatchPredicateFunction (ElemMatchValuePred pred))
         -- XXX: Right now $elemMatch isn't applied to each element of an array, e.g. the document
         -- {a: [[1, 8]]} does not match the query {a: {$elemMatch: {$gt: 5, $lt: 10}}}. We should
         -- probably allow users to express array behavior, just as we would for any other match
@@ -326,12 +326,12 @@ parseNotBody Document { getFields = subexprs } =
 
 -- Parses a match expression leaf predicate such as $eq, $lt, $exists, and so on.
 parseMatchPredicate :: (String, Value) -> Either Error MatchPredicate
-parseMatchPredicate ("$eq", v) = Right $ EqMatchExpr v
-parseMatchPredicate ("$lt", v) = Right $ LTMatchExpr v
-parseMatchPredicate ("$lte", v) = Right $ LTEMatchExpr v
-parseMatchPredicate ("$gt", v) = Right $ GTMatchExpr v
-parseMatchPredicate ("$gte", v) = Right $ GTEMatchExpr v
-parseMatchPredicate ("$ne", v) = Right $ NotMatchPred $ EqMatchExpr v
+parseMatchPredicate ("$eq", v) = Right $ EqMatchPred v
+parseMatchPredicate ("$lt", v) = Right $ LtMatchPred v
+parseMatchPredicate ("$lte", v) = Right $ LteMatchPred v
+parseMatchPredicate ("$gt", v) = Right $ GtMatchPred v
+parseMatchPredicate ("$gte", v) = Right $ GteMatchPred v
+parseMatchPredicate ("$ne", v) = Right $ NotMatchPred $ EqMatchPred v
 
 parseMatchPredicate ("$not", DocumentValue subexpr) =
     parseNotBody subexpr >>= (Right . NotMatchPred)
@@ -345,12 +345,12 @@ parseMatchPredicate ("$not", v) = Left Error {
 -- accept a boolean as its input.
 parseMatchPredicate ("$exists", v) =
     if isValueTruthy v
-    then Right ExistsMatchExpr
-    else Right $ NotMatchPred ExistsMatchExpr
+    then Right ExistsMatchPred
+    else Right $ NotMatchPred ExistsMatchPred
 
 -- $elemMatch:{} is an $elemMatch object whose subexpression is an empty AND.
 parseMatchPredicate ("$elemMatch", DocumentValue Document { getFields = [] }) =
-    Right $ ElemMatchObjectExpr $ AndMatchExpr []
+    Right $ ElemMatchObjectPred $ AndMatchExpr []
 
 -- XXX: $elemMatch object and $elemMatch value are very much different things, but they are spelled
 -- the same way in the user-facing language. This requires parsers to do some awkward
@@ -360,9 +360,9 @@ parseMatchPredicate ("$elemMatch", DocumentValue doc) =
         -- Decide whether this is $elemMatch object or $elemMatch value based on whether we can
         -- parse the first field of the subobject as a MatchPredicate.
         case parseMatchPredicate hd of
-            Left _ -> matchExprFromDocument doc >>= (Right . ElemMatchObjectExpr)
+            Left _ -> matchExprFromDocument doc >>= (Right . ElemMatchObjectPred)
             Right _ -> mapM parseMatchPredicate (getFields doc)
-                >>= (Right . ElemMatchValueExpr . AndMatchPred)
+                >>= (Right . ElemMatchValuePred . AndMatchPred)
 
 parseMatchPredicate ("$elemMatch", v) = Left Error {
     errCode = FailedToParse,
@@ -453,7 +453,7 @@ parseOneExpr (path, DocumentValue Document { getFields = ('$':keyword, val):rest
 -- The implicit equality case. For instance, {a: 9} is implicitly a match expression for whether "a"
 -- is equal to 9.
 parseOneExpr (path, value) =
-    Right $ PathAcceptingExpr (parsePath path) (EqMatchExpr value)
+    Right $ PathAcceptingExpr (parsePath path) (EqMatchPred value)
 
 -- Parses a Document to a MatchExpr.
 matchExprFromDocument :: Document -> Either Error MatchExpr
