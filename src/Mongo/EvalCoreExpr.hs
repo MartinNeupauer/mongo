@@ -151,6 +151,9 @@ evalCoreExpr (PutInt v) env =
 evalCoreExpr (PutBool b) env =
     BoolValue <$> evalCoreExpr b env
 
+evalCoreExpr (PutString s) env =
+    StringValue <$> evalCoreExpr s env
+
 evalCoreExpr (PutArray v) env =
     ArrayValue <$> evalCoreExpr v env
 

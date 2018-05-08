@@ -4,6 +4,7 @@ import Mongo.EvalCoreExprTest (evalCoreExprTest)
 import Mongo.MQLv1.MatchExprTest (matchExprTest)
 import Mongo.MQLv1.PathTest (pathTest)
 import Mongo.MQLv1.ProjectionTest (projectionTest)
+import Mongo.ParseCoreExprTest (parseTest)
 import Mongo.ValueTest (valueTest)
 import System.Exit (exitFailure, exitSuccess)
 import Test.HUnit
@@ -15,7 +16,8 @@ allTests = TestList [
     matchExprTest,
     pathTest,
     projectionTest,
-    valueTest
+    valueTest,
+    parseTest
     ]
 
 main :: IO Counts
