@@ -1,4 +1,4 @@
-{-# LANGUAGE GADTs #-}
+{-# LANGUAGE StandaloneDeriving, GADTs #-}
 
 module Mongo.CoreExpr (
     CoreExpr(..),
@@ -9,7 +9,7 @@ import Mongo.Bool3VL
 import Mongo.Value
 
 -- A function consists of a list of formal parameter names, and a body.
-data Function = Function [String] (CoreExpr Value)
+data Function = Function [String] (CoreExpr Value) deriving (Eq, Show)
 
 -- The core expression language. It is an abstract data structure with no particular concrete
 -- syntax.  This language should be small and stable. User-facing pieces of MQL such as match
@@ -36,8 +36,9 @@ data CoreExpr a where
     GetArray::CoreExpr Value->CoreExpr Array
     GetDocument::CoreExpr Value->CoreExpr Document
 
-    PutBool :: CoreExpr Bool -> CoreExpr Value
     PutInt::CoreExpr Int->CoreExpr Value
+    PutBool:: CoreExpr Bool -> CoreExpr Value
+    PutString:: CoreExpr String -> CoreExpr Value
     PutArray::CoreExpr Array->CoreExpr Value
     PutDocument::CoreExpr Document ->CoreExpr Value
 
@@ -115,3 +116,6 @@ data CoreExpr a where
     -- Useful for determining whether all Values in an Array or Document match some predicate, or
     -- whether any Value in an Array or Document matches some predicate.
     FoldBool :: String -> CoreExpr Bool -> CoreExpr Value -> CoreExpr Bool
+
+deriving instance Eq (CoreExpr a)
+deriving instance Show (CoreExpr a)

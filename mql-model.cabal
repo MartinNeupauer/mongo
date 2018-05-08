@@ -65,6 +65,7 @@ Test-Suite mql-unittests
     Mongo.MQLv1.MatchExprTest
     Mongo.MQLv1.PathTest
     Mongo.MQLv1.ProjectionTest
+    Mongo.ParseCoreExprTest
     Mongo.ValueTest
   build-depends:
     base >=4.8 && <4.11,
