@@ -7,7 +7,6 @@ module Mongo.ParseCoreExpr (
     parseP,
     ) where
 
-import Data.Int (Int32)
 import Data.List
 import Mongo.CoreExpr
 import Mongo.Error
@@ -89,7 +88,7 @@ class Parseable a where
     parseP :: Value -> Either Error (CoreExpr a)
     parseP _ = Left Error { errCode = NotImplemented, errReason = "Expression not parseable" }
 
-instance Parseable Int32 where
+instance Parseable Int where
     parseP (DocumentValue d) =
         case getFields d of
             [] -> Left Error {

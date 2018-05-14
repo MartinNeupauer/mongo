@@ -110,8 +110,7 @@ evalCoreExpr (SetElem (i,v) a) env =
         arr <- getElements <$> evalCoreExpr a env
         val <- evalCoreExpr v env
         index <- evalCoreExpr i env
-        let updatedArr = case (take (fromIntegral index::Int) (arr ++ repeat NullValue),
-                               drop (fromIntegral index::Int) arr) of
+        let updatedArr = case (take index (arr ++ repeat NullValue), drop index arr) of
                             (x,y:ys) -> x ++ (val:ys)
                             (x,[]) -> x ++ [val]
         return Array { getElements = updatedArr }

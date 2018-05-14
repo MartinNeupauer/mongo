@@ -11,7 +11,6 @@ module Mongo.MQLv1.Path(
     pathFromStringForTest,
     ) where
 
-import Data.Int (Int32)
 import Data.List.Split
 import Mongo.Error
 
@@ -19,8 +18,8 @@ import Mongo.Error
 -- either (depending on whether the input is an object or array).
 data PathComponentType
     = FieldName String
-    | ArrayIndex Int32
-    | FieldNameOrArrayIndex Int32
+    | ArrayIndex Int
+    | FieldNameOrArrayIndex Int
     deriving (Eq, Show)
 
 -- In some contexts in MQL, paths imply specific behavior around arrays. In the match language, for

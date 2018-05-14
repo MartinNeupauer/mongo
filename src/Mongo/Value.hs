@@ -68,7 +68,7 @@ data Value
     | UndefinedValue
     -- TODO WRITING-2753: We should use Int32 rather than a regular Int, since BSON int is a 32 bit
     -- signed integer.
-    | IntValue Int32
+    | IntValue Int
     | BoolValue Bool
     | StringValue String
     | ArrayValue Array
@@ -84,7 +84,7 @@ newtype Document = Document { getFields::[(String, Value)] } deriving (Eq, Show)
 data ExtendedJsonMode = Canonical | Relaxed
 
 -- Value selectors
-getIntValue :: Value -> Either Error Int32
+getIntValue :: Value -> Either Error Int
 getIntValue (IntValue i) = Right i
 getIntValue val = Left
     Error { errCode = TypeMismatch, errReason = "Expected Int but found: " ++ show val }
@@ -166,16 +166,15 @@ hasField :: String -> Document -> Bool
 hasField field (Document document) = Data.Maybe.isJust (lookup field document)
 
 removeField::String->Document->Document
-removeField field (Document document) =
-    Document $ deleteBy (\lhs rhs -> fst lhs == fst rhs) (field, NullValue) document
+removeField field (Document document) = Document $ deleteBy (\lhs rhs -> fst lhs == fst rhs) (field, NullValue) document
 
 addElement::Value->Array->Array
 addElement value (Array array) = Array $ array ++ [value]
 
-arrayLength :: Array -> Int32
-arrayLength Array { getElements = arr } = fromIntegral (length arr)::Int32
+arrayLength :: Array -> Int
+arrayLength Array { getElements = arr } = length arr
 
-getElement :: Int32 -> Array -> Either Error Value
+getElement :: Int -> Array -> Either Error Value
 getElement index (Array array)
     | index < 0 = Left Error {
         errCode = ArrayIndexOutOfBounds,
@@ -186,16 +185,16 @@ getElement index (Array array)
                     ++ show index
                     ++ " out of bounds. Array length: "
                     ++ show arrLen }
-    | otherwise = Right (array !! (fromIntegral index::Int))
-    where arrLen = fromIntegral (length array)::Int32
+    | otherwise = Right (array !! index)
+    where arrLen = length array
 
 deleteNth n xs = let (a, b) = splitAt n xs in a ++ tail b
 
-removeElement::Int32->Array->Array
+removeElement::Int->Array->Array
 removeElement index (Array array) =
-    if index >=0 && index < (fromIntegral (length array)::Int32)
+    if index >=0 && index < length array
         then
-            Array $ deleteNth (fromIntegral index::Int) array
+            Array $ deleteNth index array
         else
             Array array
 
@@ -293,13 +292,13 @@ compareDocumentEQ (x:xs) (y:ys) =
     else
         and3VL (compareEQ3VL (snd x) (snd y)) (compareDocumentEQ xs ys)
 
-checkForIntOverflow :: Int -> Either Error Int32
+checkForIntOverflow :: Int -> Either Error Int
 checkForIntOverflow myInt =
     if myInt == (fromIntegral (fromIntegral myInt :: Int32) :: Int)
-    then Right (fromIntegral myInt :: Int32)
+    then Right myInt
     else Left Error { errCode = Overflow, errReason = "Integer overflow: " ++ show myInt }
 
-parseStringToInt :: String -> Either Error Int32
+parseStringToInt :: String -> Either Error Int
 parseStringToInt str = case reads str of
     [(res, "")] -> checkForIntOverflow res
     _ -> Left Error {
