@@ -4,6 +4,7 @@ module Mongo.ParseCoreExprTest(
     parseTest
     ) where
 
+import Data.Int (Int32)
 import Data.Char (isSeparator, isSpace)
 import Mongo.CoreExpr
 import Mongo.Error
@@ -22,7 +23,7 @@ testValueExpr = Const (IntValue 5)
 parseTest :: Test
 parseTest = TestList [
     "roundtripConst" ~: Right (Const (IntValue 5)) ~=? parseP (coreExprToValue (Const (IntValue 5))),
-    "roundtripConst2" ~: (parseP (parseValueOrDie [r|{"$const": 5}|])::Either Error (CoreExpr Int)) ~=? parseP (coreExprToValue (Const (IntValue 5))),
+    "roundtripConst2" ~: (parseP (parseValueOrDie [r|{"$const": 5}|])::Either Error (CoreExpr Int32)) ~=? parseP (coreExprToValue (Const (IntValue 5))),
 
     "roundtripSelectField" ~: Right (SelectField testStringExpr testDocumentExpr) ~=? 
         parseP (coreExprToValue (SelectField testStringExpr testDocumentExpr)),

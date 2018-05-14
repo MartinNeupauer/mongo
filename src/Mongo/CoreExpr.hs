@@ -5,6 +5,7 @@ module Mongo.CoreExpr (
     Function(..),
     ) where
 
+import Data.Int (Int32)
 import Mongo.Bool3VL
 import Mongo.Value
 
@@ -17,7 +18,7 @@ data Function = Function [String] (CoreExpr Value) deriving (Eq, Show)
 -- core language.
 data CoreExpr a where
     SelectField::CoreExpr String->CoreExpr Document->CoreExpr Value
-    SelectElem::CoreExpr Int->CoreExpr Array->CoreExpr Value
+    SelectElem::CoreExpr Int32->CoreExpr Array->CoreExpr Value
 
     -- If the field does not exist in the document then it is added to it, otherwise it is overwritten
     SetField::(CoreExpr String, CoreExpr Value)->CoreExpr Document->CoreExpr Document
@@ -25,18 +26,18 @@ data CoreExpr a where
     HasField::CoreExpr String->CoreExpr Document->CoreExpr Bool
 
     -- When needed, the array is extended with NullValue until i <= the length of the array.
-    SetElem::(CoreExpr Int, CoreExpr Value)->CoreExpr Array->CoreExpr Array
+    SetElem::(CoreExpr Int32, CoreExpr Value)->CoreExpr Array->CoreExpr Array
 
-    ArrayLength :: CoreExpr Array -> CoreExpr Int
+    ArrayLength :: CoreExpr Array -> CoreExpr Int32
 
     -- Selectors for the Value.
-    GetInt::CoreExpr Value->CoreExpr Int
+    GetInt::CoreExpr Value->CoreExpr Int32
     GetBool::CoreExpr Value->CoreExpr Bool
     GetString::CoreExpr Value->CoreExpr String
     GetArray::CoreExpr Value->CoreExpr Array
     GetDocument::CoreExpr Value->CoreExpr Document
 
-    PutInt::CoreExpr Int->CoreExpr Value
+    PutInt::CoreExpr Int32->CoreExpr Value
     PutBool:: CoreExpr Bool -> CoreExpr Value
     PutString:: CoreExpr String -> CoreExpr Value
     PutArray::CoreExpr Array->CoreExpr Value
@@ -60,8 +61,8 @@ data CoreExpr a where
     Const::Value->CoreExpr Value
 
     -- Arithmetic
-    Plus::CoreExpr Int->CoreExpr Int->CoreExpr Int
-    Minus::CoreExpr Int->CoreExpr Int->CoreExpr Int
+    Plus::CoreExpr Int32->CoreExpr Int32->CoreExpr Int32
+    Minus::CoreExpr Int32->CoreExpr Int32->CoreExpr Int32
 
     -- Comparisons
     -- TODO: Avoid polymorphic comparisons?
