@@ -3,6 +3,7 @@ module Mongo.Error(
     Error(..),
 
     getErrCode,
+    errorToString
     ) where
 
 data ErrorCode
@@ -26,3 +27,6 @@ data Error = Error { errCode :: ErrorCode, errReason :: String } deriving (Eq, S
 getErrCode :: Either Error a -> ErrorCode
 getErrCode (Left err) = errCode err
 getErrCode _ = error "Expected an error, but did not get one"
+
+errorToString :: Error -> String
+errorToString e = "Error code: " ++ show (errCode e) ++ " Error reason: " ++ errReason e 

@@ -9,6 +9,7 @@ module Mongo.MQLv1.MatchExpr(
     evalStringMatchExpr,
     parseMatchExprJson,
     parseMatchExprString,
+    desugarMatchExpr,
     ) where
 
 import Data.Char (isDigit)
