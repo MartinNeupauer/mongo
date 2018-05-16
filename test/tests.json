@@ -1,0 +1,4 @@
+[
+	{"match" : "match1.json", "data" : "data1.json", "expected" : true},
+	{"match" : "match2.json", "data" : "data1.json", "expected" : false}
+]
