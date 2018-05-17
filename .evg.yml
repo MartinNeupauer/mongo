@@ -1,0 +1,175 @@
+# When a task that used to pass starts to fail, go through all versions that may have been skipped
+# to detect when the task started failing.
+stepback: true
+
+# Protect ourself against rogue test case, or curl gone wild, that runs forever; 12 minutes is the
+# longest we'll ever run.
+exec_timeout_secs: 3600
+
+# What to do when evergreen hits the timeout (`post:` tasks are run automatically)
+timeout:
+  - command: shell.exec
+    params:
+      script: |
+        ls -la
+
+functions:
+  fetch-source:
+    - command: git.get_project
+      type: system
+      params:
+        directory: src/github.com/10gen/mql-model
+
+  init-sandbox:
+    - command: shell.exec
+      type: system
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          cabal update
+          cabal sandbox init
+
+  install-dependencies:
+    - command: shell.exec
+      type: system
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          cabal install --enable-relocatable --only-dependencies --enable-tests -j
+
+  build:
+    - command: shell.exec
+      type: test
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          cabal install --enable-relocatable --enable-tests -j
+
+  archive-sandbox:
+    - command: archive.targz_pack
+      type: system
+      params:
+        target: "sandbox.tgz"
+        source_dir: src/github.com/10gen/mql-model
+        include:
+          - ".cabal-sandbox/**"
+    - command: s3.put
+      type: system
+      params:
+        aws_key: ${aws_key}
+        aws_secret: ${aws_secret}
+        local_file: sandbox.tgz
+        remote_file: mql-model/${build_id}/sandbox.tgz
+        bucket: mciuploads
+        permissions: private
+        content_type: application/x-gzip
+        visibility: none
+
+  archive-dist:
+    - command: archive.targz_pack
+      type: system
+      params:
+        target: "dist.tgz"
+        source_dir: src/github.com/10gen/mql-model
+        include:
+          - "dist/**"
+    - command: s3.put
+      type: system
+      params:
+        aws_key: ${aws_key}
+        aws_secret: ${aws_secret}
+        local_file: dist.tgz
+        remote_file: mql-model/${build_id}/dist.tgz
+        bucket: mciuploads
+        permissions: private
+        content_type: application/x-gzip
+        visibility: none
+
+  fetch-sandbox:
+    - command: shell.exec
+      type: system
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          rm -rf .cabal-sandbox
+    - command: s3.get
+      type: system
+      params:
+        aws_key: ${aws_key}
+        aws_secret: ${aws_secret}
+        remote_file: mql-model/${build_id}/sandbox.tgz
+        bucket: mciuploads
+        extract_to: src/github.com/10gen/mql-model
+
+  fetch-dist:
+    - command: s3.get
+      type: system
+      params:
+        aws_key: ${aws_key}
+        aws_secret: ${aws_secret}
+        remote_file: mql-model/${build_id}/dist.tgz
+        bucket: mciuploads
+        extract_to: src/github.com/10gen/mql-model
+
+  fix-hlint-yaml:
+    - command: shell.exec
+      type: system
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          mkdir -p dist/build/mql-lint/data
+          cp .cabal-sandbox/share/x86_64-linux-ghc-7.10.3/hlint-2.1.5/hlint.yaml dist/build/mql-lint/data/
+
+  hlint:
+    - command: shell.exec
+      type: test
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          cabal test mql-lint
+
+  run-tests:
+    - command: shell.exec
+      type: test
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          cabal test mql-unittests
+
+pre:
+  - func: fetch-source
+  - func: init-sandbox
+
+tasks:
+  - name: build
+    commands:
+      - func: install-dependencies
+      - func: build
+      - func: archive-sandbox
+      - func: archive-dist
+
+  - name: hlint
+    depends_on:
+      - name: build
+    commands:
+      - func: fetch-sandbox
+      - func: fix-hlint-yaml
+      - func: hlint
+
+  - name: tests
+    depends_on:
+      - name: build
+    commands:
+      - func: fetch-sandbox
+      - func: fetch-dist
+      - func: run-tests
+
+buildvariants:
+  - name: ubuntu1604
+    display_name: "Ubuntu 16.04"
+    run_on:
+      - ubuntu1604-test
+    tasks:
+      - name: build
+      - name: hlint
+      - name: tests
