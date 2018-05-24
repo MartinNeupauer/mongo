@@ -21,6 +21,8 @@ library
   exposed-modules:
     Mongo.Bool3VL
     Mongo.CoreExpr
+    Mongo.CoreStage
+    Mongo.Database
     Mongo.Error
     Mongo.EvalCoreExpr
     Mongo.MQLv1.Find

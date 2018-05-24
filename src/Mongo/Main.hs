@@ -3,15 +3,17 @@
 module Mongo.Main (
     mongoMain) where
 
-import Mongo.MQLv1.MatchExpr
-import Mongo.CoreExpr
-import Mongo.ParseCoreExpr
-import Mongo.Error
-import Mongo.Value
-import qualified Options.Applicative as OA
 import Data.Semigroup ((<>))
-import System.IO
+import Mongo.CoreExpr
+import Mongo.Database
+import Mongo.Error
+import Mongo.MQLv1.Find
+import Mongo.MQLv1.MatchExpr
+import Mongo.ParseCoreExpr
+import Mongo.Value
 import System.Exit (exitFailure, exitSuccess)
+import System.IO
+import qualified Options.Applicative as OA
 
 -- Monad transformer for combining IO with Either
 newtype EitherT m e a = EitherT { runEitherT :: m (Either e a) }
@@ -34,7 +36,13 @@ lift x = EitherT $ pure x
 
 -- Command line options
 data CmdLineOptions
-    = MatchQueryOption
+    = FindModeOptions
+        {
+            findFile :: String,
+            -- TODO: We should be able to accept multiple data files.
+            dataFile :: String
+        }
+    | MatchQueryOption
         {
             matchQueryFile :: String,
             dataFile :: String
@@ -49,6 +57,17 @@ data CmdLineOptions
         }
 
 -- Parsing of command line options
+findModeOptions :: OA.Parser CmdLineOptions
+findModeOptions = FindModeOptions
+            <$> OA.strOption
+             ( OA.long "find"
+            <> OA.metavar "FILE"
+            <> OA.help "Evaluate a find command")
+            <*> OA.strOption
+            ( OA.long "data"
+            <> OA.metavar "FILE"
+            <> OA.help "Input data files representing one or more named collections")
+
 matchQueryOption :: OA.Parser CmdLineOptions
 matchQueryOption = MatchQueryOption
             <$> OA.strOption
@@ -75,7 +94,10 @@ testModeOption = TestModeOption
             <> OA.help "Run tests as described in an input file")
 
 options :: OA.Parser CmdLineOptions
-options = matchDesugarOption OA.<|> matchQueryOption OA.<|> testModeOption
+options = findModeOptions
+    OA.<|> matchDesugarOption
+    OA.<|> matchQueryOption
+    OA.<|> testModeOption
 
 opts :: OA.ParserInfo CmdLineOptions
 opts = OA.info (options OA.<**> OA.helper)
@@ -95,6 +117,15 @@ runMatchQuery query input =
         value <- valueFromString input
 
         evalMatchExpr matchExpr value
+
+-- Given a string containing the find command JSON and a string containing JSON representing the
+-- database state, executes the find command and returns either an error or the result set.
+runFind :: String -> String -> Either Error Collection
+runFind findCommandStr dbContentsStr =
+    do
+        findCommand <- parseFindCommandString findCommandStr
+        dbContentsStr <- parseDatabaseInstanceString dbContentsStr
+        evalFind findCommand dbContentsStr
 
 desugarMatchQuery :: String -> Either Error (CoreExpr Bool)
 desugarMatchQuery q =
@@ -146,6 +177,14 @@ runTests tests =
             runOneTest testsAsValue
 
 run :: CmdLineOptions -> IO ()
+run (FindModeOptions findFile dataFile) =
+    do
+        findCommand <- openFile findFile ReadMode >>= hGetContents
+        input <- openFile dataFile ReadMode >>= hGetContents
+        case runFind findCommand input of
+            Left e -> putStrLn (errorToString e) >> exitFailure
+            Right coll -> putStrLn (collectionToString coll Relaxed)
+
 run (MatchQueryOption queryFile dataFile) =
     do
         query <- openFile queryFile ReadMode >>= hGetContents
