@@ -141,6 +141,7 @@ runOneTest test =
         testDescription <- lift $ getDocumentValue test
         dataFile <- lift $ getField "data" testDescription >>= getStringValue
         expected <- lift $ getField "expected" testDescription
+        input <- EitherT $ Right <$> (openFile dataFile ReadMode >>= hGetContents)
 
         if hasField "match" testDescription
         then
@@ -149,10 +150,23 @@ runOneTest test =
                 result <- EitherT $ do
                                         putStr $ "Running test: " ++ queryFile ++ " ... "
                                         query <- openFile queryFile ReadMode >>= hGetContents
-                                        input <- openFile dataFile ReadMode >>= hGetContents
                                         return $ runMatchQuery query input
 
                 let testPassed = BoolValue result == expected
+                    in
+                        EitherT $ do
+                                        putStrLn (if testPassed then "OK" else "Failed")
+                                        return $ Right testPassed
+        else if hasField "find" testDescription
+        then
+            do
+                queryFile <- lift $ getField "find" testDescription >>= getStringValue
+                result <- EitherT $ do
+                                        putStr $ "Running test: " ++ queryFile ++ " ... "
+                                        query <- openFile queryFile ReadMode >>= hGetContents
+                                        return $ runFind query input
+
+                let testPassed = collectionToValue result == expected
                     in
                         EitherT $ do
                                         putStrLn (if testPassed then "OK" else "Failed")

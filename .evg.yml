@@ -136,6 +136,14 @@ functions:
         script: |
           cabal test mql-unittests
 
+  run-mql-tests:
+    - command: shell.exec
+      type: test
+      params:
+        working_dir: src/github.com/10gen/mql-model
+        script: |
+          dist/dist-sandbox-*/build/mql/mql --test test/tests.json
+
 pre:
   - func: fetch-source
   - func: init-sandbox
@@ -164,6 +172,14 @@ tasks:
       - func: fetch-dist
       - func: run-tests
 
+  - name: mql-tests
+    depends_on:
+      - name: build
+    commands:
+      - func: fetch-sandbox
+      - func: fetch-dist
+      - func: run-mql-tests
+
 buildvariants:
   - name: ubuntu1604
     display_name: "Ubuntu 16.04"
@@ -173,3 +189,4 @@ buildvariants:
       - name: build
       - name: hlint
       - name: tests
+      - name: mql-tests

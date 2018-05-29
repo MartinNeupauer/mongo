@@ -1,4 +1,5 @@
 [
-	{"match" : "match1.json", "data" : "data1.json", "expected" : true},
-	{"match" : "match2.json", "data" : "data1.json", "expected" : false}
+    {"match" : "test/match1.json", "data" : "test/data1.json", "expected" : true},
+    {"match" : "test/match2.json", "data" : "test/data1.json", "expected" : false},
+    {"find" : "test/find1.json", "data" : "test/data2.json", "expected" : [{"a":4},{"a":5}]}
 ]

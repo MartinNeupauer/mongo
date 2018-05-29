@@ -6,6 +6,7 @@ module Mongo.Database(
     NamespaceString(..),
 
     collectionToString,
+    collectionToValue,
     parseDatabaseInstanceJson,
     parseDatabaseInstanceString,
     ) where
@@ -81,3 +82,8 @@ parseDatabaseInstanceString input =
 collectionToString :: Collection -> ExtendedJsonMode -> String
 collectionToString (Collection coll) =
     valueToString (ArrayValue Array { getElements = coll })
+
+
+collectionToValue :: Collection -> Value
+collectionToValue (Collection coll) = ArrayValue Array { getElements = coll }
+    
