@@ -305,6 +305,8 @@ jsTestOptions = function() {
             logRetryAttempts: TestData.logRetryAttempts || false,
             connectionString: TestData.connectionString || "",
             skipCheckDBHashes: TestData.skipCheckDBHashes || false,
+            mqlTestFile: TestData.mqlTestFile,
+            mqlRootPath: TestData.mqlRootPath,
         });
     }
     return _jsTestOptions;

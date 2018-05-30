@@ -555,11 +555,11 @@ class _DbTestSelector(_Selector):
         return test_files.get_tests()
 
 
-class _JsonSchemaTestSelectorConfig(_SelectorConfig):
-    """_SelectorConfig subclass for json_schema_test tests."""
+class _JsonTestSelectorConfig(_SelectorConfig):
+    """_SelectorConfig subclass for json_schema_test and mql_mongod_model_test tests."""
 
     def __init__(self, roots, include_files=None, exclude_files=None):
-        """Initialize _JsonSchemaTestSelectorConfig."""
+        """Initialize _JsonTestSelectorConfig."""
         _SelectorConfig.__init__(self, roots=roots, include_files=include_files,
                                  exclude_files=exclude_files)
 
@@ -600,8 +600,10 @@ _SELECTOR_REGISTRY = {
     "benchmark_test": (_CppTestSelectorConfig, _CppTestSelector),
     "db_test": (_DbTestSelectorConfig, _DbTestSelector),
     "fsm_workload_test": (_JSTestSelectorConfig, _JSTestSelector),
-    "json_schema_test": (_JsonSchemaTestSelectorConfig, _Selector),
+    "json_schema_test": (_JsonTestSelectorConfig, _Selector),
     "js_test": (_JSTestSelectorConfig, _JSTestSelector),
+    "mql_haskell_model_test": (_CppTestSelectorConfig, _CppTestSelector),
+    "mql_mongod_model_test": (_JsonTestSelectorConfig, _Selector),
     "multi_stmt_txn_passthrough": (_JSTestSelectorConfig, _JSTestSelector),
     "py_test": (_PyTestCaseSelectorConfig, _Selector),
     "sleep_test": (_SleepTestCaseSelectorConfig, _SleepTestCaseSelector),
