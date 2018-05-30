@@ -1,1 +1,0 @@
-{"$putint":{"$plus" : [{"$getint":{"$const":100}},{"$getint":{"$const":200}}]}}
