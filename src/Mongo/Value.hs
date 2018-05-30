@@ -51,8 +51,8 @@ module Mongo.Value (
 
 import Data.Int (Int32)
 import Data.List
-import Data.Monoid
 import Data.Ratio
+import Data.Semigroup (Semigroup, (<>))
 import Mongo.Bool3VL
 import Mongo.Error
 import qualified Data.Maybe
@@ -143,13 +143,19 @@ isValueTruthy (IntValue i) = i /= 0
 isValueTruthy (BoolValue b) = b
 isValueTruthy _ = True
 
+instance Semigroup Array where
+    (<>) lhs rhs = Array $ getElements lhs ++ getElements rhs
+
 instance Monoid Array where
     mempty = Array []
-    mappend lhs rhs = Array $ getElements lhs ++ getElements rhs
+    mappend = (<>)
+
+instance Semigroup Document where
+    (<>) lhs rhs = Document $ getFields lhs ++ getFields rhs
 
 instance Monoid Document where
     mempty = Document []
-    mappend lhs rhs = Document $ getFields lhs ++ getFields rhs
+    mappend = (<>)
 
 -- Does not check for duplicate field names
 addField::(String, Value)->Document->Document

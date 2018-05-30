@@ -37,7 +37,7 @@ library
     GADTs
     LambdaCase
   build-depends:
-    base >=4.8 && <4.11,
+    base >=4.8 && <4.12,
     json >=0.9 && <0.10,
     optparse-applicative >=0.14,
     semigroups >= 0.10 && < 0.19,
@@ -48,7 +48,7 @@ executable mql
   hs-source-dirs:    src-main
   main-is:           Main.hs
   build-depends:
-    base >=4.8 && <4.11,
+    base >=4.8 && <4.12,
     mql-model
   default-language:  Haskell2010
 
@@ -56,8 +56,10 @@ Test-Suite mql-lint
   type:              exitcode-stdio-1.0
   hs-source-dirs:    unit-tests
   Main-is:           Lint.hs
+  build-tool-depends:
+    happy:happy >=1.19
   build-depends:
-    base >=4.8 && <4.11,
+    base >=4.8 && <4.12,
     mql-model,
     hlint ==2.*
   default-language:  Haskell2010
@@ -74,7 +76,7 @@ Test-Suite mql-unittests
     Mongo.ParseCoreExprTest
     Mongo.ValueTest
   build-depends:
-    base >=4.8 && <4.11,
+    base >=4.8 && <4.12,
     mql-model,
     HUnit >=1.6,
     raw-strings-qq >=1.1
