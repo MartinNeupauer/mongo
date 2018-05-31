@@ -53,7 +53,8 @@ data CmdLineOptions
         }
     | TestModeOption
         {
-            testsFile :: String
+            testsFile :: String,
+            prefixDir :: String
         }
 
 -- Parsing of command line options
@@ -92,6 +93,11 @@ testModeOption = TestModeOption
              ( OA.long "test"
             <> OA.metavar "FILE"
             <> OA.help "Run tests as described in an input file")
+            <*> OA.strOption
+             ( OA.long "prefix"
+            <> OA.metavar "DIR"
+            <> OA.value ""
+            <> OA.help "A prefix for paths used in test files; e.g. mql-model/")
 
 options :: OA.Parser CmdLineOptions
 options = findModeOptions
@@ -135,13 +141,13 @@ desugarMatchQuery q =
 -- {"match": "filename", "data": "filename", "expected": bool}
 -- The function returns Error if a parsing fails or an evaluation fails
 -- otherwise it returns a boolean True <=> result == expected
-runOneTest :: Value -> EitherT IO Error Bool
-runOneTest test =
+runOneTest :: String -> Value -> EitherT IO Error Bool
+runOneTest prefix test =
     do
         testDescription <- lift $ getDocumentValue test
         dataFile <- lift $ getField "data" testDescription >>= getStringValue
         expected <- lift $ getField "expected" testDescription
-        input <- EitherT $ Right <$> (openFile dataFile ReadMode >>= hGetContents)
+        input <- EitherT $ Right <$> (openFile (prefix ++ dataFile) ReadMode >>= hGetContents)
 
         if hasField "match" testDescription
         then
@@ -149,7 +155,7 @@ runOneTest test =
                 queryFile <- lift $ getField "match" testDescription >>= getStringValue
                 result <- EitherT $ do
                                         putStr $ "Running test: " ++ queryFile ++ " ... "
-                                        query <- openFile queryFile ReadMode >>= hGetContents
+                                        query <- openFile (prefix ++ queryFile) ReadMode >>= hGetContents
                                         return $ runMatchQuery query input
 
                 let testPassed = BoolValue result == expected
@@ -163,7 +169,7 @@ runOneTest test =
                 queryFile <- lift $ getField "find" testDescription >>= getStringValue
                 result <- EitherT $ do
                                         putStr $ "Running test: " ++ queryFile ++ " ... "
-                                        query <- openFile queryFile ReadMode >>= hGetContents
+                                        query <- openFile (prefix ++ queryFile) ReadMode >>= hGetContents
                                         return $ runFind query input
 
                 let testPassed = collectionToValue result == expected
@@ -177,18 +183,18 @@ runOneTest test =
                 errReason = "Unknown test descprion: " ++ show (valueToString test Canonical) }
 
 -- Run either a single test or a set of tests.
-runTests :: String -> EitherT IO Error Bool
-runTests tests =
+runTests :: String -> String -> EitherT IO Error Bool
+runTests prefix tests =
     do
         testsAsValue <- lift (valueFromString tests)
         if isArray testsAsValue
         then
             do
                 v <- lift (getArrayValue testsAsValue)
-                results <- traverse runOneTest (getElements v)
+                results <- traverse (runOneTest prefix) (getElements v)
                 return $ and results
         else
-            runOneTest testsAsValue
+            runOneTest prefix testsAsValue
 
 run :: CmdLineOptions -> IO ()
 run (FindModeOptions findFile dataFile) =
@@ -216,10 +222,10 @@ run (MatchDesugarOption queryFile) =
             (Left e) -> putStrLn (errorToString e) >> exitFailure
             (Right v) -> putStrLn $ valueToString (coreExprToValue v) Canonical
 
-run (TestModeOption f) =
+run (TestModeOption f prefix) =
     do
         tests <- openFile f ReadMode >>= hGetContents
-        result <- runEitherT $ runTests tests
+        result <- runEitherT $ runTests prefix tests
         case result of
             (Left e) -> putStrLn (errorToString e) >> exitFailure
             (Right v) -> if v then exitSuccess else exitFailure
