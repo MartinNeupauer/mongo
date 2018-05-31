@@ -1,0 +1,8 @@
+test_kind: mql_haskell_model_test
+
+selector:
+  roots:
+   - mql-model/test/*.json
+
+executor:
+  config: {}
