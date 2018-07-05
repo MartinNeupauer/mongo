@@ -281,7 +281,7 @@ TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNCosumer) {
 
     std::vector<executor::TaskExecutor::CallbackHandle> handles;
 
-    std::atomic<int> processedDocs = 0;
+    AtomicWord<int> processedDocs = 0;
 
     for (size_t id = 0; id < nConsumers; ++id) {
         auto handle = _executor->scheduleWork(

@@ -102,7 +102,7 @@ private:
 
     // Synchronization.
     stdx::mutex _mutex;
-    stdx::condition_variable _condition;
+    stdx::condition_variable _haveBufferSpace;
 
     // A thread that is currently loading the exchange buffers.
     size_t _loadingThreadId{kInvalidThreadId};

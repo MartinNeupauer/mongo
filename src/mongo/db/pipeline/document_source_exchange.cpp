@@ -128,7 +128,7 @@ std::vector<std::string> Exchange::extractBoundaries(
 
 DocumentSource::GetNextResult Exchange::getNext(size_t consumerId) {
     // Grab a lock.
-    stdx::unique_lock<std::mutex> lk(_mutex);
+    stdx::unique_lock<stdx::mutex> lk(_mutex);
 
     for (;;) {
         // Check if we have a document
@@ -138,7 +138,7 @@ DocumentSource::GetNextResult Exchange::getNext(size_t consumerId) {
             // See if the loading is blocked on this consumer and if so unblock it
             if (_loadingThreadId == consumerId) {
                 _loadingThreadId = kInvalidThreadId;
-                _condition.notify_all();
+                _haveBufferSpace.notify_all();
             }
 
             // return the document
@@ -162,11 +162,11 @@ DocumentSource::GetNextResult Exchange::getNext(size_t consumerId) {
             _loadingThreadId = fullConsumerId;
 
             // Wake up everybody and try to make some progress.
-            _condition.notify_all();
+            _haveBufferSpace.notify_all();
         } else {
             // Some other consumer is already loading the buffers. There is nothing else we can do
             // but wait.
-            _condition.wait(lk);
+            _haveBufferSpace.wait(lk);
         }
     }
 }
@@ -252,13 +252,18 @@ DocumentSource::GetNextResult Exchange::ExchangeBuffer::getNext() {
 
     auto result = std::move(_buffer.front());
     _buffer.pop_front();
-    _bytesInBuffer -= result.getDocument().getApproximateSize();
+
+    if (result.isAdvanced()) {
+        _bytesInBuffer -= result.getDocument().getApproximateSize();
+    }
 
     return result;
 }
 
 bool Exchange::ExchangeBuffer::appendDocument(DocumentSource::GetNextResult input, size_t limit) {
-    _bytesInBuffer += input.getDocument().getApproximateSize();
+    if (input.isAdvanced()) {
+        _bytesInBuffer += input.getDocument().getApproximateSize();
+    }
     _buffer.push_back(std::move(input));
 
     // The buffer is full.
