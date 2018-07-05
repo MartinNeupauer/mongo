@@ -139,7 +139,7 @@ TEST_F(DocumentSourceExchangeTest, SimpleExchangeNCosumer) {
 
                 auto input = prods[id]->getNext();
 
-                int docs = 0;
+                size_t docs = 0;
 
                 for (; input.isAdvanced(); input = prods[id]->getNext()) {
                     sleepmillis(prng.nextInt32() % 20 + 1);
