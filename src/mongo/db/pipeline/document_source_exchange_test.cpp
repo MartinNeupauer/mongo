@@ -281,7 +281,7 @@ TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNCosumer) {
 
     std::vector<executor::TaskExecutor::CallbackHandle> handles;
 
-    AtomicWord<int> processedDocs = 0;
+    AtomicWord<int> processedDocs{0};
 
     for (size_t id = 0; id < nConsumers; ++id) {
         auto handle = _executor->scheduleWork(
@@ -295,7 +295,7 @@ TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNCosumer) {
                     ++docs;
                     sleepmillis(prng.nextInt32() % 50 + 1);
                 }
-                processedDocs += docs;
+                processedDocs.fetchAndAdd(docs);
             });
 
         handles.emplace_back(std::move(handle.getValue()));
