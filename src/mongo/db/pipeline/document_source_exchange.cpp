@@ -84,7 +84,7 @@ Exchange::Exchange(const ExchangeSpec& spec)
       _policy(spec.getPolicy()),
       _orderPreserving(spec.getOrderPreserving()),
       _maxBufferSize(spec.getBufferSize()) {
-    for (size_t idx = 0; idx < spec.getConsumers(); ++idx) {
+    for (int idx = 0; idx < spec.getConsumers(); ++idx) {
         _consumers.emplace_back(std::make_unique<ExchangeBuffer>());
     }
 
