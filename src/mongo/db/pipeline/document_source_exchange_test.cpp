@@ -232,7 +232,7 @@ TEST_F(DocumentSourceExchangeTest, RangeExchangeNCosumer) {
     for (size_t id = 0; id < nConsumers; ++id) {
         auto handle = _executor->scheduleWork(
             [prods, id, nDocs, nConsumers](const executor::TaskExecutor::CallbackArgs& cb) {
-                int docs = 0;
+                size_t docs = 0;
                 for (auto input = prods[id]->getNext(); input.isAdvanced();
                      input = prods[id]->getNext()) {
                     ++docs;
