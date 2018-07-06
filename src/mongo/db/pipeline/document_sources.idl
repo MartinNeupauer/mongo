@@ -58,16 +58,6 @@ types:
         serializer: Value::serializeForIDL
         deserializer: Value::deserializeForIDL
 
-enums:
-    ExchangePolicy:
-        description: "The type of an exchange distribution policy"
-        type: string
-        values:
-            kBroadcast: "broadcast"
-            kRoundRobin: "roundrobin"
-            kRange: "range"
-            kHash: "hash"
-
 structs:
   ResumeTokenClusterTime:
       description: The IDL type of cluster time
@@ -132,29 +122,3 @@ structs:
       users:
         type: array<ListSessionsUser>
         optional: true
-
-  ExchangeSpec:
-    description: "$exchage operator spec"
-    fields:
-      policy:
-        type: ExchangePolicy
-        description: A string indicating a policy of how documents are distributed to consumers.
-      consumers:
-        type: int
-        description: Number of consumers.
-      orderPreserving:
-        type: bool
-        default: false
-        description: A flag indicating is documents are merged while preserving the order.
-      bufferSize:
-        type: int
-        default: 16777216
-        description: A size of exchange buffers.
-      key:
-        type: object
-        default: "BSONObj()"
-        description: A key used for document distribution to consumers. The same description as sorting/sharding.
-      boundaries:
-        type: array<object>
-        optional: true
-        description: Range/hash split points.

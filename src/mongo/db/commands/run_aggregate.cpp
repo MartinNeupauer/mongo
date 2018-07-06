@@ -539,7 +539,7 @@ Status runAggregate(OperationContext* opCtx,
         auto exchange =
             dynamic_cast<DocumentSourceExchange*>(pipelines[0]->getSources().back().get());
         if (exchange) {
-            for (size_t idx = 1; idx < exchange->consumers(); ++idx) {
+            for (size_t idx = 1; idx < exchange->getConsumers(); ++idx) {
                 auto sources = pipelines[0]->getSources();
                 sources.back() = new DocumentSourceExchange(expCtx, exchange->getExchange(), idx);
                 pipelines.emplace_back(
@@ -547,6 +547,8 @@ Status runAggregate(OperationContext* opCtx,
             }
         }
 
+        // TODO we will revisit the current vector of pipelines design when we will implement
+        // plan summaries, explains, etc. 
         for (size_t idx = 0; idx < pipelines.size(); ++idx) {
             // Transfer ownership of the Pipeline to the PipelineProxyStage.
             auto ws = make_unique<WorkingSet>();

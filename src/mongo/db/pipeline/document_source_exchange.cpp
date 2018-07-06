@@ -28,14 +28,13 @@
 
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
 
+#include "mongo/platform/basic.h"
+
 #include <algorithm>
 #include <iterator>
 
-#include "mongo/platform/basic.h"
-
 #include "mongo/db/pipeline/document_source_exchange.h"
 #include "mongo/db/storage/key_string.h"
-
 #include "mongo/util/log.h"
 
 namespace mongo {
@@ -56,7 +55,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceExchange::createFromBson(
             spec.type() == BSONType::Object);
 
     IDLParserErrorContext ctx("$exchange");
-    auto parsed = ExchangeSpec::parse(ctx, spec.Obj());
+    auto parsed = ExchangeSpec::parse(ctx, spec.embeddedObject());
 
     boost::intrusive_ptr<Exchange> exchange = new Exchange(parsed);
 
@@ -64,7 +63,7 @@ boost::intrusive_ptr<DocumentSource> DocumentSourceExchange::createFromBson(
 }
 
 Value DocumentSourceExchange::serialize(boost::optional<ExplainOptions::Verbosity> explain) const {
-    return Value(DOC(getSourceName() << _exchange->spec().toBSON()));
+    return Value(DOC(getSourceName() << _exchange->getSpec().toBSON()));
 }
 
 DocumentSourceExchange::DocumentSourceExchange(
@@ -91,7 +90,7 @@ Exchange::Exchange(const ExchangeSpec& spec)
     if (_policy == ExchangePolicyEnum::kRange) {
         uassert(ErrorCodes::BadValue,
                 "$exchange boundaries do not much number of consumers.",
-                consumers() + 1 == _boundaries.size());
+                getConsumers() + 1 == _boundaries.size());
     } else if (_policy == ExchangePolicyEnum::kHash) {
         uasserted(ErrorCodes::BadValue, "$exchange hash is not yet implemented.");
     }
@@ -131,17 +130,16 @@ DocumentSource::GetNextResult Exchange::getNext(size_t consumerId) {
     stdx::unique_lock<stdx::mutex> lk(_mutex);
 
     for (;;) {
-        // Check if we have a document
+        // Check if we have a document.
         if (!_consumers[consumerId]->isEmpty()) {
             auto doc = _consumers[consumerId]->getNext();
 
-            // See if the loading is blocked on this consumer and if so unblock it
+            // See if the loading is blocked on this consumer and if so unblock it.
             if (_loadingThreadId == consumerId) {
                 _loadingThreadId = kInvalidThreadId;
                 _haveBufferSpace.notify_all();
             }
 
-            // return the document
             return doc;
         }
 
@@ -157,7 +155,7 @@ DocumentSource::GetNextResult Exchange::getNext(size_t consumerId) {
             // The return value is an index of a full consumer buffer.
             size_t fullConsumerId = loadNextBatch();
 
-            // The loading cannot continue until the cosumer with the full buffer consumes some
+            // The loading cannot continue until the consumer with the full buffer consumes some
             // documents.
             _loadingThreadId = fullConsumerId;
 
@@ -179,7 +177,7 @@ size_t Exchange::loadNextBatch() {
         switch (_policy) {
             case ExchangePolicyEnum::kBroadcast: {
                 bool full = false;
-                // The document is sent to all consumers
+                // The document is sent to all consumers.
                 for (auto& c : _consumers) {
                     full = c->appendDocument(input, _maxBufferSize);
                 }
@@ -195,30 +193,30 @@ size_t Exchange::loadNextBatch() {
                     return target;
             } break;
             case ExchangePolicyEnum::kRange: {
-                size_t target = getTargetConsumer(input.getDocument());  // magic happens here
+                size_t target = getTargetConsumer(input.getDocument());
                 bool full = _consumers[target]->appendDocument(std::move(input), _maxBufferSize);
                 if (full && _orderPreserving) {
-                    // send the high watermark here
+                    // TODO send the high watermark here.
                 }
                 if (full)
                     return target;
             } break;
             case ExchangePolicyEnum::kHash: {
-                size_t target = 0;  // magic happens here
+                // TODO implement the hash policy. Note that returning 0 is technically correct.
+                size_t target = 0;
                 bool full = _consumers[target]->appendDocument(std::move(input), _maxBufferSize);
                 if (full && _orderPreserving) {
-                    // send the high watermark here
+                    // TODO send the high watermark here.
                 }
                 if (full)
                     return target;
             } break;
             default:
-                // unreachable
                 MONGO_UNREACHABLE;
         }
     }
 
-    // We have reached the end so send EOS to all consumers
+    // We have reached the end so send EOS to all consumers.
     for (auto& c : _consumers) {
         c->appendDocument(input, _maxBufferSize);
     }
@@ -234,10 +232,11 @@ size_t Exchange::getTargetConsumer(const Document& input) {
         kb << "" << value;
     }
 
+    // TODO implement hash keys for the hash policy.
     KeyString key{KeyString::Version::V1, kb.obj(), Ordering::make(BSONObj())};
     std::string keyStr{key.getBuffer(), key.getSize()};
 
-    // Binary search for the consumer id
+    // Binary search for the consumer id.
     auto it = std::upper_bound(_boundaries.begin(), _boundaries.end(), keyStr);
     invariant(it != _boundaries.end());
 

@@ -489,6 +489,7 @@ env.Library(
     target='document_sources_idl',
     source=[
         env.Idlc('document_sources.idl')[0],
+        env.Idlc('document_source_exchange.idl')[0],
         'resume_token.cpp',
     ],
     LIBDEPS=[

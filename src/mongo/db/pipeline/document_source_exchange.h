@@ -32,7 +32,7 @@
 #include <vector>
 
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/pipeline/document_sources_gen.h"
+#include "mongo/db/pipeline/document_source_exchange_gen.h"
 #include "mongo/stdx/condition_variable.h"
 #include "mongo/stdx/mutex.h"
 
@@ -45,10 +45,10 @@ class Exchange : public RefCountable {
         const boost::optional<std::vector<BSONObj>>& obj);
 
 public:
-    Exchange(const ExchangeSpec& spec);
+    explicit Exchange(const ExchangeSpec& spec);
     DocumentSource::GetNextResult getNext(size_t consumerId);
 
-    size_t consumers() const {
+    size_t getConsumers() const {
         return _consumers.size();
     }
 
@@ -56,7 +56,7 @@ public:
         pSource = source;
     }
 
-    auto& spec() const {
+    const auto& getSpec() const {
         return _spec;
     }
 
@@ -140,6 +140,7 @@ public:
         return this;
     }
     std::list<boost::intrusive_ptr<DocumentSource>> getMergeSources() final {
+        // TODO SERVER-35974 we have to revisit this when we implement consumers.
         return {this};
     }
 
@@ -154,8 +155,8 @@ public:
 
     GetNextResult getNext(size_t consumerId);
 
-    size_t consumers() const {
-        return _exchange->consumers();
+    size_t getConsumers() const {
+        return _exchange->getConsumers();
     }
 
     auto getExchange() const {

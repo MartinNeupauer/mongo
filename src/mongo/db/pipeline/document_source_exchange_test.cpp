@@ -35,10 +35,8 @@
 #include "mongo/executor/network_interface_factory.h"
 #include "mongo/executor/thread_pool_task_executor.h"
 #include "mongo/platform/random.h"
-
 #include "mongo/unittest/temp_dir.h"
 #include "mongo/unittest/unittest.h"
-
 #include "mongo/util/concurrency/thread_pool.h"
 #include "mongo/util/time_support.h"
 
@@ -72,20 +70,27 @@ protected:
         return source;
     }
 
-    auto getRandomMockSource(int cnt, int64_t seed) {
+    static auto getNewSeed() {
+        auto seed = Date_t::now().asInt64();
+        unittest::log() << "Generated new seed is " << seed;
+
+        return seed;
+    }
+
+    auto getRandomMockSource(size_t cnt, int64_t seed) {
         PseudoRandom prng(seed);
 
         auto source = DocumentSourceMock::create();
-        for (int i = 0; i < cnt; ++i)
+        for (size_t i = 0; i < cnt; ++i)
             source->queue.emplace_back(
-                Document{{"a", prng.nextInt32() % cnt}, {"b", "aaaaaaaaaaaaaaaaaaaaaaaaaaa"_sd}});
+                Document{{"a", static_cast<int>(prng.nextInt32() % cnt)}, {"b", "aaaaaaaaaaaaaaaaaaaaaaaaaaa"_sd}});
 
         return source;
     }
 };
 
-TEST_F(DocumentSourceExchangeTest, SimpleExchange1Cosumer) {
-    const int nDocs = 500;
+TEST_F(DocumentSourceExchangeTest, SimpleExchange1Consumer) {
+    const size_t nDocs = 500;
 
     auto source = getMockSource(nDocs);
 
@@ -108,13 +113,13 @@ TEST_F(DocumentSourceExchangeTest, SimpleExchange1Cosumer) {
     ASSERT_EQ(docs, nDocs);
 }
 
-TEST_F(DocumentSourceExchangeTest, SimpleExchangeNCosumer) {
-    const int nDocs = 500;
+TEST_F(DocumentSourceExchangeTest, SimpleExchangeNConsumer) {
+    const size_t nDocs = 500;
     auto source = getMockSource(500);
 
     const size_t nConsumers = 5;
 
-    ASSERT(nDocs % nConsumers == 0);
+    ASSERT_EQ(nDocs % nConsumers, 0);
 
     ExchangeSpec spec;
     spec.setPolicy(ExchangePolicyEnum::kRoundRobin);
@@ -135,7 +140,7 @@ TEST_F(DocumentSourceExchangeTest, SimpleExchangeNCosumer) {
     for (size_t id = 0; id < nConsumers; ++id) {
         auto handle = _executor->scheduleWork(
             [prods, id, nDocs, nConsumers](const executor::TaskExecutor::CallbackArgs& cb) {
-                PseudoRandom prng(Date_t::now().asInt64());
+                PseudoRandom prng(getNewSeed());
 
                 auto input = prods[id]->getNext();
 
@@ -155,8 +160,8 @@ TEST_F(DocumentSourceExchangeTest, SimpleExchangeNCosumer) {
         _executor->wait(h);
 }
 
-TEST_F(DocumentSourceExchangeTest, BroadcastExchangeNCosumer) {
-    const int nDocs = 500;
+TEST_F(DocumentSourceExchangeTest, BroadcastExchangeNConsumer) {
+    const size_t nDocs = 500;
     auto source = getMockSource(nDocs);
 
     const size_t nConsumers = 5;
@@ -195,8 +200,8 @@ TEST_F(DocumentSourceExchangeTest, BroadcastExchangeNCosumer) {
         _executor->wait(h);
 }
 
-TEST_F(DocumentSourceExchangeTest, RangeExchangeNCosumer) {
-    const int nDocs = 500;
+TEST_F(DocumentSourceExchangeTest, RangeExchangeNConsumer) {
+    const size_t nDocs = 500;
     auto source = getMockSource(nDocs);
 
     std::vector<BSONObj> boundaries;
@@ -235,6 +240,10 @@ TEST_F(DocumentSourceExchangeTest, RangeExchangeNCosumer) {
                 size_t docs = 0;
                 for (auto input = prods[id]->getNext(); input.isAdvanced();
                      input = prods[id]->getNext()) {
+                    auto value = input.getDocument()["a"].getInt();
+
+                    ASSERT(value >= id*100 && value < (id+1)*100);
+
                     ++docs;
                 }
 
@@ -247,9 +256,10 @@ TEST_F(DocumentSourceExchangeTest, RangeExchangeNCosumer) {
     for (auto& h : handles)
         _executor->wait(h);
 }
-TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNCosumer) {
-    const int nDocs = 500;
-    auto source = getRandomMockSource(nDocs, Date_t::now().asInt64());
+
+TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNConsumer) {
+    const size_t nDocs = 500;
+    auto source = getRandomMockSource(nDocs, getNewSeed());
 
     std::vector<BSONObj> boundaries;
     boundaries.push_back(BSON("a" << MINKEY));
@@ -281,17 +291,21 @@ TEST_F(DocumentSourceExchangeTest, RangeRandomExchangeNCosumer) {
 
     std::vector<executor::TaskExecutor::CallbackHandle> handles;
 
-    AtomicWord<int> processedDocs{0};
+    AtomicWord<size_t> processedDocs{0};
 
     for (size_t id = 0; id < nConsumers; ++id) {
         auto handle = _executor->scheduleWork(
             [prods, id, &processedDocs](const executor::TaskExecutor::CallbackArgs& cb) {
-                PseudoRandom prng(Date_t::now().asInt64());
+                PseudoRandom prng(getNewSeed());
 
                 auto input = prods[id]->getNext();
 
                 int docs = 0;
                 for (; input.isAdvanced(); input = prods[id]->getNext()) {
+                    auto value = input.getDocument()["a"].getInt();
+
+                    ASSERT(value >= id*100 && value < (id+1)*100);
+                    
                     ++docs;
                     sleepmillis(prng.nextInt32() % 50 + 1);
                 }
