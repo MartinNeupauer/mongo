@@ -27,6 +27,11 @@
             assert.commandWorked(res);
             return ('completed' === res.state);
         }, "removeShard never completed for shard " + shardName);
+
+        // we wait for all config secondaries to catch up to the config primary. This guarantees
+        // that any node the router refreshes its routing table cache from will have replicated
+        // the routing table changes.
+        st.configRS.awaitLastOpCommitted();
     }
 
     function addShard(shard) {
