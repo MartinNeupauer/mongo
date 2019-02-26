@@ -73,16 +73,20 @@ Document wrapAggAsExplain(Document aggregateCommand, ExplainOptions::Verbosity v
     return explainCommandBuilder.freeze();
 }
 
-BSONObj createPassthroughCommandForShard(OperationContext* opCtx,
+BSONObj createPassthroughCommandForShard(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                          const AggregationRequest& request,
                                          const boost::optional<ShardId>& shardId,
                                          Pipeline* pipeline,
                                          BSONObj collationObj) {
+    auto opCtx = expCtx->opCtx;
+
     // Create the command for the shards.
     MutableDocument targetedCmd(request.serializeToCommandObj());
     if (pipeline) {
         targetedCmd[AggregationRequest::kPipelineName] = Value(pipeline->serialize());
     }
+
+    targetedCmd[AggregationRequest::kRuntimeConstants] = Value(expCtx->getRuntimeConstants());
 
     return genericTransformForShards(std::move(targetedCmd), opCtx, shardId, request, collationObj);
 }
@@ -152,13 +156,14 @@ bool mustRunOnAllShards(const NamespaceString& nss, const LiteParsedPipeline& li
     return nss.isCollectionlessAggregateNS() || litePipe.hasChangeStream();
 }
 BSONObj createCommandForTargetedShards(
-    OperationContext* opCtx,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const AggregationRequest& request,
     const LiteParsedPipeline& litePipe,
     const cluster_aggregation_planner::SplitPipeline& splitPipeline,
     const BSONObj collationObj,
     const boost::optional<cluster_aggregation_planner::ShardedExchangePolicy> exchangeSpec,
     bool needsMerge) {
+    auto opCtx = expCtx->opCtx;
 
     // Create the command for the shards.
     MutableDocument targetedCmd(request.serializeToCommandObj());
@@ -194,6 +199,8 @@ BSONObj createCommandForTargetedShards(
 
     targetedCmd[AggregationRequest::kExchangeName] =
         exchangeSpec ? Value(exchangeSpec->exchangeSpec.toBSON()) : Value();
+
+    targetedCmd[AggregationRequest::kRuntimeConstants] = Value(expCtx->getRuntimeConstants());
 
     return genericTransformForShards(
         std::move(targetedCmd), opCtx, boost::none, request, collationObj);
@@ -271,9 +278,9 @@ DispatchShardPipelineResults dispatchShardPipeline(
     // Generate the command object for the targeted shards.
     BSONObj targetedCommand = splitPipeline
         ? createCommandForTargetedShards(
-              opCtx, aggRequest, litePipe, *splitPipeline, collationObj, exchangeSpec, true)
+              expCtx, aggRequest, litePipe, *splitPipeline, collationObj, exchangeSpec, true)
         : createPassthroughCommandForShard(
-              opCtx, aggRequest, boost::none, pipeline.get(), collationObj);
+              expCtx, aggRequest, boost::none, pipeline.get(), collationObj);
 
     // Refresh the shard registry if we're targeting all shards.  We need the shard registry
     // to be at least as current as the logical time used when creating the command for

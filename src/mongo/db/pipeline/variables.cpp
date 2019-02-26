@@ -28,9 +28,11 @@
  */
 
 #include "mongo/platform/basic.h"
-
+#include "mongo/db/client.h"
+#include "mongo/db/logical_clock.h"
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/util/mongoutils/str.h"
+#include "mongo/util/time_support.h"
 
 namespace mongo {
 
@@ -38,7 +40,9 @@ constexpr Variables::Id Variables::kRootId;
 constexpr Variables::Id Variables::kRemoveId;
 
 const StringMap<Variables::Id> Variables::kBuiltinVarNameToId = {{"ROOT", kRootId},
-                                                                 {"REMOVE", kRemoveId}};
+                                                                 {"REMOVE", kRemoveId},
+                                                                 {"NOW", kNowId},
+                                                                 {"CLUSTER_NOW", kClusterNowId}};
 
 void Variables::uassertValidNameForUserWrite(StringData varName) {
     // System variables users allowed to write to (currently just one)
@@ -141,6 +145,17 @@ Value Variables::getValue(Id id, const Document& root) const {
                 return Value(root);
             case Variables::kRemoveId:
                 return Value();
+            case Variables::kNowId:
+                return Value(jsTime());
+            case Variables::kClusterNowId:
+                {
+                    auto logicalClock = LogicalClock::get(Client::getCurrent()->getOperationContext());
+                    invariant(logicalClock);
+                    auto clusterTime = logicalClock->getClusterTime().asTimestamp();
+
+                    // return Value(Date_t::fromMillisSinceEpoch(clusterTime.asLL()));
+                    return Value(clusterTime);
+                }
             default:
                 MONGO_UNREACHABLE;
         }

@@ -108,7 +108,7 @@ private:
     static void uassertAllShardsSupportExplain(
         const std::vector<AsyncRequestsSender::Response>& shardResults);
 
-    static Status aggPassthrough(OperationContext*,
+    static Status aggPassthrough(const boost::intrusive_ptr<ExpressionContext>&,
                                  const Namespaces&,
                                  const ShardId&,
                                  const AggregationRequest&,

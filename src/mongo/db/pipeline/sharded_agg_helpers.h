@@ -104,7 +104,7 @@ std::vector<RemoteCursor> establishShardCursors(
     const BSONObj& shardQuery);
 
 BSONObj createCommandForTargetedShards(
-    OperationContext* opCtx,
+    const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const AggregationRequest& request,
     const LiteParsedPipeline& litePipe,
     const cluster_aggregation_planner::SplitPipeline& splitPipeline,
@@ -112,7 +112,7 @@ BSONObj createCommandForTargetedShards(
     const boost::optional<cluster_aggregation_planner::ShardedExchangePolicy> exchangeSpec,
     bool needsMerge);
 
-BSONObj createPassthroughCommandForShard(OperationContext* opCtx,
+BSONObj createPassthroughCommandForShard(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                          const AggregationRequest& request,
                                          const boost::optional<ShardId>& shardId,
                                          Pipeline* pipeline,

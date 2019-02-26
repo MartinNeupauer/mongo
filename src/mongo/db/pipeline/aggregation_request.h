@@ -63,6 +63,7 @@ public:
     static constexpr StringData kHintName = "hint"_sd;
     static constexpr StringData kCommentName = "comment"_sd;
     static constexpr StringData kExchangeName = "exchange"_sd;
+    static constexpr StringData kRuntimeConstants = "runtimeConstants"_sd;
 
     static constexpr long long kDefaultBatchSize = 101;
 
@@ -216,6 +217,10 @@ public:
         return _writeConcern;
     }
 
+    const BSONObj& getRuntimeConstants() const {
+        return _runtimeConstants;
+    }
+
     //
     // Setters for optional fields.
     //
@@ -284,6 +289,10 @@ public:
         _writeConcern = writeConcern;
     }
 
+    void setRuntimeConstants(BSONObj runtimeConstants) {
+        _runtimeConstants = runtimeConstants.getOwned();
+    }
+
 private:
     // Required fields.
     const NamespaceString _nss;
@@ -333,5 +342,9 @@ private:
 
     // The explicit writeConcern for the operation or boost::none if the user did not specifiy one.
     boost::optional<WriteConcernOptions> _writeConcern;
+
+    // A document containing runtime constants; i.e. values that do not change once computed (e.g.
+    // $$NOW).
+    BSONObj _runtimeConstants;
 };
 }  // namespace mongo

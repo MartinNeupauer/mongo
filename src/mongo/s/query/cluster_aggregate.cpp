@@ -113,6 +113,8 @@ BSONObj createCommandForMergingShard(const AggregationRequest& request,
     mergeCmd["pipeline"] = Value(pipelineForMerging->serialize());
     mergeCmd[AggregationRequest::kFromMongosName] = Value(true);
 
+    mergeCmd[AggregationRequest::kRuntimeConstants] = Value(mergeCtx->getRuntimeConstants());
+    
     // If the user didn't specify a collation already, make sure there's a collation attached to
     // the merge command, since the merging shard may not have the collection metadata.
     if (mergeCmd.peek()["collation"].missing()) {
@@ -179,7 +181,7 @@ sharded_agg_helpers::DispatchShardPipelineResults dispatchExchangeConsumerPipeli
         consumerPipelines.emplace_back(std::move(consumerPipeline), nullptr, boost::none);
 
         auto consumerCmdObj = sharded_agg_helpers::createCommandForTargetedShards(
-            opCtx, request, litePipe, consumerPipelines.back(), collationObj, boost::none, false);
+            expCtx, request, litePipe, consumerPipelines.back(), collationObj, boost::none, false);
 
         requests.emplace_back(shardDispatchResults->exchangeSpec->consumerShards[idx],
                               consumerCmdObj);
@@ -748,6 +750,17 @@ Status ClusterAggregate::runAggregate(OperationContext* opCtx,
 
     auto resolvedNamespaces = resolveInvolvedNamespaces(opCtx, litePipe);
 
+    // Populate the collection UUID and the appropriate collation to use.
+    auto collInfo = getCollationAndUUID(routingInfo, namespaces.executionNss, request, litePipe);
+    BSONObj collationObj = collInfo.first;
+    boost::optional<UUID> uuid = collInfo.second;
+
+    // Build an ExpressionContext for the pipeline. This instantiates an appropriate collator,
+    // resolves all involved namespaces, and creates a shared MongoProcessInterface for use by the
+    // pipeline's stages.
+    auto expCtx = makeExpressionContext(
+        opCtx, request, litePipe, collationObj, uuid, std::move(resolvedNamespaces));
+
     // A pipeline is allowed to passthrough to the primary shard iff the following conditions are
     // met:
     //
@@ -760,19 +773,8 @@ Status ClusterAggregate::runAggregate(OperationContext* opCtx,
         !involvesShardedCollections) {
         const auto primaryShardId = routingInfo->db().primary()->getId();
         return aggPassthrough(
-            opCtx, namespaces, primaryShardId, request, litePipe, privileges, result);
+            expCtx, namespaces, primaryShardId, request, litePipe, privileges, result);
     }
-
-    // Populate the collection UUID and the appropriate collation to use.
-    auto collInfo = getCollationAndUUID(routingInfo, namespaces.executionNss, request, litePipe);
-    BSONObj collationObj = collInfo.first;
-    boost::optional<UUID> uuid = collInfo.second;
-
-    // Build an ExpressionContext for the pipeline. This instantiates an appropriate collator,
-    // resolves all involved namespaces, and creates a shared MongoProcessInterface for use by the
-    // pipeline's stages.
-    auto expCtx = makeExpressionContext(
-        opCtx, request, litePipe, collationObj, uuid, std::move(resolvedNamespaces));
 
     // Parse and optimize the full pipeline.
     auto pipeline = uassertStatusOK(Pipeline::parse(request.getPipeline(), expCtx));
@@ -859,18 +861,20 @@ void ClusterAggregate::uassertAllShardsSupportExplain(
     }
 }
 
-Status ClusterAggregate::aggPassthrough(OperationContext* opCtx,
+Status ClusterAggregate::aggPassthrough(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                         const Namespaces& namespaces,
                                         const ShardId& shardId,
                                         const AggregationRequest& aggRequest,
                                         const LiteParsedPipeline& liteParsedPipeline,
                                         const PrivilegeVector& privileges,
                                         BSONObjBuilder* out) {
+    auto opCtx = expCtx->opCtx;
+
     // Format the command for the shard. This adds the 'fromMongos' field, wraps the command as an
     // explain if necessary, and rewrites the result into a format safe to forward to shards.
     BSONObj cmdObj = CommandHelpers::filterCommandRequestForPassthrough(
         sharded_agg_helpers::createPassthroughCommandForShard(
-            opCtx, aggRequest, shardId, nullptr, BSONObj()));
+            expCtx, aggRequest, shardId, nullptr, BSONObj()));
 
     MultiStatementTransactionRequestsSender ars(
         opCtx,

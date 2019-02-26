@@ -73,6 +73,8 @@ public:
     // Ids for builtin variables.
     static constexpr Variables::Id kRootId = Id(-1);
     static constexpr Variables::Id kRemoveId = Id(-2);
+    static constexpr Variables::Id kNowId = Id(-3);
+    static constexpr Variables::Id kClusterNowId = Id(-4);
 
     // Map from builtin var name to reserved id number.
     static const StringMap<Id> kBuiltinVarNameToId;

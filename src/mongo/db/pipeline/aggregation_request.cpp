@@ -239,6 +239,13 @@ StatusWith<AggregationRequest> AggregationRequest::parseFromBSON(
             WriteConcernOptions writeConcern;
             uassertStatusOK(writeConcern.parse(elem.embeddedObject()));
             request.setWriteConcern(writeConcern);
+        } else if (kRuntimeConstants == fieldName) {
+            if (elem.type() != BSONType::Object) {
+                return {ErrorCodes::TypeMismatch,
+                        str::stream() << kRuntimeConstants << " must be an object, not a "
+                                      << typeName(elem.type())};
+            }
+            request.setRuntimeConstants(elem.embeddedObject().getOwned());
         } else if (!isGenericArgument(fieldName)) {
             return {ErrorCodes::FailedToParse,
                     str::stream() << "unrecognized field '" << elem.fieldName() << "'"};
@@ -342,6 +349,8 @@ Document AggregationRequest::serializeToCommandObj() const {
         {kExchangeName, _exchangeSpec ? Value(_exchangeSpec->toBSON()) : Value()},
         {WriteConcernOptions::kWriteConcernField,
          _writeConcern ? Value(_writeConcern->toBSON()) : Value()},
+        // Only serialize runtime constants if any were specified.
+        {kRuntimeConstants, _runtimeConstants.isEmpty() ? Value() : Value(_runtimeConstants)},
     };
 }
 }  // namespace mongo
