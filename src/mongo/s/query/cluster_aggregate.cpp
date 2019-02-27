@@ -114,7 +114,7 @@ BSONObj createCommandForMergingShard(const AggregationRequest& request,
     mergeCmd[AggregationRequest::kFromMongosName] = Value(true);
 
     mergeCmd[AggregationRequest::kRuntimeConstants] = Value(mergeCtx->getRuntimeConstants());
-    
+
     // If the user didn't specify a collation already, make sure there's a collation attached to
     // the merge command, since the merging shard may not have the collection metadata.
     if (mergeCmd.peek()["collation"].missing()) {
