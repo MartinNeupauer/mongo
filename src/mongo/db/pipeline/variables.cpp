@@ -27,10 +27,10 @@
  *    it in the license file.
  */
 
-#include "mongo/platform/basic.h"
+#include "mongo/db/pipeline/variables.h"
 #include "mongo/db/client.h"
 #include "mongo/db/logical_clock.h"
-#include "mongo/db/pipeline/variables.h"
+#include "mongo/platform/basic.h"
 #include "mongo/platform/random.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/time_support.h"
@@ -147,27 +147,25 @@ Value Variables::getValue(Id id, const Document& root) const {
                 return Value(root);
             case Variables::kRemoveId:
                 return Value();
-            case Variables::kNowId:
-                {
-                    if (auto it = _runtimeConstants.find(kNowId); it != _runtimeConstants.end()) {
-                        return it->second;
-                    }
-                return Value();
+            case Variables::kNowId: {
+                if (auto it = _runtimeConstants.find(kNowId); it != _runtimeConstants.end()) {
+                    return it->second;
                 }
-            case Variables::kClusterNowId:
-                {
-                    if (auto it = _runtimeConstants.find(kClusterNowId); it != _runtimeConstants.end()) {
-                        return it->second;
-                    }
                 return Value();
+            }
+            case Variables::kClusterNowId: {
+                if (auto it = _runtimeConstants.find(kClusterNowId);
+                    it != _runtimeConstants.end()) {
+                    return it->second;
                 }
-            case Variables::kRandomId:
-                {
-                    if (auto it = _runtimeConstants.find(kRandomId); it != _runtimeConstants.end()) {
-                        return it->second;
-                    }
                 return Value();
+            }
+            case Variables::kRandomId: {
+                if (auto it = _runtimeConstants.find(kRandomId); it != _runtimeConstants.end()) {
+                    return it->second;
                 }
+                return Value();
+            }
             default:
                 MONGO_UNREACHABLE;
         }
@@ -189,13 +187,12 @@ Document Variables::getDocument(Id id, const Document& root) const {
     return Document();
 }
 
-BSONObj Variables::getRuntimeConstants() const
-{
+BSONObj Variables::getRuntimeConstants() const {
     BSONObjBuilder bob;
 
-    for(auto& [id, value] : _runtimeConstants) {
+    for (auto & [ id, value ] : _runtimeConstants) {
         // horrible hack - linear scan to find a variable name
-        for(auto& [name, id2] : kBuiltinVarNameToId) {
+        for (auto & [ name, id2 ] : kBuiltinVarNameToId) {
             if (id == id2) {
                 value.addToBsonObj(&bob, name);
                 break;
@@ -206,26 +203,26 @@ BSONObj Variables::getRuntimeConstants() const
     return bob.obj();
 }
 
-void Variables::setRuntimeConstants(const BSONObj& constants)
-{
+void Variables::setRuntimeConstants(const BSONObj& constants) {
     for (auto&& elem : constants) {
         auto name = elem.fieldNameStringData();
 
         auto it = kBuiltinVarNameToId.find(name);
-        uassert(51090, str::stream() << "Use of unknown variable: " << name, it != kBuiltinVarNameToId.end());
+        uassert(51090,
+                str::stream() << "Use of unknown variable: " << name,
+                it != kBuiltinVarNameToId.end());
 
         _runtimeConstants[it->second] = Value(elem);
     }
 }
 
-void Variables::generateRuntimeConstants()
-{
+void Variables::generateRuntimeConstants() {
     _runtimeConstants[kNowId] = Value(jsTime());
 
     auto logicalClock = LogicalClock::get(Client::getCurrent()->getOperationContext());
     invariant(logicalClock);
 
-    _runtimeConstants[kClusterNowId] =  Value(logicalClock->getClusterTime().asTimestamp());
+    _runtimeConstants[kClusterNowId] = Value(logicalClock->getClusterTime().asTimestamp());
     _runtimeConstants[kRandomId] = Value(Client::getCurrent()->getPrng().nextCanonicalDouble());
 }
 

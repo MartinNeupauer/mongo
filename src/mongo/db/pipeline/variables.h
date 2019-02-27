@@ -128,7 +128,7 @@ public:
     BSONObj getRuntimeConstants() const;
 
     /**
-     * Deserialize runtime constants. 
+     * Deserialize runtime constants.
      */
     void setRuntimeConstants(const BSONObj& constants);
 
