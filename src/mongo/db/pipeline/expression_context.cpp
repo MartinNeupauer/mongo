@@ -62,6 +62,11 @@ ExpressionContext::ExpressionContext(OperationContext* opCtx,
     _ownedCollator = std::move(collator);
     _resolvedNamespaces = std::move(resolvedNamespaces);
     uuid = std::move(collUUID);
+    if (request.getRuntimeConstants().isEmpty()) {
+        variables.generateRuntimeConstants();
+    } else {
+        variables.setRuntimeConstants(request.getRuntimeConstants());
+    }
 }
 
 ExpressionContext::ExpressionContext(OperationContext* opCtx, const CollatorInterface* collator)

@@ -75,6 +75,7 @@ public:
     static constexpr Variables::Id kRemoveId = Id(-2);
     static constexpr Variables::Id kNowId = Id(-3);
     static constexpr Variables::Id kClusterNowId = Id(-4);
+    static constexpr Variables::Id kRandomId = Id(-5);
 
     // Map from builtin var name to reserved id number.
     static const StringMap<Id> kBuiltinVarNameToId;
@@ -121,6 +122,21 @@ public:
         return &_idGenerator;
     }
 
+    /**
+     * Serializes runtime constants to BSONObj. This is used to send the constants to shards.
+     */
+    BSONObj getRuntimeConstants() const;
+
+    /**
+     * Deserialize runtime constants. 
+     */
+    void setRuntimeConstants(const BSONObj& constants);
+
+    /**
+     * Generate values that must be constant during the execution.
+     */
+    void generateRuntimeConstants();
+
 private:
     struct ValueAndState {
         ValueAndState() = default;
@@ -135,6 +151,7 @@ private:
 
     IdGenerator _idGenerator;
     std::vector<ValueAndState> _valueList;
+    stdx::unordered_map<Id, Value> _runtimeConstants;
 };
 
 /**
