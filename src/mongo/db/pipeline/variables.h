@@ -29,12 +29,34 @@
 
 #pragma once
 
+#include "mongo/db/operation_context.h"
 #include "mongo/db/pipeline/document.h"
 #include "mongo/stdx/memory.h"
 #include "mongo/stdx/unordered_map.h"
 #include "mongo/util/string_map.h"
 
 namespace mongo {
+
+/**
+ * This class holds values of runtime constants; i.e. values that do not change once computed. A
+ * canonical example is the current time. Once the value is obtained from the system clock it does
+ * not change for the duration of statement/transaction.
+ * As the runtime constants have to out live individual statements/queries we make this class a
+ * decoration of the Session class. If the session does not exist then we do not need to manage the
+ * lifetime - runtime constants are stable only during a single statement/query.
+ */
+class RuntimeConstants {
+public:
+    RuntimeConstants();
+    ~RuntimeConstants();
+    
+    /**
+     * Extract the runtime state attached to the operation context. Returns nullptr if none is
+     * attached.
+     */
+    static RuntimeConstants* get(OperationContext* opCtx);
+
+};
 
 /**
  * The state used as input and working space for Expressions.

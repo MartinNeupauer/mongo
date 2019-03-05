@@ -488,6 +488,7 @@ mongos = env.Program(
     LIBDEPS=[
         'db/audit',
         'db/auth/authmongos',
+        'db/catalog_raii',
         'db/commands/server_status',
         'db/commands/server_status_core',
         'db/commands/server_status_servers',
@@ -577,6 +578,10 @@ if not has_option('noshell') and usemozjs:
                     'executor/thread_pool_task_executor',
                     'executor/network_interface_thread_pool',
                     'executor/network_interface_factory'
+                ],
+                LIBDEPS_PRIVATE=[
+                    'db/catalog_raii',
+                    'db/session_catalog',
                 ],
                 # Because `::environ` is resolved in `/usr/lib/crt1.o` on FreeBSD, this library
                 # needs to be marked `incomplete` on FreeBSD.

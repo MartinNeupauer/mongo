@@ -26,13 +26,16 @@
  *    exception statement from all source files in the program, then also delete
  *    it in the license file.
  */
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/transaction_participant.h"
 #include "mongo/db/pipeline/expression_context.h"
 #include "mongo/db/pipeline/stub_mongo_process_interface.h"
 #include "mongo/db/query/collation/collation_spec.h"
 #include "mongo/db/query/collation/collator_factory_interface.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 
@@ -62,6 +65,17 @@ ExpressionContext::ExpressionContext(OperationContext* opCtx,
     _ownedCollator = std::move(collator);
     _resolvedNamespaces = std::move(resolvedNamespaces);
     uuid = std::move(collUUID);
+
+    bool reqNotNull = !request.getRuntimeConstants().isEmpty();
+    bool runtimeNotNull = RuntimeConstants::get(opCtx) != nullptr;
+    //bool routerNotNull = TransactionRouter::get(opCtx) != nullptr;
+    bool participantNotNull = !!TransactionParticipant::get(opCtx);
+
+    log() << "request: " << reqNotNull;
+    log() << "runtime: " << runtimeNotNull;
+    //log() << "router: " << routerNotNull;
+    log() << "participant: " << participantNotNull;
+
     if (request.getRuntimeConstants().isEmpty()) {
         variables.generateRuntimeConstants();
     } else {

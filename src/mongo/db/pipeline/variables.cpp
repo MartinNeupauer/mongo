@@ -26,16 +26,21 @@
  *    exception statement from all source files in the program, then also delete
  *    it in the license file.
  */
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
 
 #include "mongo/db/pipeline/variables.h"
 #include "mongo/db/client.h"
 #include "mongo/db/logical_clock.h"
+#include "mongo/db/session_catalog.h"
 #include "mongo/platform/basic.h"
 #include "mongo/platform/random.h"
 #include "mongo/util/mongoutils/str.h"
 #include "mongo/util/time_support.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
+
+const auto getRuntimeConstants = Session::declareDecoration<RuntimeConstants>();
 
 constexpr Variables::Id Variables::kRootId;
 constexpr Variables::Id Variables::kRemoveId;
@@ -45,6 +50,23 @@ const StringMap<Variables::Id> Variables::kBuiltinVarNameToId = {{"ROOT", kRootI
                                                                  {"NOW", kNowId},
                                                                  {"CLUSTER_NOW", kClusterNowId},
                                                                  {"RANDOM", kRandomId}};
+
+RuntimeConstants::RuntimeConstants() {
+    log() << "constructor RuntimeConstants";
+}
+
+RuntimeConstants::~RuntimeConstants() {
+    log() << "destructor RuntimeConstants";
+}
+
+RuntimeConstants* RuntimeConstants::get(OperationContext* opCtx) {
+    const auto session = OperationContextSession::get(opCtx);
+    if (session) {
+        return &getRuntimeConstants(session);
+    }
+
+    return nullptr;
+}
 
 void Variables::uassertValidNameForUserWrite(StringData varName) {
     // System variables users allowed to write to (currently just one)
