@@ -3477,6 +3477,7 @@ tasks:
           - "./mongobridge*"
           - "./mongoebench*"
           - "./mongoed*"
+          - "./mongotmock*"
           - "./wt*"
           - "buildscripts/**"
           - "*Example"
@@ -7605,6 +7606,24 @@ tasks:
             - {'source': {'path': '${push_path}-STAGE/${push_name}/mongodb-${push_name}-${push_arch}-debugsymbols-${suffix}-${task_id}.${ext|tgz}.md5', 'bucket': 'build-push-testing'},
                'destination': {'path': '${push_path}/mongodb-${push_name}-${push_arch}-debugsymbols-${suffix}.${ext|tgz}.md5', 'bucket': '${push_bucket}'}}
 
+- <<: *task_template
+  name: search_beta
+  commands:
+  - func: "do setup"
+  - func: "run tests"
+    vars:
+      resmoke_args: --suites=search_beta --storageEngine=wiredTiger
+      resmoke_jobs_max: 1
+
+- <<: *task_template
+  name: search_beta_ssl
+  commands:
+  - func: "do setup"
+  - func: "run tests"
+    vars:
+      resmoke_args: --suites=search_beta_ssl --storageEngine=wiredTiger
+      resmoke_jobs_max: 1
+
 - name: shared_scons_cache_pruning
   exec_timeout_secs: 7200 # 2 hour timeout for the task overall
   depends_on: []
@@ -10824,6 +10843,8 @@ buildvariants:
     distros:
     - rhel62-large
   - name: sasl
+  - name: search_beta
+  - name: search_beta_ssl
   - name: session_jscore_passthrough
   - name: sharded_causally_consistent_jscore_txns_passthrough_gen
   - name: sharded_collections_causally_consistent_jscore_txns_passthrough
@@ -11137,6 +11158,8 @@ buildvariants:
     - rhel62-large
   - name: retryable_writes_jscore_passthrough_gen
   - name: sasl
+  - name: search_beta
+  - name: search_beta_ssl
   - name: session_jscore_passthrough
   - name: sharded_collections_jscore_passthrough
   # Sharded transactions suites exclude tests that use snapshot read concern, since snapshot read
@@ -11378,6 +11401,8 @@ buildvariants:
     distros:
     - rhel62-large
   - name: sasl
+  - name: search_beta
+  - name: search_beta_ssl
   - name: session_jscore_passthrough
   - name: sharded_causally_consistent_jscore_txns_passthrough_gen
   - name: sharded_collections_causally_consistent_jscore_txns_passthrough
@@ -11566,6 +11591,8 @@ buildvariants:
   - name: replica_sets_kill_secondaries_jscore_passthrough
   - name: retryable_writes_jscore_passthrough_gen
   - name: sasl
+  - name: search_beta
+  - name: search_beta_ssl
   - name: session_jscore_passthrough
   - name: sharded_causally_consistent_jscore_txns_passthrough_gen
   - name: sharded_collections_causally_consistent_jscore_txns_passthrough
@@ -11658,6 +11685,8 @@ buildvariants:
   - name: replica_sets_multi_oplog_txns_gen
   - name: replica_sets_multi_oplog_txns_jscore_passthrough
   - name: sasl
+  - name: search_beta
+  - name: search_beta_ssl
   - name: sharding_auth_gen
   - name: sharding_auth_audit_gen
   - name: snmp
