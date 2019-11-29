@@ -906,6 +906,9 @@ void Explain::explainStages(PlanExecutor* exec,
 
 // static
 std::string Explain::getPlanSummary(const PlanExecutor* exec) {
+    if (!exec->getRootStage()) {
+        return "no root";
+    }
     return getPlanSummary(exec->getRootStage());
 }
 
@@ -945,6 +948,9 @@ void Explain::getSummaryStats(const PlanExecutor& exec, PlanSummaryStats* statsO
     invariant(nullptr != statsOut);
 
     PlanStage* root = exec.getRootStage();
+    if (!root) {
+        return;
+    }
 
     if (root->stageType() == STAGE_PIPELINE_PROXY ||
         root->stageType() == STAGE_CHANGE_STREAM_PROXY) {
