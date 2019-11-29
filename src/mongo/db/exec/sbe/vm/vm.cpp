@@ -1,0 +1,614 @@
+/**
+ *    Copyright (C) 2019-present MongoDB, Inc.
+ *
+ *    This program is free software: you can redistribute it and/or modify
+ *    it under the terms of the Server Side Public License, version 1,
+ *    as published by MongoDB, Inc.
+ *
+ *    This program is distributed in the hope that it will be useful,
+ *    but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *    Server Side Public License for more details.
+ *
+ *    You should have received a copy of the Server Side Public License
+ *    along with this program. If not, see
+ *    <http://www.mongodb.com/licensing/server-side-public-license>.
+ *
+ *    As a special exception, the copyright holders give permission to link the
+ *    code of portions of this program with the OpenSSL library under certain
+ *    conditions as described in each individual source file and distribute
+ *    linked combinations including the program with the OpenSSL library. You
+ *    must comply with the Server Side Public License in all respects for
+ *    all of the code used other than as permitted herein. If you modify file(s)
+ *    with this exception, you may extend this exception to your version of the
+ *    file(s), but you are not obligated to do so. If you do not wish to do so,
+ *    delete this exception statement from your version. If you delete this
+ *    exception statement from all source files in the program, then also delete
+ *    it in the license file.
+ */
+
+#include "mongo/db/exec/sbe/vm/vm.h"
+#include "mongo/db/exec/sbe/values/bson.h"
+
+#include <set>
+
+namespace mongo {
+namespace sbe {
+namespace vm {
+void CodeFragment::append(std::unique_ptr<CodeFragment> code) {
+    _instrs.insert(_instrs.end(), code->_instrs.begin(), code->_instrs.end());
+}
+
+void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val, bool owned) {
+    Instruction i;
+    i.owned = owned;
+    i.tag = Instruction::pushConstVal;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(tag) + sizeof(val));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, tag);
+    offset += value::writeToMemory(offset, val);
+}
+
+void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
+    Instruction i;
+    i.owned = false;
+    i.tag = Instruction::pushAccessVal;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(accessor));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, accessor);
+}
+
+void CodeFragment::appendAdd() {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::add;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendLess(bool owned) {
+    Instruction i;
+    i.owned = owned;
+    i.tag = Instruction::less;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendGreater(bool owned) {
+    Instruction i;
+    i.owned = owned;
+    i.tag = Instruction::greater;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendEq(bool owned) {
+    Instruction i;
+    i.owned = owned;
+    i.tag = Instruction::eq;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendGetField() {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::getField;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendSum(bool owned) {
+    Instruction i;
+    i.owned = owned;
+    i.tag = Instruction::sum;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendExists() {
+    Instruction i;
+    i.owned = false;
+    i.tag = Instruction::exists;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendIsObject() {
+    Instruction i;
+    i.owned = false;
+    i.tag = Instruction::isObject;
+
+    auto offset = allocateSpace(sizeof(Instruction));
+
+    offset += value::writeToMemory(offset, i);
+}
+void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::function;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(f) + sizeof(arity));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, f);
+    offset += value::writeToMemory(offset, arity);
+}
+void CodeFragment::appendJump(int jumpOffset) {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::jmp;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, jumpOffset);
+}
+void CodeFragment::appendJumpTrue(int jumpOffset) {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::jmpTrue;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, jumpOffset);
+}
+void CodeFragment::appendJumpNothing(int jumpOffset) {
+    Instruction i;
+    i.owned = false;  // this is not used
+    i.tag = Instruction::jmpNothing;
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, jumpOffset);
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTags objTag,
+                                                                   value::Value objValue,
+                                                                   value::TypeTags fieldTag,
+                                                                   value::Value fieldValue) {
+    if (!value::isString(fieldTag)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    auto fieldStr = value::getStringView(fieldTag, fieldValue);
+
+    if (objTag == value::TypeTags::Object) {
+        auto [tag, val] = value::getObjectView(objValue)->getField(fieldStr);
+        return {false, tag, val};
+    } else if (objTag == value::TypeTags::bsonObject) {
+        auto be = value::bitcastTo<const char*>(objValue);
+        auto end = be + value::readFromMemory<uint32_t>(be);
+        // skip document length
+        be += 4;
+        while (*be != 0) {
+            auto sv = bson::fieldNameView(be);
+
+            if (sv == fieldStr) {
+                auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
+                return {false, tag, val};
+            }
+
+            // advance
+            be = bson::advance(be, sv.size());
+        }
+    }
+    return {false, value::TypeTags::Nothing, 0};
+}
+
+std::pair<value::TypeTags, value::Value> ByteCode::aggSum(value::TypeTags accTag,
+                                                          value::Value accValue,
+                                                          value::TypeTags fieldTag,
+                                                          value::Value fieldValue) {
+    if (accTag == value::TypeTags::Nothing) {
+        accTag = value::TypeTags::NumberInt64;
+        accValue = 0;
+    }
+
+    if (accTag == value::TypeTags::NumberInt64 && fieldTag == value::TypeTags::NumberInt64) {
+        int64_t integer =
+            value::bitcastTo<int64_t>(accValue) + value::bitcastTo<int64_t>(fieldValue);
+        return {value::TypeTags::NumberInt64, value::bitcastFrom(integer)};
+    } else if (accTag == value::TypeTags::NumberInt64 &&
+               fieldTag == value::TypeTags::NumberDouble) {
+        double dbl = value::bitcastTo<int64_t>(accValue) + value::bitcastTo<double>(fieldValue);
+        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
+    } else if (accTag == value::TypeTags::NumberDouble &&
+               fieldTag == value::TypeTags::NumberInt64) {
+        double dbl = value::bitcastTo<double>(accValue) + value::bitcastTo<int64_t>(fieldValue);
+        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
+    } else {
+        double dbl = value::bitcastTo<double>(accValue) + value::bitcastTo<double>(fieldValue);
+        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
+    }
+
+    return {value::TypeTags::Nothing, 0};
+}
+
+bool hasSeparatorAt(size_t idx, std::string_view input, std::string_view separator) {
+    if (separator.size() + idx > input.size()) {
+        return false;
+    }
+
+    return input.compare(idx, separator.size(), separator) == 0;
+}
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t arity) {
+    auto [ownedSeparator, tagSeparator, valSeparator] = getFromStack(0);
+    auto [ownedInput, tagInput, valInput] = getFromStack(1);
+
+    if (!value::isString(tagSeparator) || !value::isString(tagInput)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    auto input = value::getStringView(tagInput, valInput);
+    auto separator = value::getStringView(tagSeparator, valSeparator);
+
+    auto [tag, val] = value::makeNewArray();
+    auto arr = value::getArrayView(val);
+
+    size_t splitStart = 0;
+    size_t splitPos;
+    while ((splitPos = input.find(separator, splitStart)) != std::string_view::npos) {
+        auto [tag, val] = value::makeNewString(input.substr(splitStart, splitPos - splitStart));
+        arr->push_back(tag, val);
+
+        splitPos += separator.size();
+        splitStart = splitPos;
+    }
+
+    // the last string
+    {
+        auto [tag, val] = value::makeNewString(input.substr(splitStart, input.size() - splitStart));
+        arr->push_back(tag, val);
+    }
+
+    return {true, tag, val};
+}
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint8_t arity) {
+    auto [ownedSeparator, tagInObj, valInObj] = getFromStack(0);
+
+    // we operate only on objects
+    if (!value::isObject(tagInObj)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    // build the set of fields to drop
+    std::set<std::string, std::less<>> restrictFieldsSet;
+    for (uint8_t idx = 1; idx < arity; ++idx) {
+        auto [owned, tag, val] = getFromStack(idx);
+
+        if (!value::isString(tag)) {
+            return {false, value::TypeTags::Nothing, 0};
+        }
+
+        restrictFieldsSet.emplace(value::getStringView(tag, val));
+    }
+
+    auto [tag, val] = value::makeNewObject();
+    auto obj = value::getObjectView(val);
+
+    if (tagInObj == value::TypeTags::bsonObject) {
+        auto be = value::bitcastTo<const char*>(valInObj);
+        auto end = be + value::readFromMemory<uint32_t>(be);
+        // skip document length
+        be += 4;
+        while (*be != 0) {
+            auto sv = bson::fieldNameView(be);
+
+            if (restrictFieldsSet.count(sv) == 0) {
+                auto [tag, val] = bson::convertFrom(false, be, end, sv.size());
+                obj->push_back(sv, tag, val);
+            }
+
+            // advance
+            be = bson::advance(be, sv.size());
+        }
+    } else if (tagInObj == value::TypeTags::Object) {
+        auto objRoot = value::getObjectView(valInObj);
+        for (size_t idx = 0; idx < objRoot->size(); ++idx) {
+            std::string_view sv(objRoot->field(idx));
+
+            if (restrictFieldsSet.count(sv) == 0) {
+
+                auto [tag, val] = objRoot->getAt(idx);
+                auto [copyTag, copyVal] = value::copyValue(tag, val);
+                obj->push_back(sv, copyTag, copyVal);
+            }
+        }
+    }
+
+    return {true, tag, val};
+}
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t arity) {
+    std::vector<value::TypeTags> typeTags;
+    std::vector<value::Value> values;
+    std::vector<std::string> names;
+
+    for (uint8_t idx = 0; idx < arity; idx += 2) {
+        {
+            auto [owned, tag, val] = getFromStack(idx);
+
+            if (!value::isString(tag)) {
+                return {false, value::TypeTags::Nothing, 0};
+            }
+
+            names.emplace_back(value::getStringView(tag, val));
+        }
+        {
+            auto [owned, tag, val] = getFromStack(idx + 1);
+            typeTags.push_back(tag);
+            values.push_back(val);
+        }
+    }
+
+    auto [tag, val] = value::makeNewObject();
+    auto obj = value::getObjectView(val);
+
+    for (size_t idx = 0; idx < typeTags.size(); ++idx) {
+        auto [tagCopy, valCopy] = value::copyValue(typeTags[idx], values[idx]);
+        obj->push_back(names[idx], tagCopy, valCopy);
+    }
+
+    return {true, tag, val};
+}
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
+                                                                          uint8_t arity) {
+    switch (f) {
+        case Builtin::split:
+            return builtinSplit(arity);
+        case Builtin::dropFields:
+            return builtinDropFields(arity);
+        case Builtin::newObj:
+            return builtinNewObj(arity);
+    }
+
+    invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));
+    MONGO_UNREACHABLE;
+}
+std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* code) {
+    auto pcPointer = code->instrs().data();
+    auto pcEnd = pcPointer + code->instrs().size();
+
+    for (;;) {
+        if (pcPointer == pcEnd) {
+            break;
+        } else {
+            Instruction i = value::readFromMemory<Instruction>(pcPointer);
+            pcPointer += sizeof(i);
+            switch (i.tag) {
+                case Instruction::pushConstVal: {
+                    auto tag = value::readFromMemory<value::TypeTags>(pcPointer);
+                    pcPointer += sizeof(tag);
+                    auto val = value::readFromMemory<value::Value>(pcPointer);
+                    pcPointer += sizeof(val);
+
+                    pushStack(i.owned, tag, val);
+
+                    break;
+                }
+                case Instruction::pushAccessVal: {
+                    auto accessor = value::readFromMemory<value::SlotAccessor*>(pcPointer);
+                    pcPointer += sizeof(accessor);
+
+                    auto [tag, val] = accessor->getViewOfValue();
+                    pushStack(i.owned, tag, val);
+
+                    break;
+                }
+                case Instruction::add: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = genericAdd(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::less: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = genericLess(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::greater: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = genericGreater(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::eq: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = genericEq(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::getField: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = getField(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::sum: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = aggSum(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::exists: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    topStack(i.owned, value::TypeTags::Boolean, tag != value::TypeTags::Nothing);
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::isObject: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    if (tag != value::TypeTags::Nothing) {
+                        topStack(i.owned, value::TypeTags::Boolean, value::isObject(tag));
+                    }
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::function: {
+                    auto f = value::readFromMemory<Builtin>(pcPointer);
+                    pcPointer += sizeof(f);
+                    auto arity = value::readFromMemory<uint8_t>(pcPointer);
+                    pcPointer += sizeof(arity);
+
+                    auto [owned, tag, val] = dispatchBuiltin(f, arity);
+
+                    for (uint8_t cnt = 0; cnt < arity; ++cnt) {
+                        auto [owned, tag, val] = getFromStack(0);
+                        popStack();
+                        if (owned) {
+                            value::releaseValue(tag, val);
+                        }
+                    }
+
+                    pushStack(owned, tag, val);
+
+                    break;
+                }
+                case Instruction::jmp: {
+                    auto jumpOffset = value::readFromMemory<int>(pcPointer);
+                    pcPointer += sizeof(jumpOffset);
+
+                    pcPointer += jumpOffset;
+                    break;
+                }
+                case Instruction::jmpTrue: {
+                    auto jumpOffset = value::readFromMemory<int>(pcPointer);
+                    pcPointer += sizeof(jumpOffset);
+
+                    auto [owned, tag, val] = getFromStack(0);
+                    popStack();
+
+                    if (tag == value::TypeTags::Boolean && val) {
+                        pcPointer += jumpOffset;
+                    }
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::jmpNothing: {
+                    auto jumpOffset = value::readFromMemory<int>(pcPointer);
+                    pcPointer += sizeof(jumpOffset);
+
+                    auto [owned, tag, val] = getFromStack(0);
+                    if (tag == value::TypeTags::Nothing) {
+                        pcPointer += jumpOffset;
+                    }
+                    break;
+                }
+                default:
+                    invariant(
+                        Status(ErrorCodes::InternalError, "vm instruction not yet implemented"));
+                    MONGO_UNREACHABLE;
+            }
+        }
+    }
+
+    if (_argStackOwned.size() != 1) {
+        invariant(Status(ErrorCodes::InternalError, "error evaluating bytecode"));
+        MONGO_UNREACHABLE;
+    }
+
+    auto owned = _argStackOwned[0];
+    auto tag = _argStackTags[0];
+    auto val = _argStackVals[0];
+
+    _argStackOwned.clear();
+    _argStackTags.clear();
+    _argStackVals.clear();
+
+    return {owned, tag, val};
+}
+
+}  // namespace vm
+}  // namespace sbe
+}  // namespace mongo
