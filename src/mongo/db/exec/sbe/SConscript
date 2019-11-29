@@ -1,0 +1,47 @@
+# -*- mode: python -*-
+
+Import("env")
+
+env.Library(
+    target='query_sbe',
+    source=[
+        'expressions/expression.cpp',
+        'parser/parser.cpp',
+        'stages/co_scan.cpp',
+        'stages/exchange.cpp',
+        'stages/filter.cpp',
+        'stages/hash_agg.cpp',
+        'stages/hash_join.cpp',
+        'stages/ix_scan.cpp',
+        'stages/limit.cpp',
+        'stages/loop_join.cpp',
+        'stages/makeobj.cpp',
+        'stages/project.cpp',
+        'stages/scan.cpp',
+        'stages/sort.cpp',
+        'stages/traverse.cpp',
+        'stages/unwind.cpp',
+        'util/debug_print.cpp',
+        'values/bson.cpp',
+        'values/value.cpp',
+        'vm/arith.cpp',
+        'vm/vm.cpp',
+        ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        ]
+    )
+
+env.CppUnitTest(
+    target='db_sbe_test',
+    source=[
+        'sbe_test.cpp',
+    ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/concurrency/lock_manager',
+        '$BUILD_DIR/mongo/db/db_raii', 
+        '$BUILD_DIR/mongo/unittest/unittest',
+	'$BUILD_DIR/mongo/util/concurrency/thread_pool',
+        'query_sbe',
+    ],
+)

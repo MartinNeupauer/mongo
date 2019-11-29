@@ -1831,6 +1831,15 @@ DB.prototype.disableFreeMonitoring = function() {
     assert.commandWorked(this.adminCommand({setFreeMonitoring: 1, action: 'disable'}));
 };
 
+DB.prototype.sbe = function(query) {
+    const res = this.runCommand({sbe: query});
+    if (!res.ok) {
+        throw _getErrorWithCode(res, "sbe failed: " + tojson(res));
+    }
+
+    return new DBCommandCursor(this, res);
+};
+
 // Writing `this.hasOwnProperty` would cause DB.prototype.getCollection() to be called since the
 // DB's getProperty() handler in C++ takes precedence when a property isn't defined on the DB
 // instance directly. The "hasOwnProperty" property is defined on Object.prototype, so we must

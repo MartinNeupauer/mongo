@@ -50,6 +50,13 @@ class RecordId;
 struct PlanStageStats;
 class WorkingSet;
 
+namespace sbe {
+class PlanStage;
+namespace value {
+class SlotAccessor;
+}
+}  // namespace sbe
+
 /**
  * If a getMore command specified a lastKnownCommittedOpTime (as secondaries do), we want to stop
  * waiting for new data as soon as the committed op time changes.
@@ -285,6 +292,28 @@ public:
         YieldPolicy yieldPolicy,
         NamespaceString nss = NamespaceString(),
         std::unique_ptr<QuerySolution> qs = nullptr);
+
+    /**
+     * This overload is provided for executors that do not have a CanonicalQuery or an
+     * ExpressionContext, such as an aggregation command with a $listCollections stage.
+     */
+    static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
+        OperationContext* opCtx,
+        std::unique_ptr<WorkingSet> ws,
+        std::unique_ptr<PlanStage> rt,
+        const Collection* collection,
+        YieldPolicy yieldPolicy,
+        NamespaceString nss = NamespaceString(),
+        std::unique_ptr<QuerySolution> qs = nullptr);
+
+    /**
+     * This overload is for SBE.
+     */
+    static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
+        OperationContext* opCtx,
+        std::unique_ptr<sbe::PlanStage> root,
+        sbe::value::SlotAccessor* result,
+        NamespaceString nss);
 
     /**
      * A PlanExecutor must be disposed before destruction. In most cases, this will happen

@@ -276,6 +276,7 @@ env.Library(
         "plan_cache_commands.cpp",
         "rename_collection_cmd.cpp",
         "run_aggregate.cpp",
+        "sbe.cpp",
         "sleep_command.cpp",
         "validate.cpp",
         "whats_my_sni_command.cpp",
