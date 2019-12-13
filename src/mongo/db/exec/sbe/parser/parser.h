@@ -73,7 +73,9 @@ class Parser {
 
     void walkScan(AstQuery& ast);
     void walkParallelScan(AstQuery& ast);
+    void walkSeek(AstQuery& ast);
     void walkIndexScan(AstQuery& ast);
+    void walkIndexSeek(AstQuery& ast);
     void walkProject(AstQuery& ast);
     void walkFilter(AstQuery& ast);
     void walkSort(AstQuery& ast);
@@ -81,6 +83,7 @@ class Parser {
     void walkMkObj(AstQuery& ast);
     void walkGroup(AstQuery& ast);
     void walkHashJoin(AstQuery& ast);
+    void walkNLJoin(AstQuery& ast);
     void walkLimit(AstQuery& ast);
     void walkCoScan(AstQuery& ast);
     void walkTraverse(AstQuery& ast);

@@ -29,13 +29,40 @@
 
 #pragma once
 
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/vm/vm.h"
+
+#include <set>
 
 namespace mongo {
 namespace sbe {
 class LoopJoinStage final : public PlanStage {
+    // Set of variables coming from the outer side.
+    const std::vector<std::string> _outerProjects;
+    // Set of correlated variables from the outer side that are visible on the inner side. They must
+    // be also present in the _outerProjects.
+    const std::vector<std::string> _outerCorrelated;
+    // If not set then this is a cross product.
+    const std::unique_ptr<EExpression> _predicate;
+
+    std::set<std::string, std::less<>> _outerRefs;
+
+    std::vector<value::SlotAccessor*> _correlatedAccessors;
+    std::unique_ptr<vm::CodeFragment> _predicateCode;
+
+    vm::ByteCode _bytecode;
+    bool _reOpenInner{false};
+    bool _outerGetNext{false};
+
+    void openInner();
+
 public:
-    LoopJoinStage(std::unique_ptr<PlanStage> outer, std::unique_ptr<PlanStage> inner);
+    LoopJoinStage(std::unique_ptr<PlanStage> outer,
+                  std::unique_ptr<PlanStage> inner,
+                  const std::vector<std::string>& outerProjects,
+                  const std::vector<std::string> outerCorrelated,
+                  std::unique_ptr<EExpression> predicate);
 
     std::unique_ptr<PlanStage> clone() override;
 

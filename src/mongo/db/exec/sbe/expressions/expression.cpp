@@ -263,9 +263,26 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         code->appendFunction(vm::Builtin::newObj, _nodes.size());
 
         return code;
+    } else if (_name == "ksToString" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->appendFunction(vm::Builtin::ksToString, 1);
+
+        return code;
+    } else if (_name == "ks" && _nodes.size() > 2) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        for (size_t idx = _nodes.size(); idx-- > 0;) {
+            code->append(_nodes[idx]->compile(ctx));
+        }
+
+        code->appendFunction(vm::Builtin::newKs, _nodes.size());
+
+        return code;
     }
-    invariant(Status(ErrorCodes::InternalError, "unknown function call"));
-    MONGO_UNREACHABLE;
+
+    uasserted(ErrorCodes::InternalError, str::stream() << "unknown function call: " << _name);
 }
 std::vector<DebugPrinter::Block> EFunction::debugPrint() {
     std::vector<DebugPrinter::Block> ret;

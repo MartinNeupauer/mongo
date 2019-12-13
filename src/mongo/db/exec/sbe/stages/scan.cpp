@@ -37,17 +37,20 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
                      std::string_view recordName,
                      std::string_view recordIdName,
                      const std::vector<std::string>& fields,
-                     const std::vector<std::string>& varNames)
+                     const std::vector<std::string>& varNames,
+                     std::string_view seekKeyName)
     : _name(name),
       _recordName(recordName),
       _recordIdName(recordIdName),
       _fields(fields),
-      _varNames(varNames) {
+      _varNames(varNames),
+      _seekKeyName(seekKeyName) {
     invariant(_fields.size() == _varNames.size());
 }
 
 std::unique_ptr<PlanStage> ScanStage::clone() {
-    return std::make_unique<ScanStage>(_name, _recordName, _recordIdName, _fields, _varNames);
+    return std::make_unique<ScanStage>(
+        _name, _recordName, _recordIdName, _fields, _varNames, _seekKeyName);
 }
 
 void ScanStage::prepare(CompileCtx& ctx) {
@@ -70,6 +73,10 @@ void ScanStage::prepare(CompileCtx& ctx) {
                 str::stream() << "duplicate field: " << _varNames[idx],
                 insertedRename);
     }
+
+    if (!_seekKeyName.empty()) {
+        _seekKeyAccessor = ctx.getAccessor(_seekKeyName);
+    }
 }
 
 value::SlotAccessor* ScanStage::getAccessor(CompileCtx& ctx, std::string_view field) {
@@ -78,7 +85,7 @@ value::SlotAccessor* ScanStage::getAccessor(CompileCtx& ctx, std::string_view fi
     }
 
     if (!_recordIdName.empty() && _recordIdName == field) {
-        return _recordAccessor.get();
+        return _recordIdAccessor.get();
     }
 
     if (auto it = _varAccessors.find(field); it != _varAccessors.end()) {
@@ -130,13 +137,24 @@ void ScanStage::open(bool reOpen) {
         invariant(_coll);
     }
 
-    auto collection = _coll->getCollection();
+    if (auto collection = _coll->getCollection()) {
+        if (_seekKeyAccessor) {
+            auto [tag, val] = _seekKeyAccessor->getViewOfValue();
+            uassert(ErrorCodes::BadValue,
+                    "seek key is wrong type",
+                    tag == value::TypeTags::NumberInt64);
 
-    if (collection) {
-        _cursor = collection->getCursor(_opCtx);
+            _key = RecordId{value::bitcastTo<int64_t>(val)};
+        }
+
+        if (!_cursor || !_seekKeyAccessor) {
+            _cursor = collection->getCursor(_opCtx);
+        }
     } else {
         _cursor.reset();
     }
+
+    _firstGetNext = true;
 }
 
 PlanState ScanStage::getNext() {
@@ -144,8 +162,15 @@ PlanState ScanStage::getNext() {
         return PlanState::IS_EOF;
     }
 
-    auto nextRecord = _cursor->next();
+    auto nextRecord =
+        (_firstGetNext && _seekKeyAccessor) ? _cursor->seekExact(_key) : _cursor->next();
+    _firstGetNext = false;
+
     if (!nextRecord) {
+        return PlanState::IS_EOF;
+    }
+
+    if (_seekKeyAccessor && nextRecord->id != _key) {
         return PlanState::IS_EOF;
     }
 
@@ -264,7 +289,7 @@ value::SlotAccessor* ParallelScanStage::getAccessor(CompileCtx& ctx, std::string
     }
 
     if (!_recordIdName.empty() && _recordIdName == field) {
-        return _recordAccessor.get();
+        return _recordIdAccessor.get();
     }
 
     if (auto it = _varAccessors.find(field); it != _varAccessors.end()) {
