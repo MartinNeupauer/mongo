@@ -72,6 +72,8 @@ enum class Builtin : uint8_t {
     split,
     dropFields,
     newObj,
+    ksToString,  // KeyString to string
+    newKs,       // new KeyString
 };
 
 class CodeFragment {
@@ -137,6 +139,8 @@ class ByteCode {
     std::tuple<bool, value::TypeTags, value::Value> builtinSplit(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinDropFields(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinNewObj(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinKeyStringToString(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinNewKeyString(uint8_t arity);
 
     std::tuple<bool, value::TypeTags, value::Value> dispatchBuiltin(Builtin f, uint8_t arity);
 

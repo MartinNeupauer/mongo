@@ -36,6 +36,7 @@
 #include "mongo/db/exec/sbe/stages/hash_join.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
 #include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/makeobj.h"
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
@@ -49,6 +50,7 @@ namespace mongo {
 namespace sbe {
 using namespace peg;
 using namespace peg::udl;
+using namespace std::literals;
 
 static std::string format_error_message(size_t ln, size_t col, const std::string& msg) {
     return str::stream() << ln << ":" << col << ": " << msg << '\n';
@@ -56,7 +58,7 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / IXSCAN / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / LIMIT / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -68,7 +70,21 @@ static constexpr auto syntax = R"(
                                  IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
                                  IDENT # collection name to scan
 
+                SEEK <- 'seek' IDENT # variable name of the key
+                               IDENT? # optional variable name of the root object (record) delivered by the scan
+                               IDENT? # optional variable name of the record id delivered by the scan
+                               IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
+                               IDENT # collection name to scan
+
                 IXSCAN <- 'ixscan' IDENT? # optional variable name of the root object (record) delivered by the scan
+                                   IDENT? # optional variable name of the record id delivered by the scan
+                                   IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
+                                   IDENT # collection name
+                                   IDENT # index name to scan
+
+                IXSEEK <- 'ixseek' IDENT # variable name of the low key
+                                   IDENT # variable name of the high key
+                                   IDENT? # optional variable name of the root object (record) delivered by the scan
                                    IDENT? # optional variable name of the record id delivered by the scan
                                    IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
                                    IDENT # collection name
@@ -81,6 +97,13 @@ static constexpr auto syntax = R"(
                 HJOIN <- 'hj' LEFT RIGHT
                 LEFT <- 'left' IDENT_LIST IDENT_LIST OPERATOR
                 RIGHT <- 'right' IDENT_LIST IDENT_LIST OPERATOR
+
+                NLJOIN <- 'nlj' IDENT_LIST # projected outer variables
+                                IDENT_LIST # correlated parameters
+                                ('{' EXPR '}')? # optional predicate
+                                'left' OPERATOR # outer side
+                                'right' OPERATOR # inner side
+
                 LIMIT <- 'limit' NUMBER OPERATOR
                 COSCAN <- 'coscan'
                 TRAVERSE <- 'traverse' IDENT IDENT ('{' EXPR '}')? ('{' EXPR '}')? 'in' OPERATOR 'from' OPERATOR
@@ -365,7 +388,8 @@ void Parser::walkScan(AstQuery& ast) {
                                  recordName,
                                  recordIdName,
                                  ast.nodes[projectsPos]->identifiers,
-                                 ast.nodes[projectsPos]->renames);
+                                 ast.nodes[projectsPos]->renames,
+                                 ""sv);
 }
 
 void Parser::walkParallelScan(AstQuery& ast) {
@@ -406,6 +430,44 @@ void Parser::walkParallelScan(AstQuery& ast) {
                                          ast.nodes[projectsPos]->renames);
 }
 
+void Parser::walkSeek(AstQuery& ast) {
+    walkChildren(ast);
+
+    std::string recordName;
+    std::string recordIdName;
+    std::string dbName = _defaultDb;
+    std::string collName;
+    int projectsPos;
+
+    if (ast.nodes.size() == 5) {
+        recordName = std::move(ast.nodes[1]->identifier);
+        recordIdName = std::move(ast.nodes[2]->identifier);
+        projectsPos = 3;
+        collName = std::move(ast.nodes[4]->identifier);
+    } else if (ast.nodes.size() == 4) {
+        recordName = std::move(ast.nodes[1]->identifier);
+        projectsPos = 2;
+        collName = std::move(ast.nodes[3]->identifier);
+    } else if (ast.nodes.size() == 3) {
+        projectsPos = 1;
+        collName = std::move(ast.nodes[2]->identifier);
+    } else {
+        MONGO_UNREACHABLE;
+    }
+
+    NamespaceString nssColl{dbName, collName};
+    AutoGetCollectionForRead ctxColl(_opCtx, nssColl);
+    auto collection = ctxColl.getCollection();
+    NamespaceStringOrUUID name =
+        collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
+
+    ast.stage = makeS<ScanStage>(name,
+                                 recordName,
+                                 recordIdName,
+                                 ast.nodes[projectsPos]->identifiers,
+                                 ast.nodes[projectsPos]->renames,
+                                 ast.nodes[0]->identifier);
+}
 void Parser::walkIndexScan(AstQuery& ast) {
     walkChildren(ast);
 
@@ -446,9 +508,55 @@ void Parser::walkIndexScan(AstQuery& ast) {
                                       recordName,
                                       recordIdName,
                                       ast.nodes[projectsPos]->identifiers,
-                                      ast.nodes[projectsPos]->renames);
+                                      ast.nodes[projectsPos]->renames,
+                                      ""sv,
+                                      ""sv);
 }
 
+void Parser::walkIndexSeek(AstQuery& ast) {
+    walkChildren(ast);
+
+    std::string recordName;
+    std::string recordIdName;
+    std::string dbName = _defaultDb;
+    std::string collName;
+    std::string indexName;
+    int projectsPos;
+
+    if (ast.nodes.size() == 7) {
+        recordName = std::move(ast.nodes[2]->identifier);
+        recordIdName = std::move(ast.nodes[3]->identifier);
+        projectsPos = 4;
+        collName = std::move(ast.nodes[5]->identifier);
+        indexName = std::move(ast.nodes[6]->identifier);
+    } else if (ast.nodes.size() == 6) {
+        recordName = std::move(ast.nodes[2]->identifier);
+        projectsPos = 3;
+        collName = std::move(ast.nodes[4]->identifier);
+        indexName = std::move(ast.nodes[5]->identifier);
+    } else if (ast.nodes.size() == 5) {
+        projectsPos = 2;
+        collName = std::move(ast.nodes[3]->identifier);
+        indexName = std::move(ast.nodes[4]->identifier);
+    } else {
+        MONGO_UNREACHABLE;
+    }
+
+    NamespaceString nssColl{dbName, collName};
+    AutoGetCollectionForRead ctxColl(_opCtx, nssColl);
+    auto collection = ctxColl.getCollection();
+    NamespaceStringOrUUID name =
+        collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
+
+    ast.stage = makeS<IndexScanStage>(name,
+                                      indexName,
+                                      recordName,
+                                      recordIdName,
+                                      ast.nodes[projectsPos]->identifiers,
+                                      ast.nodes[projectsPos]->renames,
+                                      ast.nodes[0]->identifier,
+                                      ast.nodes[1]->identifier);
+}
 void Parser::walkProject(AstQuery& ast) {
     walkChildren(ast);
 
@@ -522,6 +630,28 @@ void Parser::walkHashJoin(AstQuery& ast) {
                                      ast.nodes[1]->nodes[0]->identifiers,       // inner conditions
                                      ast.nodes[1]->nodes[1]->identifiers        // inner projections
     );
+}
+
+void Parser::walkNLJoin(AstQuery& ast) {
+    walkChildren(ast);
+    size_t outerPos;
+    size_t innerPos;
+    std::unique_ptr<EExpression> predicate;
+
+    if (ast.nodes.size() == 5) {
+        predicate = std::move(ast.nodes[2]->expr);
+        outerPos = 3;
+        innerPos = 4;
+    } else {
+        outerPos = 2;
+        innerPos = 3;
+    }
+
+    ast.stage = makeS<LoopJoinStage>(std::move(ast.nodes[outerPos]->stage),
+                                     std::move(ast.nodes[innerPos]->stage),
+                                     ast.nodes[0]->identifiers,
+                                     ast.nodes[1]->identifiers,
+                                     std::move(predicate));
 }
 
 void Parser::walkLimit(AstQuery& ast) {
@@ -601,8 +731,14 @@ void Parser::walk(AstQuery& ast) {
         case "PSCAN"_:
             walkParallelScan(ast);
             break;
+        case "SEEK"_:
+            walkSeek(ast);
+            break;
         case "IXSCAN"_:
             walkIndexScan(ast);
+            break;
+        case "IXSEEK"_:
+            walkIndexSeek(ast);
             break;
         case "PROJECT"_:
             walkProject(ast);
@@ -624,6 +760,9 @@ void Parser::walk(AstQuery& ast) {
             break;
         case "HJOIN"_:
             walkHashJoin(ast);
+            break;
+        case "NLJOIN"_:
+            walkNLJoin(ast);
             break;
         case "LIMIT"_:
             walkLimit(ast);

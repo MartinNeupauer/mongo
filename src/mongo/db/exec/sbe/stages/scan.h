@@ -48,7 +48,8 @@ public:
               std::string_view recordName,
               std::string_view recordIdName,
               const std::vector<std::string>& fields,
-              const std::vector<std::string>& varNames);
+              const std::vector<std::string>& varNames,
+              std::string_view seekKeyName);
 
     std::unique_ptr<PlanStage> clone() override;
 
@@ -66,6 +67,7 @@ private:
     const std::string _recordIdName;
     const std::vector<std::string> _fields;
     const std::vector<std::string> _varNames;
+    const std::string _seekKeyName;
 
     OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
@@ -73,9 +75,12 @@ private:
 
     std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
     std::map<std::string, value::SlotAccessor*, std::less<>> _varAccessors;
+    value::SlotAccessor* _seekKeyAccessor{nullptr};
 
     std::unique_ptr<SeekableRecordCursor> _cursor;
     boost::optional<AutoGetCollectionForRead> _coll;
+    RecordId _key;
+    bool _firstGetNext{false};
 };
 
 class ParallelScanStage final : public PlanStage {
