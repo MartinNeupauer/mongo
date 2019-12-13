@@ -127,7 +127,7 @@ void HashJoinStage::open(bool reOpen) {
             project._fields.back().reset(true, tag, val);
         }
 
-        auto it = _ht.emplace(std::move(key), std::move(project));
+        _ht.emplace(std::move(key), std::move(project));
     }
 
     _children[0]->close();
