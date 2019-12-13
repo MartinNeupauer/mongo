@@ -61,8 +61,12 @@ void HashAggStage::prepare(CompileCtx& ctx) {
     counter = 0;
     for (auto& [name, expr] : _aggs) {
         _outAggAccessors.emplace_back(std::make_unique<HashAggAccessor>(_htIt, counter++));
+        // Some compilers do not allow to capture local bindings by lambda functions (the one
+        // is used implicitly in uassert below), so we need a local variable to construct an
+        // error message.
+        const auto fieldName = name;
         uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << name,
+                str::stream() << "duplicate field: " << fieldName,
                 !_outAccessors.count(name));
         _outAccessors[name] = _outAggAccessors.back().get();
 

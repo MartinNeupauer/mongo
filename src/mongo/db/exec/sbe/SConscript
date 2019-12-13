@@ -29,6 +29,8 @@ env.Library(
         ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
+        '$BUILD_DIR/mongo/db/db_raii',
+        '$BUILD_DIR/mongo/util/concurrency/thread_pool'
         ]
     )
 
