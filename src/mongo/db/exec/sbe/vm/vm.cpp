@@ -29,6 +29,7 @@
 
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/storage/key_string.h"
 
 #include <set>
 
@@ -364,6 +365,71 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t 
 
     return {true, tag, val};
 }
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinKeyStringToString(uint8_t arity) {
+    auto [owned, tagInKey, valInKey] = getFromStack(0);
+
+    // we operate only on keys
+    if (tagInKey != value::TypeTags::ksValue) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    auto key = value::getKeyStringView(valInKey);
+
+    auto [tagStr, valStr] = value::makeNewString(key->toString());
+
+    return {true, tagStr, valStr};
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewKeyString(uint8_t arity) {
+    auto [_, tagInVersion, valInVersion] = getFromStack(0);
+
+    if (!value::isNumber(tagInVersion) ||
+        !(value::numericCast<int64_t>(tagInVersion, valInVersion) == 0 ||
+          value::numericCast<int64_t>(tagInVersion, valInVersion) == 1)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+    KeyString::Version version =
+        static_cast<KeyString::Version>(value::numericCast<int64_t>(tagInVersion, valInVersion));
+
+    auto [__, tagInOrdering, valInOrdering] = getFromStack(1);
+    if (!value::isNumber(tagInOrdering)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+    auto orderingBits = value::numericCast<int32_t>(tagInOrdering, valInOrdering);
+    BSONObjBuilder bb;
+    for (size_t i = 0; i < Ordering::kMaxCompoundIndexKeys; ++i) {
+        bb.append(""_sd, (orderingBits & (1 << i)) ? 1 : 0);
+    }
+
+    KeyString::HeapBuilder kb{version, Ordering::make(bb.done())};
+
+    for (size_t idx = 2; idx < arity - 1u; ++idx) {
+        auto [_, tag, val] = getFromStack(idx);
+        if (value::isNumber(tag)) {
+            auto num = value::numericCast<int64_t>(tag, val);
+            kb.appendNumberLong(num);
+        } else if (value::isString(tag)) {
+            auto str = value::getStringView(tag, val);
+            kb.appendString(StringData{str.data(), str.length()});
+        } else {
+            uasserted(ErrorCodes::InternalError, "unsuppored key string type");
+        }
+    }
+
+    auto [___, tagInDisrim, valInDiscrim] = getFromStack(arity - 1);
+    if (!value::isNumber(tagInDisrim)) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+    auto discrimNum = value::numericCast<int64_t>(tagInDisrim, valInDiscrim);
+    if (discrimNum < 0 || discrimNum > 2) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    kb.appendDiscriminator(static_cast<KeyString::Discriminator>(discrimNum));
+
+    return {true, value::TypeTags::ksValue, value::bitcastFrom(new KeyString::Value(kb.release()))};
+}
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
     switch (f) {
@@ -373,6 +439,10 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
             return builtinDropFields(arity);
         case Builtin::newObj:
             return builtinNewObj(arity);
+        case Builtin::ksToString:
+            return builtinKeyStringToString(arity);
+        case Builtin::newKs:
+            return builtinNewKeyString(arity);
     }
 
     invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));

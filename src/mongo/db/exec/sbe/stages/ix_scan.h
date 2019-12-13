@@ -49,7 +49,9 @@ public:
                    std::string_view recordName,
                    std::string_view recordIdName,
                    const std::vector<std::string>& fields,
-                   const std::vector<std::string>& varNames);
+                   const std::vector<std::string>& varNames,
+                   std::string_view seekKeyNameLow,
+                   std::string_view seekKeyNameHi);
 
     std::unique_ptr<PlanStage> clone() override;
 
@@ -68,6 +70,8 @@ private:
     const std::string _recordIdName;
     const std::vector<std::string> _fields;
     const std::vector<std::string> _varNames;
+    const std::string _seekKeyNameLow;
+    const std::string _seekKeyNameHi;
 
     OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
@@ -76,8 +80,19 @@ private:
     std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
     std::map<std::string, value::SlotAccessor*, std::less<>> _varAccessors;
 
+    value::SlotAccessor* _seekKeyLowAccessor{nullptr};
+    value::SlotAccessor* _seekKeyHiAccessor{nullptr};
+
+    KeyString::Value _startPoint;
+    KeyString::Value* _seekKeyLow{nullptr};
+    KeyString::Value* _seekKeyHi{nullptr};
+
     std::unique_ptr<SortedDataInterface::Cursor> _cursor;
+    std::weak_ptr<const IndexCatalogEntry> _weakIndexCatalogEntry;
     boost::optional<AutoGetCollectionForRead> _coll;
+    boost::optional<KeyStringEntry> _nextRecord;
+
+    bool _firstGetNext{true};
 };
 }  // namespace sbe
 }  // namespace mongo
