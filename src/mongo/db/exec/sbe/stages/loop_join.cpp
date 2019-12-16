@@ -48,7 +48,7 @@ std::unique_ptr<PlanStage> LoopJoinStage::clone() {
                                            _children[1]->clone(),
                                            _outerProjects,
                                            _outerCorrelated,
-                                           _predicate->clone());
+                                           _predicate ? _predicate->clone() : nullptr);
 }
 void LoopJoinStage::prepare(CompileCtx& ctx) {
     for (auto& f : _outerProjects) {

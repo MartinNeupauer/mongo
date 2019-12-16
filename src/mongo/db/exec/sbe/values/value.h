@@ -575,28 +575,52 @@ public:
 };
 
 class ArrayAccessor final : public SlotAccessor {
-    Array* _array;
+    TypeTags _tagArray{TypeTags::Nothing};
+    Value _valArray{0};
+
+    // Array
+    Array* _array{nullptr};
     size_t _index{0};
 
-public:
-    ArrayAccessor(Array* arr) : _array(arr) {}
+    // bsonArray
+    const char* _arrayCurrent{nullptr};
+    const char* _arrayEnd{nullptr};
 
-    void setArray(Array* arr) {
-        _array = arr;
-    }
-    void setIndex(size_t index) {
-        _index = index;
+public:
+    void reset(TypeTags tag, Value val) {
+        _tagArray = tag;
+        _valArray = val;
+        _array = nullptr;
+        _index = 0;
+
+        if (tag == TypeTags::Array) {
+            _array = getArrayView(val);
+        } else if (tag == TypeTags::bsonArray) {
+            auto bson = bitcastTo<const char*>(val);
+            _arrayCurrent = bson + 4;
+            _arrayEnd = bson + value::readFromMemory<uint32_t>(bson);
+        } else {
+            MONGO_UNREACHABLE;
+        }
     }
 
     // Return non-owning view of the value
-    std::pair<TypeTags, Value> getViewOfValue() const override {
-        return _array->getAt(_index);
-    }
+    std::pair<TypeTags, Value> getViewOfValue() const override;
     std::pair<TypeTags, Value> copyOrMoveValue() override {
         // we can never move out values from array
         auto [tag, val] = getViewOfValue();
         return copyValue(tag, val);
     }
+
+    bool atEnd() const {
+        if (_array) {
+            return _index == _array->size();
+        } else {
+            return *_arrayCurrent == 0;
+        }
+    }
+
+    bool advance();
 };
 
 struct MaterializedRow {

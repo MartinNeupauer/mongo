@@ -86,17 +86,18 @@ PlanState UnwindStage::getNext() {
         // get the value
         auto [tag, val] = _inFieldAccessor->getViewOfValue();
 
-        // TODO make it traverse BSON array
-        if (tag != value::TypeTags::Array) {
+        if (!value::isArray(tag)) {
             _outFieldOutputAccessor->reset(tag, val);
             _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
             return PlanState::ADVANCED;
         }
 
+        _inArrayAccessor.reset(tag, val);
         _index = 0;
         _inArray = true;
 
-        if (value::getArrayView(val)->size() == 0) {
+        // empty input array
+        if (_inArrayAccessor.atEnd()) {
             _inArray = false;
             _outFieldOutputAccessor->reset(value::TypeTags::Nothing, 0);
             _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
@@ -105,14 +106,15 @@ PlanState UnwindStage::getNext() {
     }
 
     // in array
-    auto [tag, val] = _inFieldAccessor->getViewOfValue();
-    auto [tagElem, valElem] = value::getArrayView(val)->getAt(_index);
+    auto [tagElem, valElem] = _inArrayAccessor.getViewOfValue();
 
     _outFieldOutputAccessor->reset(tagElem, valElem);
     _outIndexOutputAccessor->reset(value::TypeTags::NumberInt64, _index);
 
+    _inArrayAccessor.advance();
     ++_index;
-    if (_index == value::getArrayView(val)->size()) {
+
+    if (_inArrayAccessor.atEnd()) {
         _inArray = false;
     }
 

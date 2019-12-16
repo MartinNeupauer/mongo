@@ -53,6 +53,8 @@ class TraverseStage final : public PlanStage {
 
     vm::ByteCode _bytecode;
 
+    value::ArrayAccessor _inArrayAccessor;
+
     bool _compiled{false};
     bool _reOpenInner{false};
 
