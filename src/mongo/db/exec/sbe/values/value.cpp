@@ -28,6 +28,7 @@
  */
 
 #include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/storage/key_string.h"
 
 namespace mongo {
@@ -289,6 +290,31 @@ std::pair<TypeTags, Value> lessValue(TypeTags lhsTag,
     }
 }
 
+std::pair<TypeTags, Value> ArrayAccessor::getViewOfValue() const {
+    if (_array) {
+        return _array->getAt(_index);
+    } else {
+        auto sv = bson::fieldNameView(_arrayCurrent);
+        return bson::convertFrom(true, _arrayCurrent, _arrayEnd, sv.size());
+    }
+}
+
+bool ArrayAccessor::advance() {
+    if (_array) {
+        if (_index < _array->size()) {
+            ++_index;
+        }
+
+        return _index < _array->size();
+    } else {
+        if (*_arrayCurrent != 0) {
+            auto sv = bson::fieldNameView(_arrayCurrent);
+            _arrayCurrent = bson::advance(_arrayCurrent, sv.size());
+        }
+
+        return *_arrayCurrent != 0;
+    }
+}
 
 }  // namespace value
 }  // namespace sbe

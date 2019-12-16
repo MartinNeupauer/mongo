@@ -106,7 +106,13 @@ static constexpr auto syntax = R"(
 
                 LIMIT <- 'limit' NUMBER OPERATOR
                 COSCAN <- 'coscan'
-                TRAVERSE <- 'traverse' IDENT IDENT ('{' EXPR '}')? ('{' EXPR '}')? 'in' OPERATOR 'from' OPERATOR
+                TRAVERSE <- 'traverse' IDENT # output of traverse
+                                       IDENT # output of traverse as seen inside the 'in' branch
+                                       IDENT # input of traverse
+                                       ('{' EXPR '}')? # optional fold expression
+                                       ('{' EXPR '}')? # optional final expression
+                                       'in' OPERATOR
+                                       'from' OPERATOR
                 EXCHANGE <- 'exchange' IDENT_LIST NUMBER IDENT OPERATOR
                 SORT <- 'sort' IDENT_LIST IDENT_LIST OPERATOR
                 UNWIND <- 'unwind' IDENT IDENT IDENT OPERATOR
@@ -673,24 +679,24 @@ void Parser::walkTraverse(AstQuery& ast) {
     size_t foldPos = 0;
     size_t finalPos = 0;
 
-    if (ast.nodes.size() == 4) {
-        inPos = 2;
-        fromPos = 3;
-    } else if (ast.nodes.size() == 5) {
-        foldPos = 2;
+    if (ast.nodes.size() == 5) {
         inPos = 3;
         fromPos = 4;
-    } else {
-        foldPos = 2;
-        finalPos = 3;
+    } else if (ast.nodes.size() == 6) {
+        foldPos = 3;
         inPos = 4;
         fromPos = 5;
+    } else {
+        foldPos = 3;
+        finalPos = 4;
+        inPos = 5;
+        fromPos = 6;
     }
     ast.stage = makeS<TraverseStage>(std::move(ast.nodes[fromPos]->stage),
                                      std::move(ast.nodes[inPos]->stage),
+                                     ast.nodes[2]->identifier,
+                                     ast.nodes[0]->identifier,
                                      ast.nodes[1]->identifier,
-                                     ast.nodes[0]->identifier,
-                                     ast.nodes[0]->identifier,
                                      foldPos ? std::move(ast.nodes[foldPos]->expr) : nullptr,
                                      finalPos ? std::move(ast.nodes[finalPos]->expr) : nullptr);
 }
