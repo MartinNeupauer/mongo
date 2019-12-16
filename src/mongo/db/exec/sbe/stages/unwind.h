@@ -42,6 +42,8 @@ class UnwindStage final : public PlanStage {
     std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
 
+    value::ArrayAccessor _inArrayAccessor;
+
     size_t _index{0};
     bool _inArray{false};
 

@@ -134,10 +134,9 @@ PlanState TraverseStage::getNext() {
     // get the value
     auto [tag, val] = _inFieldAccessor->getViewOfValue();
 
-    // TODO - make it traverse bson array
-    if (tag == value::TypeTags::Array) {
+    if (value::isArray(tag)) {
         // if it is an array then we have to traverse it
-        auto arrIn = value::getArrayView(val);
+        _inArrayAccessor.reset(tag, val);
         value::Array* arrOut{nullptr};
 
         if (!_foldCode) {
@@ -153,8 +152,8 @@ PlanState TraverseStage::getNext() {
         // loop over all elements of array
         // TODO - implement a stack of nested arrays
         bool firstValue = true;
-        for (size_t idx = 0; idx < arrIn->size(); ++idx) {
-            auto [tag, val] = arrIn->getAt(idx);
+        for (; !_inArrayAccessor.atEnd(); _inArrayAccessor.advance()) {
+            auto [tag, val] = _inArrayAccessor.getViewOfValue();
 
             // execute inner side once for every element of the array
             openInner(tag, val);
