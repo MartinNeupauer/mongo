@@ -1016,6 +1016,7 @@ env.Library(
         'pipeline/document_source_cursor.cpp',
         'pipeline/document_source_geo_near_cursor.cpp',
         'pipeline/pipeline_d.cpp',
+        'query/sbe_stage_builder.cpp',
         'query/explain.cpp',
         'query/find.cpp',
         'query/get_executor.cpp',
@@ -1024,7 +1025,7 @@ env.Library(
         'query/plan_executor_sbe.cpp',
         'query/plan_ranker.cpp',
         'query/plan_yield_policy.cpp',
-        'query/stage_builder.cpp',
+        'query/classic_stage_builder.cpp',
         'run_op_kill_cursors.cpp',
     ],
     LIBDEPS=[
