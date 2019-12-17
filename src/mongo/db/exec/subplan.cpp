@@ -46,7 +46,7 @@
 #include "mongo/db/query/planner_analysis.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_common.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/query/stage_builder_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/scopeguard.h"
 #include "mongo/util/transitional_tools_do_not_use/vector_spooling.h"
@@ -275,11 +275,12 @@ Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
 
             // Dump all the solutions into the MPS.
             for (size_t ix = 0; ix < branchResult->solutions.size(); ++ix) {
-                auto nextPlanRoot = StageBuilder::build(opCtx(),
-                                                        collection(),
-                                                        *branchResult->canonicalQuery,
-                                                        *branchResult->solutions[ix],
-                                                        _ws);
+                auto nextPlanRoot =
+                    stage_builder::buildExecutableTree<PlanStage>(expCtx()->opCtx,
+                                                                  collection(),
+                                                                  *branchResult->canonicalQuery,
+                                                                  *branchResult->solutions[ix],
+                                                                  _ws);
 
                 multiPlanStage->addPlan(
                     std::move(branchResult->solutions[ix]), std::move(nextPlanRoot), _ws);
@@ -362,7 +363,8 @@ Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
     // Use the index tags from planning each branch to construct the composite solution,
     // and set that solution as our child stage.
     _ws->clear();
-    auto root = StageBuilder::build(opCtx(), collection(), *_query, *_compositeSolution.get(), _ws);
+    auto root = stage_builder::buildExecutableTree<PlanStage>(
+        expCtx()->opCtx, collection(), *_query, *_compositeSolution.get(), _ws);
     invariant(_children.empty());
     _children.emplace_back(std::move(root));
 
@@ -384,7 +386,8 @@ Status SubplanStage::choosePlanWholeQuery(PlanYieldPolicy* yieldPolicy) {
 
     if (1 == solutions.size()) {
         // Only one possible plan.  Run it.  Build the stages from the solution.
-        auto root = StageBuilder::build(opCtx(), collection(), *_query, *solutions[0], _ws);
+        auto root = stage_builder::buildExecutableTree<PlanStage>(
+            expCtx()->opCtx, collection(), *_query, *solutions[0], _ws);
         invariant(_children.empty());
         _children.emplace_back(std::move(root));
 
@@ -405,9 +408,8 @@ Status SubplanStage::choosePlanWholeQuery(PlanYieldPolicy* yieldPolicy) {
                 solutions[ix]->cacheData->indexFilterApplied = _plannerParams.indexFiltersApplied;
             }
 
-            auto nextPlanRoot =
-                StageBuilder::build(opCtx(), collection(), *_query, *solutions[ix], _ws);
-
+            auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+                expCtx()->opCtx, collection(), *_query, *solutions[ix], _ws);
             multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
         }
 

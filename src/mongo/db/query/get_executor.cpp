@@ -51,6 +51,7 @@
 #include "mongo/db/exec/projection_executor_utils.h"
 #include "mongo/db/exec/record_store_fast_count.h"
 #include "mongo/db/exec/return_key.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/shard_filter.h"
 #include "mongo/db/exec/sort_key_generator.h"
 #include "mongo/db/exec/subplan.h"
@@ -79,7 +80,7 @@
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/db/query/query_settings.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/query/stage_builder_util.h"
 #include "mongo/db/repl/optime.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/s/collection_sharding_state.h"
@@ -344,17 +345,18 @@ bool shouldWaitForOplogVisibility(OperationContext* opCtx,
 
 namespace {
 
+template <typename PlanStageType>
 struct PrepareExecutionResult {
     PrepareExecutionResult(unique_ptr<CanonicalQuery> canonicalQuery,
                            unique_ptr<QuerySolution> querySolution,
-                           unique_ptr<PlanStage> root)
+                           unique_ptr<PlanStageType> root)
         : canonicalQuery(std::move(canonicalQuery)),
           querySolution(std::move(querySolution)),
           root(std::move(root)) {}
 
     unique_ptr<CanonicalQuery> canonicalQuery;
     unique_ptr<QuerySolution> querySolution;
-    unique_ptr<PlanStage> root;
+    unique_ptr<PlanStageType> root;
 };
 
 /**
@@ -369,24 +371,32 @@ struct PrepareExecutionResult {
  *
  * If an execution tree could not be created, returns an error Status.
  */
-StatusWith<PrepareExecutionResult> prepareExecution(OperationContext* opCtx,
-                                                    Collection* collection,
-                                                    WorkingSet* ws,
-                                                    unique_ptr<CanonicalQuery> canonicalQuery,
-                                                    size_t plannerOptions) {
+template <typename PlanStageType>
+StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
+    OperationContext* opCtx,
+    Collection* collection,
+    WorkingSet* ws,
+    unique_ptr<CanonicalQuery> canonicalQuery,
+    size_t plannerOptions) {
     invariant(canonicalQuery);
-    unique_ptr<PlanStage> root;
+    unique_ptr<PlanStageType> root;
+    constexpr auto isSlotBased = std::is_same_v<PlanStageType, sbe::PlanStage>;
 
     // This can happen as we're called by internal clients as well.
     if (nullptr == collection) {
-        const string& ns = canonicalQuery->ns();
-        LOGV2_DEBUG(20921,
-                    2,
-                    "Collection {ns} does not exist. Using EOF plan: {canonicalQuery_Short}",
-                    "ns"_attr = ns,
-                    "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
-        root = std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get());
-        return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+        if constexpr (isSlotBased) {
+            return Status{ErrorCodes::InternalErrorNotSupported,
+                          "EOF plan is not supprted by SBE yet"};
+        } else {
+            const string& ns = canonicalQuery->ns();
+            LOGV2_DEBUG(20921,
+                        2,
+                        "Collection {ns} does not exist. Using EOF plan: {canonicalQuery_Short}",
+                        "ns"_attr = ns,
+                        "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
+            root = std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get());
+            return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+        }
     }
 
     // Fill out the planning params.  We use these for both cached solutions and non-cached.
@@ -405,72 +415,77 @@ StatusWith<PrepareExecutionResult> prepareExecution(OperationContext* opCtx,
 
     // If we have an _id index we can use an idhack plan.
     if (descriptor && IDHackStage::supportsQuery(collection, *canonicalQuery)) {
-        LOGV2_DEBUG(20922,
-                    2,
-                    "Using idhack: {canonicalQuery_Short}",
-                    "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
+        if constexpr (isSlotBased) {
+            return Status{ErrorCodes::InternalErrorNotSupported,
+                          "IDHack plan is not supprted by SBE yet"};
+        } else {
+            LOGV2_DEBUG(20922,
+                        2,
+                        "Using idhack: {canonicalQuery_Short}",
+                        "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
 
-        root = std::make_unique<IDHackStage>(
-            canonicalQuery->getExpCtx().get(), canonicalQuery.get(), ws, descriptor);
+            root = std::make_unique<IDHackStage>(
+                canonicalQuery->getExpCtx().get(), canonicalQuery.get(), ws, descriptor);
 
-        // Might have to filter out orphaned docs.
-        if (plannerParams.options & QueryPlannerParams::INCLUDE_SHARD_FILTER) {
-            root = std::make_unique<ShardFilterStage>(
-                canonicalQuery->getExpCtx().get(),
-                CollectionShardingState::get(opCtx, canonicalQuery->nss())
-                    ->getOwnershipFilter(
-                        opCtx,
-                        CollectionShardingState::OrphanCleanupPolicy::kDisallowOrphanCleanup),
-                ws,
-                std::move(root));
-        }
-
-        const auto* cqProjection = canonicalQuery->getProj();
-
-        // Add a SortKeyGeneratorStage if the query requested sortKey metadata.
-        if (canonicalQuery->metadataDeps()[DocumentMetadataFields::kSortKey]) {
-            root = std::make_unique<SortKeyGeneratorStage>(
-                canonicalQuery->getExpCtx().get(),
-                std::move(root),
-                ws,
-                canonicalQuery->getQueryRequest().getSort());
-        }
-
-        if (canonicalQuery->getQueryRequest().returnKey()) {
-            // If returnKey was requested, add ReturnKeyStage to return only the index keys in the
-            // resulting documents. If a projection was also specified, it will be ignored, with
-            // the exception the $meta sortKey projection, which can be used along with the
-            // returnKey.
-            root = std::make_unique<ReturnKeyStage>(
-                canonicalQuery->getExpCtx().get(),
-                cqProjection
-                    ? QueryPlannerCommon::extractSortKeyMetaFieldsFromProjection(*cqProjection)
-                    : std::vector<FieldPath>{},
-                ws,
-                std::move(root));
-        } else if (cqProjection) {
-            // There might be a projection. The idhack stage will always fetch the full
-            // document, so we don't support covered projections. However, we might use the
-            // simple inclusion fast path.
-            // Stuff the right data into the params depending on what proj impl we use.
-            if (!cqProjection->isSimple()) {
-                root = std::make_unique<ProjectionStageDefault>(
-                    canonicalQuery->getExpCtx(),
-                    canonicalQuery->getQueryRequest().getProj(),
-                    canonicalQuery->getProj(),
-                    ws,
-                    std::move(root));
-            } else {
-                root = std::make_unique<ProjectionStageSimple>(
+            // Might have to filter out orphaned docs.
+            if (plannerParams.options & QueryPlannerParams::INCLUDE_SHARD_FILTER) {
+                root = std::make_unique<ShardFilterStage>(
                     canonicalQuery->getExpCtx().get(),
-                    canonicalQuery->getQueryRequest().getProj(),
-                    canonicalQuery->getProj(),
+                    CollectionShardingState::get(opCtx, canonicalQuery->nss())
+                        ->getOwnershipFilter(
+                            opCtx,
+                            CollectionShardingState::OrphanCleanupPolicy::kDisallowOrphanCleanup),
                     ws,
                     std::move(root));
             }
-        }
 
-        return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+            const auto* cqProjection = canonicalQuery->getProj();
+
+            // Add a SortKeyGeneratorStage if the query requested sortKey metadata.
+            if (canonicalQuery->metadataDeps()[DocumentMetadataFields::kSortKey]) {
+                root = std::make_unique<SortKeyGeneratorStage>(
+                    canonicalQuery->getExpCtx(),
+                    std::move(root),
+                    ws,
+                    canonicalQuery->getQueryRequest().getSort());
+            }
+
+            if (canonicalQuery->getQueryRequest().returnKey()) {
+                // If returnKey was requested, add ReturnKeyStage to return only the index keys in
+                // the resulting documents. If a projection was also specified, it will be ignored,
+                // with the exception the $meta sortKey projection, which can be used along with the
+                // returnKey.
+                root = std::make_unique<ReturnKeyStage>(
+                    canonicalQuery->getExpCtx().get(),
+                    cqProjection
+                        ? QueryPlannerCommon::extractSortKeyMetaFieldsFromProjection(*cqProjection)
+                        : std::vector<FieldPath>{},
+                    ws,
+                    std::move(root));
+            } else if (cqProjection) {
+                // There might be a projection. The idhack stage will always fetch the full
+                // document, so we don't support covered projections. However, we might use the
+                // simple inclusion fast path.
+                // Stuff the right data into the params depending on what proj impl we use.
+                if (!cqProjection->isSimple()) {
+                    root = std::make_unique<ProjectionStageDefault>(
+                        canonicalQuery->getExpCtx().get(),
+                        canonicalQuery->getQueryRequest().getProj(),
+                        canonicalQuery->getProj(),
+                        ws,
+                        std::move(root));
+                } else {
+                    root = std::make_unique<ProjectionStageSimple>(
+                        canonicalQuery->getExpCtx().get(),
+                        canonicalQuery->getQueryRequest().getProj(),
+                        canonicalQuery->getProj(),
+                        ws,
+                        std::move(root));
+                }
+            }
+
+            return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+        }
     }
 
     // Tailable: If the query requests tailable the collection must be capped.
@@ -483,65 +498,74 @@ StatusWith<PrepareExecutionResult> prepareExecution(OperationContext* opCtx,
     }
 
     // Check that the query should be cached.
-    if (CollectionQueryInfo::get(collection).getPlanCache()->shouldCacheQuery(*canonicalQuery)) {
-        // Fill in opDebug information.
-        const auto planCacheKey =
-            CollectionQueryInfo::get(collection).getPlanCache()->computeKey(*canonicalQuery);
-        CurOp::get(opCtx)->debug().queryHash =
-            canonical_query_encoder::computeHash(planCacheKey.getStableKeyStringData());
-        CurOp::get(opCtx)->debug().planCacheKey =
-            canonical_query_encoder::computeHash(planCacheKey.toString());
+    // Cached plans are not supported in SBE yet.
+    if constexpr (!isSlotBased) {
+        if (CollectionQueryInfo::get(collection)
+                .getPlanCache()
+                ->shouldCacheQuery(*canonicalQuery)) {
+            // Fill in opDebug information.
+            const auto planCacheKey =
+                CollectionQueryInfo::get(collection).getPlanCache()->computeKey(*canonicalQuery);
+            CurOp::get(opCtx)->debug().queryHash =
+                canonical_query_encoder::computeHash(planCacheKey.getStableKeyStringData());
+            CurOp::get(opCtx)->debug().planCacheKey =
+                canonical_query_encoder::computeHash(planCacheKey.toString());
 
-        // Try to look up a cached solution for the query.
-        if (auto cs = CollectionQueryInfo::get(collection)
-                          .getPlanCache()
-                          ->getCacheEntryIfActive(planCacheKey)) {
-            // We have a CachedSolution.  Have the planner turn it into a QuerySolution.
-            auto statusWithQs = QueryPlanner::planFromCache(*canonicalQuery, plannerParams, *cs);
+            // Try to look up a cached solution for the query.
+            if (auto cs = CollectionQueryInfo::get(collection)
+                              .getPlanCache()
+                              ->getCacheEntryIfActive(planCacheKey)) {
+                // We have a CachedSolution.  Have the planner turn it into a QuerySolution.
+                auto statusWithQs =
+                    QueryPlanner::planFromCache(*canonicalQuery, plannerParams, *cs);
 
-            if (statusWithQs.isOK()) {
-                auto querySolution = std::move(statusWithQs.getValue());
-                if ((plannerParams.options & QueryPlannerParams::IS_COUNT) &&
-                    turnIxscanIntoCount(querySolution.get())) {
-                    LOGV2_DEBUG(20923,
-                                2,
-                                "Using fast count: {canonicalQuery_Short}",
-                                "canonicalQuery_Short"_attr =
-                                    redact(canonicalQuery->toStringShort()));
+                if (statusWithQs.isOK()) {
+                    auto querySolution = std::move(statusWithQs.getValue());
+                    if ((plannerParams.options & QueryPlannerParams::IS_COUNT) &&
+                        turnIxscanIntoCount(querySolution.get())) {
+                        LOGV2_DEBUG(20923,
+                                    2,
+                                    "Using fast count: {canonicalQuery_Short}",
+                                    "canonicalQuery_Short"_attr =
+                                        redact(canonicalQuery->toStringShort()));
+                    }
+
+                    // Add a CachedPlanStage on top of the previous root.
+                    //
+                    // 'decisionWorks' is used to determine whether the existing cache entry should
+                    // be evicted, and the query replanned.
+                    root = std::make_unique<CachedPlanStage>(
+                        canonicalQuery->getExpCtx().get(),
+                        collection,
+                        ws,
+                        canonicalQuery.get(),
+                        plannerParams,
+                        cs->decisionWorks,
+                        stage_builder::buildExecutableTree<PlanStageType>(
+                            opCtx, collection, *canonicalQuery, *querySolution, ws));
+                    return PrepareExecutionResult(
+                        std::move(canonicalQuery), std::move(querySolution), std::move(root));
                 }
-
-                auto root =
-                    StageBuilder::build(opCtx, collection, *canonicalQuery, *querySolution, ws);
-
-                // Add a CachedPlanStage on top of the previous root.
-                //
-                // 'decisionWorks' is used to determine whether the existing cache entry should
-                // be evicted, and the query replanned.
-                auto cachedPlanStage =
-                    std::make_unique<CachedPlanStage>(canonicalQuery->getExpCtx().get(),
-                                                      collection,
-                                                      ws,
-                                                      canonicalQuery.get(),
-                                                      plannerParams,
-                                                      cs->decisionWorks,
-                                                      std::move(root));
-                return PrepareExecutionResult(std::move(canonicalQuery),
-                                              std::move(querySolution),
-                                              std::move(cachedPlanStage));
             }
         }
     }
 
-    if (internalQueryPlanOrChildrenIndependently.load() &&
-        SubplanStage::canUseSubplanning(*canonicalQuery)) {
-        LOGV2_DEBUG(20924,
-                    2,
-                    "Running query as sub-queries: {canonicalQuery_Short}",
-                    "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
+    // Sub-queries are not supported in SBE yet.
+    if constexpr (!isSlotBased) {
+        if (internalQueryPlanOrChildrenIndependently.load() &&
+            SubplanStage::canUseSubplanning(*canonicalQuery)) {
+            LOGV2_DEBUG(20924,
+                        2,
+                        "Running query as sub-queries: {canonicalQuery_Short}",
+                        "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
 
-        root = std::make_unique<SubplanStage>(
-            canonicalQuery->getExpCtx().get(), collection, ws, plannerParams, canonicalQuery.get());
-        return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+            root = std::make_unique<SubplanStage>(canonicalQuery->getExpCtx().get(),
+                                                  collection,
+                                                  ws,
+                                                  plannerParams,
+                                                  canonicalQuery.get());
+            return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
+        }
     }
 
     auto statusWithSolutions = QueryPlanner::plan(*canonicalQuery, plannerParams);
@@ -558,71 +582,84 @@ StatusWith<PrepareExecutionResult> prepareExecution(OperationContext* opCtx,
     if (plannerParams.options & QueryPlannerParams::IS_COUNT) {
         for (size_t i = 0; i < solutions.size(); ++i) {
             if (turnIxscanIntoCount(solutions[i].get())) {
-                // We're not going to cache anything that's fast count.
-                auto root =
-                    StageBuilder::build(opCtx, collection, *canonicalQuery, *solutions[i], ws);
+                if constexpr (isSlotBased) {
+                    return Status{ErrorCodes::InternalErrorNotSupported,
+                                  "Fast-count is not supprted by SBE yet"};
+                } else {
+                    // We're not going to cache anything that's fast count.
+                    auto root = stage_builder::buildExecutableTree<PlanStageType>(
+                        opCtx, collection, *canonicalQuery, *solutions[i], ws);
 
-                LOGV2_DEBUG(20925,
-                            2,
-                            "Using fast count: {canonicalQuery_Short}, planSummary: "
-                            "{Explain_getPlanSummary_root_get}",
-                            "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()),
-                            "Explain_getPlanSummary_root_get"_attr =
-                                Explain::getPlanSummary(root.get()));
+                    LOGV2_DEBUG(20925,
+                                2,
+                                "Using fast count: {canonicalQuery_Short}, planSummary: "
+                                "{Explain_getPlanSummary_root_get}",
+                                "canonicalQuery_Short"_attr =
+                                    redact(canonicalQuery->toStringShort()),
+                                "Explain_getPlanSummary_root_get"_attr =
+                                    Explain::getPlanSummary(root.get()));
 
-                return PrepareExecutionResult(
-                    std::move(canonicalQuery), std::move(solutions[i]), std::move(root));
+
+                    return PrepareExecutionResult(
+                        std::move(canonicalQuery), std::move(solutions[i]), std::move(root));
+                }
             }
         }
     }
 
     if (1 == solutions.size()) {
         // Only one possible plan.  Run it.  Build the stages from the solution.
-        auto root = StageBuilder::build(opCtx, collection, *canonicalQuery, *solutions[0], ws);
-
-        LOGV2_DEBUG(20926,
-                    2,
-                    "Only one plan is available; it will be run but will not be cached. "
-                    "{canonicalQuery_Short}, planSummary: {Explain_getPlanSummary_root_get}",
-                    "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()),
-                    "Explain_getPlanSummary_root_get"_attr = Explain::getPlanSummary(root.get()));
-
+        auto root = stage_builder::buildExecutableTree<PlanStageType>(
+            opCtx, collection, *canonicalQuery, *solutions[0], ws);
+        if constexpr (!isSlotBased) {
+            LOGV2_DEBUG(20926,
+                        2,
+                        "Only one plan is available; it will be run but will not be cached. "
+                        "{canonicalQuery_Short}, planSummary: {Explain_getPlanSummary_root_get}",
+                        "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()),
+                        "Explain_getPlanSummary_root_get"_attr =
+                            Explain::getPlanSummary(root.get()));
+        }
         return PrepareExecutionResult(
             std::move(canonicalQuery), std::move(solutions[0]), std::move(root));
     } else {
-        // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
-        // and so on. The working set will be shared by all candidate plans.
-        auto multiPlanStage = std::make_unique<MultiPlanStage>(
-            canonicalQuery->getExpCtx().get(), collection, canonicalQuery.get());
+        if constexpr (isSlotBased) {
+            return Status{ErrorCodes::InternalErrorNotSupported,
+                          "Multi-planning is not supprted by SBE yet"};
+        } else {
+            // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
+            // and so on. The working set will be shared by all candidate plans.
+            auto multiPlanStage = std::make_unique<MultiPlanStage>(
+                canonicalQuery->getExpCtx().get(), collection, canonicalQuery.get());
 
-        for (size_t ix = 0; ix < solutions.size(); ++ix) {
-            if (solutions[ix]->cacheData.get()) {
-                solutions[ix]->cacheData->indexFilterApplied = plannerParams.indexFiltersApplied;
+            for (size_t ix = 0; ix < solutions.size(); ++ix) {
+                if (solutions[ix]->cacheData.get()) {
+                    solutions[ix]->cacheData->indexFilterApplied =
+                        plannerParams.indexFiltersApplied;
+                }
+
+                auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStageType>(
+                    opCtx, collection, *canonicalQuery, *solutions[ix], ws);
+
+                // Takes ownership of 'nextPlanRoot'.
+                multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), ws);
             }
 
-            auto nextPlanRoot =
-                StageBuilder::build(opCtx, collection, *canonicalQuery, *solutions[ix], ws);
-
-            // Takes ownership of 'nextPlanRoot'.
-            multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), ws);
+            root = std::move(multiPlanStage);
+            return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
         }
-
-        root = std::move(multiPlanStage);
-        return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
     }
 }
 
-}  // namespace
-
-StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutor(
+StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
     OperationContext* opCtx,
     Collection* collection,
     unique_ptr<CanonicalQuery> canonicalQuery,
     PlanExecutor::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    StatusWith<PrepareExecutionResult> executionResult =
-        prepareExecution(opCtx, collection, ws.get(), std::move(canonicalQuery), plannerOptions);
+    auto executionResult = prepareExecution<PlanStage>(
+        opCtx, collection, ws.get(), std::move(canonicalQuery), plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -636,6 +673,37 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutor(
                               yieldPolicy,
                               NamespaceString(),
                               std::move(executionResult.getValue().querySolution));
+}
+
+StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor(
+    OperationContext* opCtx,
+    Collection* collection,
+    unique_ptr<CanonicalQuery> canonicalQuery,
+    size_t plannerOptions) {
+    unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
+    auto executionResult = prepareExecution<sbe::PlanStage>(
+        opCtx, collection, ws.get(), std::move(canonicalQuery), plannerOptions);
+    if (!executionResult.isOK()) {
+        return executionResult.getStatus();
+    }
+    invariant(executionResult.getValue().root);
+    return PlanExecutor::make(opCtx,
+                              std::move(executionResult.getValue().canonicalQuery),
+                              std::move(executionResult.getValue().root),
+                              NamespaceString{});
+}
+}  // namespace
+
+StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutor(
+    OperationContext* opCtx,
+    Collection* collection,
+    unique_ptr<CanonicalQuery> canonicalQuery,
+    PlanExecutor::YieldPolicy yieldPolicy,
+    size_t plannerOptions) {
+    return internalQueryEnableSlotBasedExecutionEngine.load()
+        ? getSlotBasedExecutor(opCtx, collection, std::move(canonicalQuery), plannerOptions)
+        : getClassicExecutor(
+              opCtx, collection, std::move(canonicalQuery), yieldPolicy, plannerOptions);
 }
 
 //
@@ -848,8 +916,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDelete(
     // identify the record to update.
     const size_t defaultPlannerOptions = QueryPlannerParams::PRESERVE_RECORD_ID;
 
-    StatusWith<PrepareExecutionResult> executionResult =
-        prepareExecution(opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
+    auto executionResult = prepareExecution<PlanStage>(
+        opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1007,8 +1075,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorUpdate(
     // identify the record to update.
     const size_t defaultPlannerOptions = QueryPlannerParams::PRESERVE_RECORD_ID;
 
-    StatusWith<PrepareExecutionResult> executionResult =
-        prepareExecution(opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
+    auto executionResult = prepareExecution<PlanStage>(
+        opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1257,8 +1325,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorCount(
         plannerOptions |= QueryPlannerParams::INCLUDE_SHARD_FILTER;
     }
 
-    StatusWith<PrepareExecutionResult> executionResult =
-        prepareExecution(opCtx, collection, ws.get(), std::move(cq), plannerOptions);
+    auto executionResult =
+        prepareExecution<PlanStage>(opCtx, collection, ws.get(), std::move(cq), plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1583,8 +1651,8 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorForS
     invariant(soln);
 
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    auto root =
-        StageBuilder::build(opCtx, collection, *parsedDistinct->getQuery(), *soln, ws.get());
+    auto root = stage_builder::buildExecutableTree<PlanStage>(
+        opCtx, collection, *parsedDistinct->getQuery(), *soln, ws.get());
 
     LOGV2_DEBUG(20931,
                 2,
@@ -1629,7 +1697,7 @@ getExecutorDistinctFromIndexSolutions(OperationContext* opCtx,
             // Build and return the SSR over solutions[i].
             unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
             unique_ptr<QuerySolution> currentSolution = std::move(solutions[i]);
-            auto root = StageBuilder::build(
+            auto root = stage_builder::buildExecutableTree<PlanStage>(
                 opCtx, collection, *parsedDistinct->getQuery(), *currentSolution, ws.get());
 
             LOGV2_DEBUG(20932,

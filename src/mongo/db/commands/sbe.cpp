@@ -68,18 +68,13 @@ public:
         sbe::Parser parser;
         auto root = parser.parse(opCtx, dbname, cmdObj["sbe"].String());
 
-        sbe::CompileCtx ctx;
-        root->prepare(ctx);
-        auto resultSlot = root->getAccessor(ctx, "$$RESULT");
-        uassert(ErrorCodes::FailedToParse, "Query does not have $$RESULT slot.", resultSlot);
-
         std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec;
         BSONArrayBuilder firstBatch;
 
         NamespaceString nss{dbname, "$cmd.sbe"_sd};
         invariant(nss.isCollectionlessCursorNamespace());
 
-        exec = uassertStatusOK(PlanExecutor::make(opCtx, std::move(root), resultSlot, nss));
+        exec = uassertStatusOK(PlanExecutor::make(opCtx, nullptr, std::move(root), nss));
 
         for (long long objCount = 0; objCount < batchSize; objCount++) {
             BSONObj next;

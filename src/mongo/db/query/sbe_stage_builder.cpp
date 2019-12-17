@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2018-present MongoDB, Inc.
+ *    Copyright (C) 2019-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -27,39 +27,40 @@
  *    it in the license file.
  */
 
-#pragma once
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
-#include "mongo/db/exec/working_set.h"
-#include "mongo/db/query/query_solution.h"
+#include "mongo/platform/basic.h"
+
+#include "mongo/db/query/sbe_stage_builder.h"
+
+#include "mongo/db/catalog/collection.h"
+#include "mongo/db/exec/sbe/stages/scan.h"
+#include "mongo/logv2/log.h"
+#include "mongo/util/str.h"
 
 namespace mongo::stage_builder {
-/**
- * The StageBuilder converts a QuerySolution tree to an executable tree of PlanStage(s), which
- * specific type is defined by the 'PlanStageType' parameter.
- */
-template <typename PlanStageType>
-class StageBuilder {
-public:
-    StageBuilder(OperationContext* opCtx,
-                 const Collection* collection,
-                 const CanonicalQuery& cq,
-                 const QuerySolution& solution,
-                 WorkingSet* ws)
-        : _opCtx(opCtx), _collection(collection), _cq(cq), _solution(solution), _ws(ws) {}
+// Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
+// could not be constructed.
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
+    using namespace std::literals;
 
-    virtual ~StageBuilder() = default;
-
-    /**
-     * Given a root node of a QuerySolution tree, builds and returns a corresponding executable
-     * tree of PlanStages.
-     */
-    virtual std::unique_ptr<PlanStageType> build(const QuerySolutionNode* root) = 0;
-
-protected:
-    OperationContext* _opCtx;
-    const Collection* _collection;
-    const CanonicalQuery& _cq;
-    const QuerySolution& _solution;
-    WorkingSet* _ws;
-};
+    switch (root->getType()) {
+        case STAGE_COLLSCAN: {
+            return std::make_unique<sbe::ScanStage>(
+                NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+                "$$RESULT"sv,
+                ""sv,
+                std::vector<std::string>{},
+                std::vector<std::string>{},
+                ""sv);
+        }
+        default: {
+            str::stream ss;
+            ss << "Can't build exec tree for node ";
+            root->appendToString(&ss, 0);
+            std::string nodeStr(ss);
+            uasserted(ErrorCodes::InternalErrorNotSupported, ss);
+        }
+    }
+}
 }  // namespace mongo::stage_builder

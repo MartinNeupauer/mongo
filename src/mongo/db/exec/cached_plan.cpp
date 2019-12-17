@@ -47,7 +47,7 @@
 #include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/query/stage_builder_util.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 #include "mongo/util/transitional_tools_do_not_use/vector_spooling.h"
@@ -226,8 +226,8 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
 
     if (1 == solutions.size()) {
         // Only one possible plan. Build the stages from the solution.
-        auto newRoot =
-            StageBuilder::build(opCtx(), collection(), *_canonicalQuery, *solutions[0], _ws);
+        auto newRoot = stage_builder::buildExecutableTree<PlanStage>(
+            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[0], _ws);
         _children.emplace_back(std::move(newRoot));
         _replannedQs = std::move(solutions.back());
         solutions.pop_back();
@@ -257,8 +257,8 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
             solutions[ix]->cacheData->indexFilterApplied = _plannerParams.indexFiltersApplied;
         }
 
-        auto nextPlanRoot =
-            StageBuilder::build(opCtx(), collection(), *_canonicalQuery, *solutions[ix], _ws);
+        auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[ix], _ws);
 
         multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
     }

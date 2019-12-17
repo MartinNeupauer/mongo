@@ -50,6 +50,7 @@
 #include "mongo/db/query/explain_common.h"
 #include "mongo/db/query/get_executor.h"
 #include "mongo/db/query/plan_executor.h"
+#include "mongo/db/query/plan_executor_sbe.h"
 #include "mongo/db/query/plan_summary_stats.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_settings.h"
@@ -882,6 +883,10 @@ void Explain::explainStages(PlanExecutor* exec,
                             ExplainOptions::Verbosity verbosity,
                             BSONObj extraInfo,
                             BSONObjBuilder* out) {
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Explain facility is not supported for SBE plans",
+            !dynamic_cast<PlanExecutorSBE*>(exec));
+
     auto winningPlanTrialStats = Explain::getWinningPlanTrialStats(exec);
 
     Status executePlanStatus = Status::OK();

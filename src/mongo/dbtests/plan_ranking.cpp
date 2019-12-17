@@ -51,7 +51,7 @@
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_test_lib.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/query/stage_builder_util.h"
 #include "mongo/dbtests/dbtests.h"
 
 namespace mongo {
@@ -130,7 +130,8 @@ public:
         unique_ptr<WorkingSet> ws(new WorkingSet());
         // Put each solution from the planner into the MPR.
         for (size_t i = 0; i < solutions.size(); ++i) {
-            auto root = StageBuilder::build(&_opCtx, collection, *cq, *solutions[i], ws.get());
+            auto root = stage_builder::buildExecutableTree<PlanStage>(
+                &_opCtx, collection, *cq, *solutions[i], ws.get());
             _mps->addPlan(std::move(solutions[i]), std::move(root), ws.get());
         }
         // This is what sets a backup plan, should we test for it.

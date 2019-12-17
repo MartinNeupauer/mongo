@@ -355,3 +355,10 @@ server_parameters:
     cpp_varname: "internalQueryDesugarWhereToFunction"
     cpp_vartype: AtomicWord<bool>
     default: false
+
+  internalQueryEnableSlotBasedExecutionEngine:
+    description: "If true, activates the slot-based execution engine to execute queries."
+    set_at: [ startup, runtime ]
+    cpp_varname: "internalQueryEnableSlotBasedExecutionEngine"
+    cpp_vartype: AtomicWord<bool>
+    default: false

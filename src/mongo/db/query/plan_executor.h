@@ -311,8 +311,8 @@ public:
      */
     static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
         OperationContext* opCtx,
+        std::unique_ptr<CanonicalQuery> cq,
         std::unique_ptr<sbe::PlanStage> root,
-        sbe::value::SlotAccessor* result,
         NamespaceString nss);
 
     /**

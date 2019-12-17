@@ -30,16 +30,22 @@
 #define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
 
 #include "mongo/db/query/plan_executor_sbe.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 
 namespace mongo {
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
     OperationContext* opCtx,
+    std::unique_ptr<CanonicalQuery> cq,
     std::unique_ptr<sbe::PlanStage> root,
-    sbe::value::SlotAccessor* result,
     NamespaceString nss) {
 
-    auto execImpl = new PlanExecutorSBE(opCtx, std::move(root), result, nss);
+    sbe::CompileCtx ctx;
+    root->prepare(ctx);
+    auto resultSlot = root->getAccessor(ctx, "$$RESULT");
+    uassert(ErrorCodes::InternalError, "Query does not have $$RESULT slot.", resultSlot);
+
+    auto execImpl = new PlanExecutorSBE(opCtx, std::move(cq), std::move(root), resultSlot, nss);
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
@@ -47,10 +53,11 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
 }
 
 PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
+                                 std::unique_ptr<CanonicalQuery> cq,
                                  std::unique_ptr<sbe::PlanStage> root,
                                  sbe::value::SlotAccessor* result,
                                  NamespaceString nss)
-    : _opCtx(opCtx), _nss(nss), _root(std::move(root)), _result(result) {
+    : _opCtx(opCtx), _nss(nss), _root(std::move(root)), _result(result), _cq{std::move(cq)} {
     invariant(_root);
     invariant(_result);
 
