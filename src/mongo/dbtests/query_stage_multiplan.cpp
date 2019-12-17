@@ -54,7 +54,7 @@
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_test_lib.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/query/stage_builder_util.h"
 #include "mongo/dbtests/dbtests.h"
 #include "mongo/util/clock_source_mock.h"
 
@@ -397,7 +397,8 @@ TEST_F(QueryStageMultiPlanTest, MPSBackupPlan) {
     unique_ptr<WorkingSet> ws(new WorkingSet());
     // Put each solution from the planner into the MPR.
     for (size_t i = 0; i < solutions.size(); ++i) {
-        auto root = StageBuilder::build(_opCtx.get(), collection, *cq, *solutions[i], ws.get());
+        auto root = stage_builder::buildExecutableTree<PlanStage>(
+            _opCtx.get(), collection, *cq, *solutions[i], ws.get());
         mps->addPlan(std::move(solutions[i]), std::move(root), ws.get());
     }
 

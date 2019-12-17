@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2018-present MongoDB, Inc.
+ *    Copyright (C) 2019-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -29,37 +29,17 @@
 
 #pragma once
 
-#include "mongo/db/exec/working_set.h"
-#include "mongo/db/query/query_solution.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/stage_builder.h"
 
 namespace mongo::stage_builder {
 /**
- * The StageBuilder converts a QuerySolution tree to an executable tree of PlanStage(s), which
- * specific type is defined by the 'PlanStageType' parameter.
+ * A stage builder which builds an executable tree using slot-based PlanStages.
  */
-template <typename PlanStageType>
-class StageBuilder {
+class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage> {
 public:
-    StageBuilder(OperationContext* opCtx,
-                 const Collection* collection,
-                 const CanonicalQuery& cq,
-                 const QuerySolution& solution,
-                 WorkingSet* ws)
-        : _opCtx(opCtx), _collection(collection), _cq(cq), _solution(solution), _ws(ws) {}
+    using StageBuilder<sbe::PlanStage>::StageBuilder;
 
-    virtual ~StageBuilder() = default;
-
-    /**
-     * Given a root node of a QuerySolution tree, builds and returns a corresponding executable
-     * tree of PlanStages.
-     */
-    virtual std::unique_ptr<PlanStageType> build(const QuerySolutionNode* root) = 0;
-
-protected:
-    OperationContext* _opCtx;
-    const Collection* _collection;
-    const CanonicalQuery& _cq;
-    const QuerySolution& _solution;
-    WorkingSet* _ws;
+    std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
 };
 }  // namespace mongo::stage_builder

@@ -36,6 +36,7 @@ namespace mongo {
 class PlanExecutorSBE final : public PlanExecutor {
 public:
     PlanExecutorSBE(OperationContext* opCtx,
+                    std::unique_ptr<CanonicalQuery> cq,
                     std::unique_ptr<sbe::PlanStage> root,
                     sbe::value::SlotAccessor* result,
                     NamespaceString nss);
@@ -49,7 +50,7 @@ public:
     }
 
     CanonicalQuery* getCanonicalQuery() const override {
-        return nullptr;
+        return _cq.get();
     }
 
     const NamespaceString& nss() const override {
@@ -151,5 +152,7 @@ private:
     // If _killStatus has a non-OK value, then we have been killed and the value represents the
     // reason for the kill.
     Status _killStatus = Status::OK();
+
+    std::unique_ptr<CanonicalQuery> _cq;
 };
 }  // namespace mongo
