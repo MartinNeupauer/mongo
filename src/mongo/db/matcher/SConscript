@@ -62,6 +62,7 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/bson/util/bson_extract',
         '$BUILD_DIR/mongo/db/common',
+	'$BUILD_DIR/mongo/db/exec/sbe/query_sbe',
         '$BUILD_DIR/mongo/db/fts/fts_query_noop',
         '$BUILD_DIR/mongo/db/geo/geometry',
         '$BUILD_DIR/mongo/db/geo/geoparser',

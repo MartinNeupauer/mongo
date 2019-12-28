@@ -6,18 +6,15 @@ env.Library(
     target='query_sbe',
     source=[
         'expressions/expression.cpp',
-        'parser/parser.cpp',
         'stages/co_scan.cpp',
         'stages/exchange.cpp',
         'stages/filter.cpp',
         'stages/hash_agg.cpp',
         'stages/hash_join.cpp',
-        'stages/ix_scan.cpp',
         'stages/limit.cpp',
         'stages/loop_join.cpp',
         'stages/makeobj.cpp',
         'stages/project.cpp',
-        'stages/scan.cpp',
         'stages/sort.cpp',
         'stages/traverse.cpp',
         'stages/unwind.cpp',
@@ -29,8 +26,30 @@ env.Library(
         ],
     LIBDEPS=[
         '$BUILD_DIR/mongo/base',
-        '$BUILD_DIR/mongo/db/db_raii',
         '$BUILD_DIR/mongo/util/concurrency/thread_pool'
+        ]
+    )
+
+env.Library(
+    target='query_sbe_storage',
+    source=[
+        'stages/ix_scan.cpp',
+        'stages/scan.cpp',
+        ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/db/db_raii',
+        'query_sbe'
+        ]
+    )
+
+env.Library(
+    target='query_sbe_parser',
+    source=[
+        'parser/parser.cpp',
+        ],
+    LIBDEPS=[
+        'query_sbe',
+        'query_sbe_storage'
         ]
     )
 
@@ -42,6 +61,6 @@ env.CppUnitTest(
     LIBDEPS=[
         '$BUILD_DIR/mongo/db/concurrency/lock_manager',
         '$BUILD_DIR/mongo/unittest/unittest',
-        'query_sbe',
+        'query_sbe_storage'
     ],
 )

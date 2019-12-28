@@ -34,6 +34,7 @@
 #include "mongo/db/query/sbe_stage_builder.h"
 
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
@@ -46,13 +47,27 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
 
     switch (root->getType()) {
         case STAGE_COLLSCAN: {
-            return std::make_unique<sbe::ScanStage>(
+            auto stage = sbe::makeS<sbe::ScanStage>(
                 NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
                 "$$RESULT"sv,
                 ""sv,
                 std::vector<std::string>{},
                 std::vector<std::string>{},
                 ""sv);
+
+            if (root->filter) {
+                std::string predicateName;
+                stage = root->filter->generateStage(std::move(stage), "$$RESULT"sv, predicateName);
+
+                uassert(ErrorCodes::InternalErrorNotSupported,
+                        str::stream() << "Cannot build filter",
+                        stage && !predicateName.empty());
+
+                stage = sbe::makeS<sbe::FilterStage>(std::move(stage),
+                                                     sbe::makeE<sbe::EVariable>(predicateName));
+            }
+
+            return stage;
         }
         default: {
             str::stream ss;

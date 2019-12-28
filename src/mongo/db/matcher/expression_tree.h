@@ -130,6 +130,10 @@ public:
 
     virtual void serialize(BSONObjBuilder* out, bool includePath) const;
 
+    std::unique_ptr<sbe::PlanStage> generateStage(std::unique_ptr<sbe::PlanStage> inputStage,
+                                                  std::string_view inputVarName,
+                                                  std::string& predicateName) const override final;
+
     bool isTriviallyTrue() const final;
 };
 
