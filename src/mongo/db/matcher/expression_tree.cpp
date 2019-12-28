@@ -32,6 +32,7 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_path.h"
 #include "mongo/db/matcher/expression_text_base.h"
@@ -242,6 +243,30 @@ void AndMatchExpression::serialize(BSONObjBuilder* out, bool includePath) const 
 bool AndMatchExpression::isTriviallyTrue() const {
     return numChildren() == 0;
 }
+
+std::unique_ptr<sbe::PlanStage> AndMatchExpression::generateStage(
+    std::unique_ptr<sbe::PlanStage> inputStage,
+    std::string_view inputVarName,
+    std::string& predicateName) const {
+
+    auto size = numChildren();
+    for (size_t i = 0; i < size; i++) {
+        inputStage = getChild(i)->generateStage(std::move(inputStage), inputVarName, predicateName);
+
+        // Insert the filter stage for all but the last child
+        if (i < size - 1) {
+            uassert(ErrorCodes::InternalErrorNotSupported,
+                    str::stream() << "Cannot build filter",
+                    inputStage && !predicateName.empty());
+
+            inputStage = sbe::makeS<sbe::FilterStage>(std::move(inputStage),
+                                                      sbe::makeE<sbe::EVariable>(predicateName));
+        }
+    }
+
+    return inputStage;
+}
+
 
 // -----
 

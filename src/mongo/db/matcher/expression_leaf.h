@@ -177,6 +177,19 @@ public:
 
     virtual ~ComparisonMatchExpression() = default;
 
+    std::unique_ptr<sbe::PlanStage> generateStage(std::unique_ptr<sbe::PlanStage> inputStage,
+                                                  std::string_view inputVarName,
+                                                  std::string& predicateName) const override final;
+
+    /**
+     * A helper to generate the traverse operator. Consider to move it higher up the class
+     * hierarchy.
+     */
+    std::unique_ptr<sbe::PlanStage> generateTraverse(size_t level,
+                                                     std::unique_ptr<sbe::PlanStage> inputStage,
+                                                     std::string_view inputVarName,
+                                                     std::string_view predicateVarName) const;
+
     bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
 };
 

@@ -39,6 +39,11 @@
 #include "mongo/bson/bsonmisc.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/config.h"
+#include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/project.h"
+#include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/field_ref.h"
 #include "mongo/db/jsobj.h"
 #include "mongo/db/matcher/expression_parser.h"
@@ -189,6 +194,88 @@ bool ComparisonMatchExpression::matchesSingleElement(const BSONElement& e,
             // a $lt, $lte, $gt, $gte, or equality expression.
             fassertFailed(16828);
     }
+}
+
+std::unique_ptr<sbe::PlanStage> ComparisonMatchExpression::generateStage(
+    std::unique_ptr<sbe::PlanStage> inputStage,
+    std::string_view inputVarName,
+    std::string& predicateName) const {
+
+    predicateName = "predicate";
+
+    return generateTraverse(0, std::move(inputStage), inputVarName, predicateName);
+}
+
+std::unique_ptr<sbe::PlanStage> ComparisonMatchExpression::generateTraverse(
+    size_t level,
+    std::unique_ptr<sbe::PlanStage> inputStage,
+    std::string_view inputVarName,
+    std::string_view predicateVarName) const {
+    using namespace std::literals;
+
+    std::string fieldName{elementPath().fieldRef().getPart(level)};
+    std::string_view fieldVar = fieldName;  // for now
+
+    std::string_view elemPredicateVar = "elemPredicate"sv;  // for now
+
+    // Generate the projection stage to read a field.
+    inputStage = sbe::makeProjectStage(
+        std::move(inputStage),
+        fieldVar,
+        sbe::makeE<sbe::EFunction>("getField"sv,
+                                   sbe::makeEs(sbe::makeE<sbe::EVariable>(inputVarName),
+                                               sbe::makeE<sbe::EConstant>(fieldName))));
+
+    std::unique_ptr<sbe::PlanStage> innerBranch;
+    // Generate the inner side of the traverse.
+    if (level == elementPath().fieldRef().numParts() - 1) {
+        // This is the tip, generate the actual comparison.
+        auto op = [this]() {
+            switch (matchType()) {
+                case LT:
+                    return sbe::EPrimBinary::less;
+                case LTE:
+                    return sbe::EPrimBinary::lessEq;
+                case EQ:
+                    return sbe::EPrimBinary::eq;
+                case GT:
+                    return sbe::EPrimBinary::greater;
+                case GTE:
+                    return sbe::EPrimBinary::greaterEq;
+                default:
+                    uasserted(ErrorCodes::InternalErrorNotSupported, "Unknown relational operator");
+            }
+        }();
+
+        auto [tag, val] = sbe::bson::convertFrom(
+            true, _rhs.rawdata(), _rhs.rawdata() + _rhs.size(), _rhs.fieldNameSize() - 1);
+
+        innerBranch = sbe::makeProjectStage(
+            sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+            elemPredicateVar,
+            sbe::makeE<sbe::EPrimBinary>(
+                op, sbe::makeE<sbe::EVariable>(fieldVar), sbe::makeE<sbe::EConstant>(tag, val)));
+    } else {
+        // Generate nested traversal.
+        innerBranch = sbe::makeProjectStage(
+            generateTraverse(level + 1,
+                             sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+                             fieldVar,
+                             predicateVarName),
+            elemPredicateVar,
+            sbe::makeE<sbe::EVariable>(predicateVarName));
+    }
+
+    return sbe::makeS<sbe::TraverseStage>(
+        std::move(inputStage),
+        std::move(innerBranch),
+        fieldName,
+        predicateVarName,
+        elemPredicateVar,
+        sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicOr,
+                                     sbe::makeE<sbe::EVariable>(predicateVarName),
+                                     sbe::makeE<sbe::EVariable>(elemPredicateVar)),
+        sbe::makeE<sbe::EVariable>(predicateVarName));
 }
 
 constexpr StringData EqualityMatchExpression::kName;

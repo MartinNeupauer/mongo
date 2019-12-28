@@ -36,6 +36,7 @@
 #include "mongo/base/status.h"
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/matcher/match_details.h"
 #include "mongo/db/matcher/matchable.h"
 #include "mongo/db/pipeline/dependencies.h"
@@ -314,14 +315,28 @@ public:
         return false;
     }
 
+    /**
+     * Generate plan stage(s) that calculate a filter predicate. It does not generate the filter
+     * stage itself. The filter stage is generated after all MatchExpression nodes are processed.
+     *
+     * predicateName is an input/output parameter. We may consider returing a new predicateName
+     * instead.
+     */
+    virtual std::unique_ptr<sbe::PlanStage> generateStage(
+        std::unique_ptr<sbe::PlanStage> inputStage,
+        std::string_view inputVarName,
+        std::string& predicateName) const {
+        return nullptr;
+    }
+
     //
     // Debug information
     //
 
     /**
-     * Returns a debug string representing the match expression tree, including any tags attached
-     * for planning. This debug string format may spill across multiple lines, so it is not suitable
-     * for logging at low debug levels or for error messages.
+     * Returns a debug string representing the match expression tree, including any tags
+     * attached for planning. This debug string format may spill across multiple lines, so it is
+     * not suitable for logging at low debug levels or for error messages.
      */
     std::string debugString() const;
     virtual void debugString(StringBuilder& debug, int indentationLevel = 0) const = 0;

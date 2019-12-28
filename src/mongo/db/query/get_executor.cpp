@@ -650,7 +650,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutor(
     unique_ptr<CanonicalQuery> canonicalQuery,
     PlanExecutor::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
-    return internalQueryEnableSlotBasedExecutionEngine.load()
+    return internalQueryEnableSlotBasedExecutionEngine.load() && collection
         ? getSlotBasedExecutor(opCtx, collection, std::move(canonicalQuery), plannerOptions)
         : getClassicExecutor(
               opCtx, collection, std::move(canonicalQuery), yieldPolicy, plannerOptions);

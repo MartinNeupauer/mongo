@@ -78,6 +78,9 @@ public:
         _elementPath.init(_path);
     }
 
+    const auto& elementPath() const {
+        return _elementPath;
+    }
     /**
      * Finds an applicable rename from 'renameList' (if one exists) and applies it to the expression
      * path. Each pair in 'renameList' specifies a path prefix that should be renamed (as the first
