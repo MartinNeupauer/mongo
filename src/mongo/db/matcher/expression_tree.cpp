@@ -33,6 +33,7 @@
 #include "mongo/bson/bsonobj.h"
 #include "mongo/bson/bsonobjbuilder.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_path.h"
 #include "mongo/db/matcher/expression_text_base.h"
@@ -250,6 +251,14 @@ std::unique_ptr<sbe::PlanStage> AndMatchExpression::generateStage(
     std::string& predicateName) const {
 
     auto size = numChildren();
+    // Ideally the empty And match expression should not exist at all.
+    if (size == 0) {
+        predicateName = "truePredicate";
+        inputStage =
+            sbe::makeProjectStage(std::move(inputStage),
+                                  predicateName,
+                                  sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, 1));
+    }
     for (size_t i = 0; i < size; i++) {
         inputStage = getChild(i)->generateStage(std::move(inputStage), inputVarName, predicateName);
 
