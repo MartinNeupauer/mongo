@@ -44,8 +44,11 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     root->prepare(ctx);
     auto resultSlot = root->getAccessor(ctx, "$$RESULT");
     uassert(ErrorCodes::InternalError, "Query does not have $$RESULT slot.", resultSlot);
+    auto resultRecordId = root->getAccessor(ctx, "$$RID");
+    uassert(ErrorCodes::InternalError, "Query does not have $$RID slot.", resultSlot);
 
-    auto execImpl = new PlanExecutorSBE(opCtx, std::move(cq), std::move(root), resultSlot, nss);
+    auto execImpl =
+        new PlanExecutorSBE(opCtx, std::move(cq), std::move(root), resultSlot, resultRecordId, nss);
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
@@ -56,10 +59,17 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
                                  std::unique_ptr<CanonicalQuery> cq,
                                  std::unique_ptr<sbe::PlanStage> root,
                                  sbe::value::SlotAccessor* result,
+                                 sbe::value::SlotAccessor* resultRecordId,
                                  NamespaceString nss)
-    : _opCtx(opCtx), _nss(nss), _root(std::move(root)), _result(result), _cq{std::move(cq)} {
+    : _opCtx(opCtx),
+      _nss(nss),
+      _root(std::move(root)),
+      _result(result),
+      _resultRecordId(resultRecordId),
+      _cq{std::move(cq)} {
     invariant(_root);
     invariant(_result);
+    invariant(_resultRecordId);
 
     _root->attachFromOperationContext(_opCtx);
 }
@@ -162,6 +172,13 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) 
         *out = BSONObj(sbe::value::bitcastTo<const char*>(val));
     } else {
         // The query is supposed to return an object.
+    }
+
+    if (dlOut) {
+        auto [tag, val] = _resultRecordId->getViewOfValue();
+        if (tag == sbe::value::TypeTags::NumberInt64) {
+            *dlOut = RecordId{sbe::value::bitcastTo<int64_t>(val)};
+        }
     }
     return PlanExecutor::ExecState::ADVANCED;
 }

@@ -39,6 +39,7 @@ public:
                     std::unique_ptr<CanonicalQuery> cq,
                     std::unique_ptr<sbe::PlanStage> root,
                     sbe::value::SlotAccessor* result,
+                    sbe::value::SlotAccessor* resultRecordId,
                     NamespaceString nss);
 
     WorkingSet* getWorkingSet() const override {
@@ -145,7 +146,8 @@ private:
     NamespaceString _nss;
 
     std::unique_ptr<sbe::PlanStage> _root;
-    sbe::value::SlotAccessor* _result;
+    sbe::value::SlotAccessor* _result{nullptr};
+    sbe::value::SlotAccessor* _resultRecordId{nullptr};
 
     BSONObj _stash;
 

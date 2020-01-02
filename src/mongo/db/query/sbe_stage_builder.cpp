@@ -34,7 +34,12 @@
 #include "mongo/db/query/sbe_stage_builder.h"
 
 #include "mongo/db/catalog/collection.h"
+#include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/ix_scan.h"
+#include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/loop_join.h"
+#include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
@@ -50,7 +55,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
             auto stage = sbe::makeS<sbe::ScanStage>(
                 NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
                 "$$RESULT"sv,
-                ""sv,
+                "$$RID"sv,
                 std::vector<std::string>{},
                 std::vector<std::string>{},
                 ""sv);
