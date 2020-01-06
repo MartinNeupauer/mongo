@@ -177,19 +177,6 @@ public:
 
     virtual ~ComparisonMatchExpression() = default;
 
-    std::unique_ptr<sbe::PlanStage> generateStage(std::unique_ptr<sbe::PlanStage> inputStage,
-                                                  std::string_view inputVarName,
-                                                  std::string& predicateName) const override final;
-
-    /**
-     * A helper to generate the traverse operator. Consider to move it higher up the class
-     * hierarchy.
-     */
-    std::unique_ptr<sbe::PlanStage> generateTraverse(size_t level,
-                                                     std::unique_ptr<sbe::PlanStage> inputStage,
-                                                     std::string_view inputVarName,
-                                                     std::string_view predicateVarName) const;
-
     bool matchesSingleElement(const BSONElement&, MatchDetails* details = nullptr) const final;
 };
 
@@ -213,6 +200,14 @@ public:
         e->setCollator(_collator);
         return std::move(e);
     }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class LTEMatchExpression final : public ComparisonMatchExpression {
@@ -234,6 +229,14 @@ public:
         }
         e->setCollator(_collator);
         return std::move(e);
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 };
 
@@ -257,6 +260,14 @@ public:
         e->setCollator(_collator);
         return std::move(e);
     }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class GTMatchExpression final : public ComparisonMatchExpression {
@@ -279,6 +290,14 @@ public:
         e->setCollator(_collator);
         return std::move(e);
     }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class GTEMatchExpression final : public ComparisonMatchExpression {
@@ -300,6 +319,14 @@ public:
         }
         e->setCollator(_collator);
         return std::move(e);
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 };
 
@@ -338,6 +365,14 @@ public:
     }
     const std::string& getFlags() const {
         return _flags;
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 
 private:
@@ -380,6 +415,14 @@ public:
         return _remainder;
     }
 
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
+
 private:
     ExpressionOptimizerFunc getOptimizer() const final {
         return [](std::unique_ptr<MatchExpression> expression) { return expression; };
@@ -408,6 +451,14 @@ public:
     BSONObj getSerializedRightHandSide() const final;
 
     virtual bool equivalent(const MatchExpression* other) const;
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 
 private:
     ExpressionOptimizerFunc getOptimizer() const final {
@@ -461,6 +512,14 @@ public:
 
     bool hasEmptyArray() const {
         return _hasEmptyArray;
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 
 private:
@@ -584,6 +643,14 @@ public:
         }
         return std::move(bitTestMatchExpression);
     }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class BitsAllClearMatchExpression : public BitTestMatchExpression {
@@ -604,6 +671,14 @@ public:
             bitTestMatchExpression->setTag(getTag()->clone());
         }
         return std::move(bitTestMatchExpression);
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 };
 
@@ -626,6 +701,14 @@ public:
         }
         return std::move(bitTestMatchExpression);
     }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class BitsAnyClearMatchExpression : public BitTestMatchExpression {
@@ -646,6 +729,14 @@ public:
             bitTestMatchExpression->setTag(getTag()->clone());
         }
         return std::move(bitTestMatchExpression);
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 };
 

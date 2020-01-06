@@ -110,10 +110,20 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code->append(std::move(rhs));
             code->appendLess();
             break;
+        case EPrimBinary::lessEq:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendLessEq();
+            break;
         case EPrimBinary::greater:
             code->append(std::move(lhs));
             code->append(std::move(rhs));
             code->appendGreater();
+            break;
+        case EPrimBinary::greaterEq:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendGreaterEq();
             break;
         case EPrimBinary::eq:
             code->append(std::move(lhs));

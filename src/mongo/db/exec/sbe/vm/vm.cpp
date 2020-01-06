@@ -72,28 +72,10 @@ void CodeFragment::appendAdd() {
 
     offset += value::writeToMemory(offset, i);
 }
-void CodeFragment::appendLess(bool owned) {
+void CodeFragment::appendComparison(Instruction::Tags tag, bool owned) {
     Instruction i;
     i.owned = owned;
-    i.tag = Instruction::less;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
-}
-void CodeFragment::appendGreater(bool owned) {
-    Instruction i;
-    i.owned = owned;
-    i.tag = Instruction::greater;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
-}
-void CodeFragment::appendEq(bool owned) {
-    Instruction i;
-    i.owned = owned;
-    i.tag = Instruction::eq;
+    i.tag = tag;
 
     auto offset = allocateSpace(sizeof(Instruction));
 
@@ -500,7 +482,25 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     popStack();
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
-                    auto [tag, val] = genericLess(lhsTag, lhsVal, rhsTag, rhsVal);
+                    auto [tag, val] = genericCompare<std::less<>>(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::lessEq: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] =
+                        genericCompare<std::less_equal<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(i.owned, tag, val);
 
@@ -517,7 +517,26 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     popStack();
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
-                    auto [tag, val] = genericGreater(lhsTag, lhsVal, rhsTag, rhsVal);
+                    auto [tag, val] =
+                        genericCompare<std::greater<>>(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::greaterEq: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] =
+                        genericCompare<std::greater_equal<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(i.owned, tag, val);
 
@@ -534,7 +553,8 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     popStack();
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
-                    auto [tag, val] = genericEq(lhsTag, lhsVal, rhsTag, rhsVal);
+                    auto [tag, val] =
+                        genericCompare<std::equal_to<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(i.owned, tag, val);
 

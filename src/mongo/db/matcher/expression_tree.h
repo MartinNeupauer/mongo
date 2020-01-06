@@ -130,11 +130,15 @@ public:
 
     virtual void serialize(BSONObjBuilder* out, bool includePath) const;
 
-    std::unique_ptr<sbe::PlanStage> generateStage(std::unique_ptr<sbe::PlanStage> inputStage,
-                                                  std::string_view inputVarName,
-                                                  std::string& predicateName) const override final;
-
     bool isTriviallyTrue() const final;
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class OrMatchExpression : public ListOfMatchExpression {
@@ -164,6 +168,14 @@ public:
     virtual void serialize(BSONObjBuilder* out, bool includePath) const;
 
     bool isTriviallyFalse() const final;
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class NorMatchExpression : public ListOfMatchExpression {
@@ -191,6 +203,14 @@ public:
     virtual void debugString(StringBuilder& debug, int indentationLevel = 0) const;
 
     virtual void serialize(BSONObjBuilder* out, bool includePath) const;
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
+    }
 };
 
 class NotMatchExpression final : public MatchExpression {
@@ -242,6 +262,14 @@ public:
 
     MatchCategory getCategory() const final {
         return MatchCategory::kLogical;
+    }
+
+    void acceptVisitor(MatchExpressionMutableVisitor* visitor) final {
+        visitor->visit(this);
+    }
+
+    void acceptVisitor(MatchExpressionConstVisitor* visitor) const final {
+        visitor->visit(this);
     }
 
 private:

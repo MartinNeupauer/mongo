@@ -245,38 +245,6 @@ bool AndMatchExpression::isTriviallyTrue() const {
     return numChildren() == 0;
 }
 
-std::unique_ptr<sbe::PlanStage> AndMatchExpression::generateStage(
-    std::unique_ptr<sbe::PlanStage> inputStage,
-    std::string_view inputVarName,
-    std::string& predicateName) const {
-
-    auto size = numChildren();
-    // Ideally the empty And match expression should not exist at all.
-    if (size == 0) {
-        predicateName = "truePredicate";
-        inputStage =
-            sbe::makeProjectStage(std::move(inputStage),
-                                  predicateName,
-                                  sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, 1));
-    }
-    for (size_t i = 0; i < size; i++) {
-        inputStage = getChild(i)->generateStage(std::move(inputStage), inputVarName, predicateName);
-
-        // Insert the filter stage for all but the last child
-        if (i < size - 1) {
-            uassert(ErrorCodes::InternalErrorNotSupported,
-                    str::stream() << "Cannot build filter",
-                    inputStage && !predicateName.empty());
-
-            inputStage = sbe::makeS<sbe::FilterStage>(std::move(inputStage),
-                                                      sbe::makeE<sbe::EVariable>(predicateName));
-        }
-    }
-
-    return inputStage;
-}
-
-
 // -----
 
 bool OrMatchExpression::matches(const MatchableDocument* doc, MatchDetails* details) const {

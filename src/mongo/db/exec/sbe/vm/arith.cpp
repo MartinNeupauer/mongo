@@ -70,104 +70,15 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericAdd(value::Type
     return {false, value::TypeTags::Nothing, 0};
 }
 
-std::pair<value::TypeTags, value::Value> ByteCode::genericLess(value::TypeTags lhsTag,
-                                                               value::Value lhsValue,
-                                                               value::TypeTags rhsTag,
-                                                               value::Value rhsValue) {
-
+template <>
+std::pair<value::TypeTags, value::Value> ByteCode::genericCompare<std::equal_to<>>(
+    value::TypeTags lhsTag,
+    value::Value lhsValue,
+    value::TypeTags rhsTag,
+    value::Value rhsValue,
+    std::equal_to<> op) {
     if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
-        switch (getWidestNumericalType(lhsTag, rhsTag)) {
-            case value::TypeTags::NumberInt32: {
-                auto result =
-                    numericCast<int32_t>(lhsTag, lhsValue) < numericCast<int32_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberInt64: {
-                auto result =
-                    numericCast<int64_t>(lhsTag, lhsValue) < numericCast<int64_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDouble: {
-                auto result =
-                    numericCast<double>(lhsTag, lhsValue) < numericCast<double>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDecimal: {
-                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
-                                  .isLess(numericCast<Decimal128>(rhsTag, rhsValue));
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            default:
-                MONGO_UNREACHABLE;
-        }
-    }
-
-    return {value::TypeTags::Nothing, 0};
-}
-
-std::pair<value::TypeTags, value::Value> ByteCode::genericGreater(value::TypeTags lhsTag,
-                                                                  value::Value lhsValue,
-                                                                  value::TypeTags rhsTag,
-                                                                  value::Value rhsValue) {
-    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
-        switch (getWidestNumericalType(lhsTag, rhsTag)) {
-            case value::TypeTags::NumberInt32: {
-                auto result =
-                    numericCast<int32_t>(lhsTag, lhsValue) > numericCast<int32_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberInt64: {
-                auto result =
-                    numericCast<int64_t>(lhsTag, lhsValue) > numericCast<int64_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDouble: {
-                auto result =
-                    numericCast<double>(lhsTag, lhsValue) > numericCast<double>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDecimal: {
-                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
-                                  .isGreater(numericCast<Decimal128>(rhsTag, rhsValue));
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            default:
-                MONGO_UNREACHABLE;
-        }
-    }
-
-    return {value::TypeTags::Nothing, 0};
-}
-
-std::pair<value::TypeTags, value::Value> ByteCode::genericEq(value::TypeTags lhsTag,
-                                                             value::Value lhsValue,
-                                                             value::TypeTags rhsTag,
-                                                             value::Value rhsValue) {
-    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
-        switch (getWidestNumericalType(lhsTag, rhsTag)) {
-            case value::TypeTags::NumberInt32: {
-                auto result = numericCast<int32_t>(lhsTag, lhsValue) ==
-                    numericCast<int32_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberInt64: {
-                auto result = numericCast<int64_t>(lhsTag, lhsValue) ==
-                    numericCast<int64_t>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDouble: {
-                auto result =
-                    numericCast<double>(lhsTag, lhsValue) == numericCast<double>(rhsTag, rhsValue);
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            case value::TypeTags::NumberDecimal: {
-                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
-                                  .isEqual(numericCast<Decimal128>(rhsTag, rhsValue));
-                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
-            }
-            default:
-                MONGO_UNREACHABLE;
-        }
+        return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, op);
     } else if (value::isString(lhsTag) && value::isString(rhsTag)) {
         auto lhsStr = value::getStringView(lhsTag, lhsValue);
         auto rhsStr = value::getStringView(rhsTag, rhsValue);
@@ -185,7 +96,6 @@ std::pair<value::TypeTags, value::Value> ByteCode::genericEq(value::TypeTags lhs
         return {value::TypeTags::Nothing, 0};
     }
 }
-
 }  // namespace vm
 }  // namespace sbe
 }  // namespace mongo
