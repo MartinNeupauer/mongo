@@ -38,6 +38,43 @@
 namespace mongo {
 namespace sbe {
 namespace vm {
+template <typename Op>
+std::pair<value::TypeTags, value::Value> genericNumericCompare(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue,
+                                                               Op op) {
+
+    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
+        switch (getWidestNumericalType(lhsTag, rhsTag)) {
+            case value::TypeTags::NumberInt32: {
+                auto result = op(value::numericCast<int32_t>(lhsTag, lhsValue),
+                                 value::numericCast<int32_t>(rhsTag, rhsValue));
+                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberInt64: {
+                auto result = op(value::numericCast<int64_t>(lhsTag, lhsValue),
+                                 value::numericCast<int64_t>(rhsTag, rhsValue));
+                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDouble: {
+                auto result = op(value::numericCast<double>(lhsTag, lhsValue),
+                                 value::numericCast<double>(rhsTag, rhsValue));
+                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDecimal: {
+                auto result = op(value::numericCast<Decimal128>(lhsTag, lhsValue),
+                                 value::numericCast<Decimal128>(rhsTag, rhsValue));
+                return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+
+    return {value::TypeTags::Nothing, 0};
+}
+
 struct Instruction {
     enum Tags {
         pushConstVal,
@@ -46,8 +83,9 @@ struct Instruction {
         add,
 
         less,
+        lessEq,
         greater,
-
+        greaterEq,
         eq,
 
         getField,
@@ -93,9 +131,21 @@ public:
     void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
     void appendAccessVal(value::SlotAccessor* accessor);
     void appendAdd();
-    void appendLess(bool owned = false);
-    void appendGreater(bool owned = false);
-    void appendEq(bool owned = false);
+    void appendLess(bool owned = false) {
+        appendComparison(Instruction::less, owned);
+    }
+    void appendLessEq(bool owned = false) {
+        appendComparison(Instruction::lessEq, owned);
+    }
+    void appendGreater(bool owned = false) {
+        appendComparison(Instruction::greater, owned);
+    }
+    void appendGreaterEq(bool owned = false) {
+        appendComparison(Instruction::greaterEq, owned);
+    }
+    void appendEq(bool owned = false) {
+        appendComparison(Instruction::eq, owned);
+    }
     void appendGetField();
     void appendSum(bool owned = false);
     void appendExists();
@@ -104,6 +154,9 @@ public:
     void appendJump(int jumpOffset);
     void appendJumpTrue(int jumpOffset);
     void appendJumpNothing(int jumpOffset);
+
+private:
+    void appendComparison(Instruction::Tags tag, bool owned);
 };
 
 class ByteCode {
@@ -115,22 +168,26 @@ class ByteCode {
                                                                value::Value lhsValue,
                                                                value::TypeTags rhsTag,
                                                                value::Value rhsValue);
-    std::pair<value::TypeTags, value::Value> genericLess(value::TypeTags lhsTag,
-                                                         value::Value lhsValue,
-                                                         value::TypeTags rhsTag,
-                                                         value::Value rhsValue);
-    std::pair<value::TypeTags, value::Value> genericGreater(value::TypeTags lhsTag,
+    template <typename Op>
+    std::pair<value::TypeTags, value::Value> genericCompare(value::TypeTags lhsTag,
                                                             value::Value lhsValue,
                                                             value::TypeTags rhsTag,
-                                                            value::Value rhsValue);
-    std::pair<value::TypeTags, value::Value> genericEq(value::TypeTags lhsTag,
-                                                       value::Value lhsValue,
-                                                       value::TypeTags rhsTag,
-                                                       value::Value rhsValue);
+                                                            value::Value rhsValue,
+                                                            Op op = {}) {
+        return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, op);
+    }
+    template <>
+    std::pair<value::TypeTags, value::Value> genericCompare<std::equal_to<>>(value::TypeTags lhsTag,
+                                                                             value::Value lhsValue,
+                                                                             value::TypeTags rhsTag,
+                                                                             value::Value rhsValue,
+                                                                             std::equal_to<> op);
+
     std::tuple<bool, value::TypeTags, value::Value> getField(value::TypeTags objTag,
                                                              value::Value objValue,
                                                              value::TypeTags fieldTag,
                                                              value::Value fieldValue);
+
     std::pair<value::TypeTags, value::Value> aggSum(value::TypeTags accTag,
                                                     value::Value accValue,
                                                     value::TypeTags fieldTag,
@@ -174,7 +231,6 @@ class ByteCode {
 public:
     std::tuple<uint8_t, value::TypeTags, value::Value> run(CodeFragment* code);
 };
-
 }  // namespace vm
 }  // namespace sbe
 }  // namespace mongo
