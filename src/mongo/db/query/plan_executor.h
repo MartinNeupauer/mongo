@@ -477,6 +477,12 @@ public:
      */
     virtual Status getMemberObjectStatus(const Document& memberObj) const = 0;
     virtual Status getMemberObjectStatus(const BSONObj& memberObj) const = 0;
+
+    /**
+     * Returns 'true' is resource locks are managed internally by the plan stages (as in SBE) and
+     * 'false' if they are managed by the getmore command externally.
+     */
+    virtual bool internalLocks() const = 0;
 };
 
 }  // namespace mongo

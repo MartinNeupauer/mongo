@@ -87,6 +87,10 @@ public:
     Status getMemberObjectStatus(const Document& memberObj) const final;
     Status getMemberObjectStatus(const BSONObj& memberObj) const final;
 
+    bool internalLocks() const override {
+        return false;
+    }
+
 private:
     /**
      * New PlanExecutor instances are created with the static make() method above.

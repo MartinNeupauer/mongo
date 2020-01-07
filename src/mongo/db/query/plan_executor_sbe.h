@@ -136,6 +136,10 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    bool internalLocks() const override {
+        return true;
+    }
+
 private:
     enum State { beforeOpen, opened, stashed };
 
