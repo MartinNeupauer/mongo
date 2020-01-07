@@ -553,8 +553,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     popStack();
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
-                    auto [tag, val] =
-                        genericCompare<std::equal_to<>>(lhsTag, lhsVal, rhsTag, rhsVal);
+                    auto [tag, val] = genericCompareEq(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(i.owned, tag, val);
 

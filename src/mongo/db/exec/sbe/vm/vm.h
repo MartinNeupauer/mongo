@@ -176,12 +176,11 @@ class ByteCode {
                                                             Op op = {}) {
         return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, op);
     }
-    template <>
-    std::pair<value::TypeTags, value::Value> genericCompare<std::equal_to<>>(value::TypeTags lhsTag,
-                                                                             value::Value lhsValue,
-                                                                             value::TypeTags rhsTag,
-                                                                             value::Value rhsValue,
-                                                                             std::equal_to<> op);
+
+    std::pair<value::TypeTags, value::Value> genericCompareEq(value::TypeTags lhsTag,
+                                                              value::Value lhsValue,
+                                                              value::TypeTags rhsTag,
+                                                              value::Value rhsValue);
 
     std::tuple<bool, value::TypeTags, value::Value> getField(value::TypeTags objTag,
                                                              value::Value objValue,

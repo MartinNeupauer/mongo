@@ -70,15 +70,12 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericAdd(value::Type
     return {false, value::TypeTags::Nothing, 0};
 }
 
-template <>
-std::pair<value::TypeTags, value::Value> ByteCode::genericCompare<std::equal_to<>>(
-    value::TypeTags lhsTag,
-    value::Value lhsValue,
-    value::TypeTags rhsTag,
-    value::Value rhsValue,
-    std::equal_to<> op) {
+std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeTags lhsTag,
+                                                                    value::Value lhsValue,
+                                                                    value::TypeTags rhsTag,
+                                                                    value::Value rhsValue) {
     if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
-        return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, op);
+        return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, std::equal_to<>{});
     } else if (value::isString(lhsTag) && value::isString(rhsTag)) {
         auto lhsStr = value::getStringView(lhsTag, lhsValue);
         auto rhsStr = value::getStringView(rhsTag, rhsValue);
