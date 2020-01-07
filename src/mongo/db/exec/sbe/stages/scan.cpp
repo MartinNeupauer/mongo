@@ -99,8 +99,16 @@ void ScanStage::doSaveState() {
     if (_cursor) {
         _cursor->save();
     }
+
+    invariant(_coll);
+    _coll.reset();
 }
 void ScanStage::doRestoreState() {
+    invariant(_opCtx);
+    invariant(!_coll);
+
+    _coll.emplace(_opCtx, _name);
+
     if (_cursor) {
         const bool couldRestore = _cursor->restore();
         uassert(ErrorCodes::CappedPositionLost,
