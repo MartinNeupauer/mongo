@@ -34,8 +34,7 @@
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class IndexScanStage final : public PlanStage {
 protected:
     void doSaveState() override;
@@ -46,39 +45,39 @@ protected:
 public:
     IndexScanStage(const NamespaceStringOrUUID& name,
                    std::string_view indexName,
-                   std::string_view recordName,
-                   std::string_view recordIdName,
+                   boost::optional<value::SlotId> recordSlot,
+                   boost::optional<value::SlotId> recordISlot,
                    const std::vector<std::string>& fields,
-                   const std::vector<std::string>& varNames,
-                   std::string_view seekKeyNameLow,
-                   std::string_view seekKeyNameHi);
+                   const std::vector<value::SlotId>& vars,
+                   boost::optional<value::SlotId> seekKeySlotLow,
+                   boost::optional<value::SlotId> seekKeySlotHi);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 
 private:
     const NamespaceStringOrUUID _name;
     const std::string _indexName;
-    const std::string _recordName;
-    const std::string _recordIdName;
+    const boost::optional<value::SlotId> _recordSlot;
+    const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<std::string> _varNames;
-    const std::string _seekKeyNameLow;
-    const std::string _seekKeyNameHi;
+    const std::vector<value::SlotId> _vars;
+    const boost::optional<value::SlotId> _seekKeySlotLow;
+    const boost::optional<value::SlotId> _seekKeySlotHi;
 
     OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
     std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<std::string, value::SlotAccessor*, std::less<>> _varAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
 
     value::SlotAccessor* _seekKeyLowAccessor{nullptr};
     value::SlotAccessor* _seekKeyHiAccessor{nullptr};
@@ -94,5 +93,4 @@ private:
 
     bool _firstGetNext{true};
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

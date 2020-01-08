@@ -30,12 +30,11 @@
 #include "mongo/db/exec/sbe/stages/unwind.h"
 #include "mongo/util/str.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
-                         const std::string& inField,
-                         const std::string& outField,
-                         const std::string& outIndex)
+                         value::SlotId inField,
+                         value::SlotId outField,
+                         value::SlotId outIndex)
     : _inField(inField), _outField(outField), _outIndex(outIndex) {
     _children.emplace_back(std::move(input));
 
@@ -59,16 +58,16 @@ void UnwindStage::prepare(CompileCtx& ctx) {
     // prepare the outIndex output accessor
     _outIndexOutputAccessor = std::make_unique<value::ViewOfValueAccessor>();
 }
-value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (_outField == field) {
+value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_outField == slot) {
         return _outFieldOutputAccessor.get();
     }
 
-    if (_outIndex == field) {
+    if (_outIndex == slot) {
         return _outIndexOutputAccessor.get();
     }
 
-    return _children[0]->getAccessor(ctx, field);
+    return _children[0]->getAccessor(ctx, slot);
 }
 void UnwindStage::open(bool reOpen) {
     _children[0]->open(reOpen);
@@ -136,5 +135,4 @@ std::vector<DebugPrinter::Block> UnwindStage::debugPrint() {
 
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

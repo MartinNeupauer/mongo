@@ -34,31 +34,31 @@
 namespace mongo {
 namespace sbe {
 ScanStage::ScanStage(const NamespaceStringOrUUID& name,
-                     std::string_view recordName,
-                     std::string_view recordIdName,
+                     boost::optional<value::SlotId> recordSlot,
+                     boost::optional<value::SlotId> recordIdSlot,
                      const std::vector<std::string>& fields,
-                     const std::vector<std::string>& varNames,
-                     std::string_view seekKeyName)
+                     const std::vector<value::SlotId>& vars,
+                     boost::optional<value::SlotId> seekKeySlot)
     : _name(name),
-      _recordName(recordName),
-      _recordIdName(recordIdName),
+      _recordSlot(recordSlot),
+      _recordIdSlot(recordIdSlot),
       _fields(fields),
-      _varNames(varNames),
-      _seekKeyName(seekKeyName) {
-    invariant(_fields.size() == _varNames.size());
+      _vars(vars),
+      _seekKeySlot(seekKeySlot) {
+    invariant(_fields.size() == _vars.size());
 }
 
 std::unique_ptr<PlanStage> ScanStage::clone() {
     return std::make_unique<ScanStage>(
-        _name, _recordName, _recordIdName, _fields, _varNames, _seekKeyName);
+        _name, _recordSlot, _recordIdSlot, _fields, _vars, _seekKeySlot);
 }
 
 void ScanStage::prepare(CompileCtx& ctx) {
-    if (!_recordName.empty()) {
+    if (_recordSlot) {
         _recordAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
-    if (!_recordIdName.empty()) {
+    if (_recordIdSlot) {
         _recordIdAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
@@ -68,31 +68,31 @@ void ScanStage::prepare(CompileCtx& ctx) {
         uassert(ErrorCodes::InternalError,
                 str::stream() << "duplicate field: " << _fields[idx],
                 inserted);
-        auto [itRename, insertedRename] = _varAccessors.emplace(_varNames[idx], it->second.get());
+        auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
         uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _varNames[idx],
+                str::stream() << "duplicate field: " << _vars[idx],
                 insertedRename);
     }
 
-    if (!_seekKeyName.empty()) {
-        _seekKeyAccessor = ctx.getAccessor(_seekKeyName);
+    if (_seekKeySlot) {
+        _seekKeyAccessor = ctx.getAccessor(*_seekKeySlot);
     }
 }
 
-value::SlotAccessor* ScanStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (!_recordName.empty() && _recordName == field) {
+value::SlotAccessor* ScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_recordSlot && *_recordSlot == slot) {
         return _recordAccessor.get();
     }
 
-    if (!_recordIdName.empty() && _recordIdName == field) {
+    if (_recordIdSlot && *_recordIdSlot == slot) {
         return _recordIdAccessor.get();
     }
 
-    if (auto it = _varAccessors.find(field); it != _varAccessors.end()) {
+    if (auto it = _varAccessors.find(slot); it != _varAccessors.end()) {
         return it->second;
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 
 void ScanStage::doSaveState() {
@@ -231,50 +231,49 @@ void ScanStage::close() {
 std::vector<DebugPrinter::Block> ScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "scan");
-
     return ret;
 }
 
 ParallelScanStage::ParallelScanStage(const NamespaceStringOrUUID& name,
-                                     std::string_view recordName,
-                                     std::string_view recordIdName,
+                                     boost::optional<value::SlotId> recordSlot,
+                                     boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
-                                     const std::vector<std::string>& varNames)
+                                     const std::vector<value::SlotId>& vars)
     : _name(name),
-      _recordName(recordName),
-      _recordIdName(recordIdName),
+      _recordSlot(recordSlot),
+      _recordIdSlot(recordIdSlot),
       _fields(fields),
-      _varNames(varNames) {
-    invariant(_fields.size() == _varNames.size());
+      _vars(vars) {
+    invariant(_fields.size() == _vars.size());
 
     _state = std::make_shared<ParallelState>();
 }
 
 ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state,
                                      const NamespaceStringOrUUID& name,
-                                     std::string_view recordName,
-                                     std::string_view recordIdName,
+                                     boost::optional<value::SlotId> recordSlot,
+                                     boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
-                                     const std::vector<std::string>& varNames)
+                                     const std::vector<value::SlotId>& vars)
     : _name(name),
-      _recordName(recordName),
-      _recordIdName(recordIdName),
+      _recordSlot(recordSlot),
+      _recordIdSlot(recordIdSlot),
       _fields(fields),
-      _varNames(varNames),
+      _vars(vars),
       _state(state) {
-    invariant(_fields.size() == _varNames.size());
+    invariant(_fields.size() == _vars.size());
 }
 std::unique_ptr<PlanStage> ParallelScanStage::clone() {
     return std::make_unique<ParallelScanStage>(
-        _state, _name, _recordName, _recordIdName, _fields, _varNames);
+        _state, _name, _recordSlot, _recordIdSlot, _fields, _vars);
 }
 
 void ParallelScanStage::prepare(CompileCtx& ctx) {
-    if (!_recordName.empty()) {
+    if (_recordSlot) {
         _recordAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
-    if (!_recordIdName.empty()) {
+    if (_recordIdSlot) {
         _recordIdAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
@@ -284,27 +283,27 @@ void ParallelScanStage::prepare(CompileCtx& ctx) {
         uassert(ErrorCodes::InternalError,
                 str::stream() << "duplicate field: " << _fields[idx],
                 inserted);
-        auto [itRename, insertedRename] = _varAccessors.emplace(_varNames[idx], it->second.get());
+        auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
         uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _varNames[idx],
+                str::stream() << "duplicate field: " << _vars[idx],
                 insertedRename);
     }
 }
 
-value::SlotAccessor* ParallelScanStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (!_recordName.empty() && _recordName == field) {
+value::SlotAccessor* ParallelScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_recordSlot && *_recordSlot == slot) {
         return _recordAccessor.get();
     }
 
-    if (!_recordIdName.empty() && _recordIdName == field) {
+    if (_recordIdSlot && *_recordIdSlot == slot) {
         return _recordIdAccessor.get();
     }
 
-    if (auto it = _varAccessors.find(field); it != _varAccessors.end()) {
+    if (auto it = _varAccessors.find(slot); it != _varAccessors.end()) {
         return it->second;
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 
 void ParallelScanStage::doSaveState() {
@@ -461,7 +460,6 @@ void ParallelScanStage::close() {
 std::vector<DebugPrinter::Block> ParallelScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "pscan");
-
     return ret;
 }
 }  // namespace sbe

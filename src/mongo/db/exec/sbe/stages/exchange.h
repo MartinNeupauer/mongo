@@ -38,8 +38,7 @@
 
 #include <vector>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class ExchangeConsumer;
 class ExchangeProducer;
 
@@ -99,10 +98,10 @@ public:
         }
 
         // Return non-owning view of the value
-        std::pair<value::TypeTags, value::Value> getViewOfValue() const override {
+        std::pair<value::TypeTags, value::Value> getViewOfValue() const final {
             return {_buffer->_typeTags[_index], _buffer->_values[_index]};
         }
-        std::pair<value::TypeTags, value::Value> copyOrMoveValue() override {
+        std::pair<value::TypeTags, value::Value> copyOrMoveValue() final {
             auto tag = _buffer->_typeTags[_index];
             auto val = _buffer->_values[_index];
 
@@ -147,7 +146,7 @@ class ExchangeState {
     std::vector<Future<void>> _producerResults;
 
     // variables (fields) that pass through the exchange
-    const std::vector<std::string> _fields;
+    const std::vector<value::SlotId> _fields;
 
     // partitioning function
     const std::unique_ptr<EExpression> _partition;
@@ -167,7 +166,7 @@ class ExchangeState {
 
 public:
     ExchangeState(size_t numOfProducers,
-                  const std::vector<std::string>& fields,
+                  const std::vector<value::SlotId>& fields,
                   ExchangePolicy policy,
                   std::unique_ptr<EExpression> partition,
                   std::unique_ptr<EExpression> orderLess);
@@ -259,22 +258,22 @@ class ExchangeConsumer final : public PlanStage {
 public:
     ExchangeConsumer(std::unique_ptr<PlanStage> input,
                      size_t numOfProducers,
-                     const std::vector<std::string>& fields,
+                     const std::vector<value::SlotId>& fields,
                      ExchangePolicy policy,
                      std::unique_ptr<EExpression> partition,
                      std::unique_ptr<EExpression> orderLess);
 
     ExchangeConsumer(std::shared_ptr<ExchangeState> state);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 
     ExchangePipe* pipe(size_t producerTid);
 };
@@ -302,15 +301,14 @@ public:
 
     static void start(OperationContext* opCtx, std::unique_ptr<PlanStage> producer);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

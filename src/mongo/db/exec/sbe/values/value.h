@@ -48,6 +48,7 @@ class Value;
 }
 namespace sbe {
 namespace value {
+using SlotId = int64_t;
 
 /**
  * Type dispatch tags.

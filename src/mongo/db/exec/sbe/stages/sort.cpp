@@ -36,8 +36,8 @@
 namespace mongo {
 namespace sbe {
 SortStage::SortStage(std::unique_ptr<PlanStage> input,
-                     const std::vector<std::string>& obs,
-                     const std::vector<std::string>& vals)
+                     const std::vector<value::SlotId>& obs,
+                     const std::vector<value::SlotId>& vals)
     : _obs(obs), _vals(vals) {
     _children.emplace_back(std::move(input));
 }
@@ -47,34 +47,34 @@ std::unique_ptr<PlanStage> SortStage::clone() {
 void SortStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    std::set<std::string> dupCheck;
+    std::set<value::SlotId> dupCheck;
 
     size_t counter = 0;
     // process order by fields
-    for (auto& name : _obs) {
-        auto [it, inserted] = dupCheck.insert(name);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << name, inserted);
+    for (auto& slot : _obs) {
+        auto [it, inserted] = dupCheck.insert(slot);
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
-        _inKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, name));
-        _outAccessors.emplace(name, std::make_unique<SortKeyAccessor>(_stIt, counter++));
+        _inKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
+        _outAccessors.emplace(slot, std::make_unique<SortKeyAccessor>(_stIt, counter++));
     }
 
     counter = 0;
     // process value fields
-    for (auto& name : _vals) {
-        auto [it, inserted] = dupCheck.insert(name);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << name, inserted);
+    for (auto& slot : _vals) {
+        auto [it, inserted] = dupCheck.insert(slot);
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
-        _inValueAccessors.emplace_back(_children[0]->getAccessor(ctx, name));
-        _outAccessors.emplace(name, std::make_unique<SortValueAccessor>(_stIt, counter++));
+        _inValueAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
+        _outAccessors.emplace(slot, std::make_unique<SortValueAccessor>(_stIt, counter++));
     }
 }
-value::SlotAccessor* SortStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (auto it = _outAccessors.find(field); it != _outAccessors.end()) {
+value::SlotAccessor* SortStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (auto it = _outAccessors.find(slot); it != _outAccessors.end()) {
         return it->second.get();
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 void SortStage::open(bool reOpen) {
     _children[0]->open(reOpen);

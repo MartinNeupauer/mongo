@@ -32,6 +32,8 @@
 #include "mongo/db/query/plan_executor_sbe.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/query/sbe_stage_builder.h"
+#include "mongo/util/log.h"
 
 namespace mongo {
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
@@ -40,12 +42,19 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     std::unique_ptr<sbe::PlanStage> root,
     NamespaceString nss) {
 
+    LOG(3) << "SBE plan: " << sbe::DebugPrinter{}.print(root.get());
+
     sbe::CompileCtx ctx;
     root->prepare(ctx);
-    auto resultSlot = root->getAccessor(ctx, "$$RESULT");
-    uassert(ErrorCodes::InternalError, "Query does not have $$RESULT slot.", resultSlot);
-    auto resultRecordId = root->getAccessor(ctx, "$$RID");
-    uassert(ErrorCodes::InternalError, "Query does not have $$RID slot.", resultSlot);
+    auto resultSlot = root->getAccessor(ctx, stage_builder::SlotBasedStageBuilder::kResultSlot);
+    uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
+
+    sbe::value::SlotAccessor* resultRecordId{nullptr};
+    if (cq && cq->metadataDeps()[DocumentMetadataFields::kRecordId]) {
+        resultRecordId =
+            root->getAccessor(ctx, stage_builder::SlotBasedStageBuilder::kRecordIdSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
+    }
 
     auto execImpl =
         new PlanExecutorSBE(opCtx, std::move(cq), std::move(root), resultSlot, resultRecordId, nss);
@@ -69,7 +78,6 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
       _cq{std::move(cq)} {
     invariant(_root);
     invariant(_result);
-    invariant(_resultRecordId);
 
     _root->attachFromOperationContext(_opCtx);
 }
@@ -175,6 +183,7 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) 
     }
 
     if (dlOut) {
+        invariant(_resultRecordId);
         auto [tag, val] = _resultRecordId->getViewOfValue();
         if (tag == sbe::value::TypeTags::NumberInt64) {
             *dlOut = RecordId{sbe::value::bitcastTo<int64_t>(val)};

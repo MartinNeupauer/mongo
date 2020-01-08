@@ -30,13 +30,12 @@
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<PlanStage> inner,
-                             std::string_view inField,
-                             std::string_view outField,
-                             std::string_view outFieldInner,
+                             value::SlotId inField,
+                             value::SlotId outField,
+                             value::SlotId outFieldInner,
                              std::unique_ptr<EExpression> foldExpr,
                              std::unique_ptr<EExpression> finalExpr)
     : _inField(inField),
@@ -96,18 +95,18 @@ void TraverseStage::prepare(CompileCtx& ctx) {
 
     _compiled = true;
 }
-value::SlotAccessor* TraverseStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (_outField == field) {
+value::SlotAccessor* TraverseStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_outField == slot) {
         return _outFieldOutputAccessor.get();
     }
 
     if (_compiled) {
         // after the compilation pass to the 'from' child
-        return _children[0]->getAccessor(ctx, field);
+        return _children[0]->getAccessor(ctx, slot);
     } else {
         // if internal expressions (fold, final) are not compiled yet then they refer to the 'in'
         // child
-        return _children[1]->getAccessor(ctx, field);
+        return _children[1]->getAccessor(ctx, slot);
     }
 }
 void TraverseStage::open(bool reOpen) {
@@ -250,5 +249,4 @@ std::vector<DebugPrinter::Block> TraverseStage::debugPrint() {
 
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

@@ -29,8 +29,7 @@
 
 #include "mongo/db/exec/sbe/stages/filter.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 FilterStage::FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
     : _filter(std::move(filter)) {
     _children.emplace_back(std::move(input));
@@ -45,8 +44,8 @@ void FilterStage::prepare(CompileCtx& ctx) {
     ctx.root = this;
     _filterCode = _filter->compile(ctx);
 }
-value::SlotAccessor* FilterStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    return _children[0]->getAccessor(ctx, field);
+value::SlotAccessor* FilterStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    return _children[0]->getAccessor(ctx, slot);
 }
 void FilterStage::open(bool reOpen) {
     _children[0]->open(reOpen);
@@ -84,5 +83,4 @@ std::vector<DebugPrinter::Block> FilterStage::debugPrint() {
 
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

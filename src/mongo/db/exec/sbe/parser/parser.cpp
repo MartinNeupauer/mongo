@@ -316,7 +316,7 @@ void Parser::walkPrimaryExpr(AstQuery& ast) {
     walkChildren(ast);
 
     if (ast.nodes[0]->tag == "IDENT"_) {
-        ast.expr = std::make_unique<EVariable>(ast.nodes[0]->identifier);
+        ast.expr = std::make_unique<EVariable>(lookupSlotStrict(ast.nodes[0]->identifier));
     } else if (ast.nodes[0]->tag == "NUMBER"_) {
         ast.expr = makeE<EConstant>(value::TypeTags::NumberInt64, std::stoll(ast.nodes[0]->token));
     } else if (ast.nodes[0]->tag == "CONST_TOK"_) {
@@ -391,11 +391,11 @@ void Parser::walkScan(AstQuery& ast) {
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
 
     ast.stage = makeS<ScanStage>(name,
-                                 recordName,
-                                 recordIdName,
+                                 lookupSlot(recordName),
+                                 lookupSlot(recordIdName),
                                  ast.nodes[projectsPos]->identifiers,
-                                 ast.nodes[projectsPos]->renames,
-                                 ""sv);
+                                 lookupSlots(ast.nodes[projectsPos]->renames),
+                                 boost::none);
 }
 
 void Parser::walkParallelScan(AstQuery& ast) {
@@ -430,10 +430,10 @@ void Parser::walkParallelScan(AstQuery& ast) {
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
 
     ast.stage = makeS<ParallelScanStage>(name,
-                                         recordName,
-                                         recordIdName,
+                                         lookupSlot(recordName),
+                                         lookupSlot(recordIdName),
                                          ast.nodes[projectsPos]->identifiers,
-                                         ast.nodes[projectsPos]->renames);
+                                         lookupSlots(ast.nodes[projectsPos]->renames));
 }
 
 void Parser::walkSeek(AstQuery& ast) {
@@ -468,11 +468,11 @@ void Parser::walkSeek(AstQuery& ast) {
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
 
     ast.stage = makeS<ScanStage>(name,
-                                 recordName,
-                                 recordIdName,
+                                 lookupSlot(recordName),
+                                 lookupSlot(recordIdName),
                                  ast.nodes[projectsPos]->identifiers,
-                                 ast.nodes[projectsPos]->renames,
-                                 ast.nodes[0]->identifier);
+                                 lookupSlots(ast.nodes[projectsPos]->renames),
+                                 lookupSlot(ast.nodes[0]->identifier));
 }
 void Parser::walkIndexScan(AstQuery& ast) {
     walkChildren(ast);
@@ -511,12 +511,12 @@ void Parser::walkIndexScan(AstQuery& ast) {
 
     ast.stage = makeS<IndexScanStage>(name,
                                       indexName,
-                                      recordName,
-                                      recordIdName,
+                                      lookupSlot(recordName),
+                                      lookupSlot(recordIdName),
                                       ast.nodes[projectsPos]->identifiers,
-                                      ast.nodes[projectsPos]->renames,
-                                      ""sv,
-                                      ""sv);
+                                      lookupSlots(ast.nodes[projectsPos]->renames),
+                                      boost::none,
+                                      boost::none);
 }
 
 void Parser::walkIndexSeek(AstQuery& ast) {
@@ -556,18 +556,18 @@ void Parser::walkIndexSeek(AstQuery& ast) {
 
     ast.stage = makeS<IndexScanStage>(name,
                                       indexName,
-                                      recordName,
-                                      recordIdName,
+                                      lookupSlot(recordName),
+                                      lookupSlot(recordIdName),
                                       ast.nodes[projectsPos]->identifiers,
-                                      ast.nodes[projectsPos]->renames,
-                                      ast.nodes[0]->identifier,
-                                      ast.nodes[1]->identifier);
+                                      lookupSlots(ast.nodes[projectsPos]->renames),
+                                      lookupSlot(ast.nodes[0]->identifier),
+                                      lookupSlot(ast.nodes[1]->identifier));
 }
 void Parser::walkProject(AstQuery& ast) {
     walkChildren(ast);
 
-    ast.stage =
-        makeS<ProjectStage>(std::move(ast.nodes[1]->stage), std::move(ast.nodes[0]->projects));
+    ast.stage = makeS<ProjectStage>(std::move(ast.nodes[1]->stage),
+                                    lookupSlots(std::move(ast.nodes[0]->projects)));
 }
 
 void Parser::walkFilter(AstQuery& ast) {
@@ -579,17 +579,18 @@ void Parser::walkFilter(AstQuery& ast) {
 void Parser::walkSort(AstQuery& ast) {
     walkChildren(ast);
 
-    ast.stage = makeS<SortStage>(
-        std::move(ast.nodes[2]->stage), ast.nodes[0]->identifiers, ast.nodes[1]->identifiers);
+    ast.stage = makeS<SortStage>(std::move(ast.nodes[2]->stage),
+                                 lookupSlots(ast.nodes[0]->identifiers),
+                                 lookupSlots(ast.nodes[1]->identifiers));
 }
 
 void Parser::walkUnwind(AstQuery& ast) {
     walkChildren(ast);
 
     ast.stage = makeS<UnwindStage>(std::move(ast.nodes[3]->stage),
-                                   ast.nodes[2]->identifier,
-                                   ast.nodes[0]->identifier,
-                                   ast.nodes[1]->identifier);
+                                   lookupSlotStrict(ast.nodes[2]->identifier),
+                                   lookupSlotStrict(ast.nodes[0]->identifier),
+                                   lookupSlotStrict(ast.nodes[1]->identifier));
 }
 
 void Parser::walkMkObj(AstQuery& ast) {
@@ -612,30 +613,31 @@ void Parser::walkMkObj(AstQuery& ast) {
     }
 
     ast.stage = makeS<MakeObjStage>(std::move(ast.nodes[inputPos]->stage),
-                                    newRootName,
-                                    oldRootName,
+                                    lookupSlotStrict(newRootName),
+                                    lookupSlot(oldRootName),
                                     std::move(restrictFields),
                                     std::move(ast.nodes[projectListPos]->identifiers),
-                                    std::move(ast.nodes[projectListPos]->renames));
+                                    lookupSlots(std::move(ast.nodes[projectListPos]->renames)));
 }
 
 void Parser::walkGroup(AstQuery& ast) {
     walkChildren(ast);
 
     ast.stage = makeS<HashAggStage>(std::move(ast.nodes[2]->stage),
-                                    std::move(ast.nodes[0]->identifiers),
-                                    std::move(ast.nodes[1]->projects));
+                                    lookupSlots(std::move(ast.nodes[0]->identifiers)),
+                                    lookupSlots(std::move(ast.nodes[1]->projects)));
 }
 
 void Parser::walkHashJoin(AstQuery& ast) {
     walkChildren(ast);
-    ast.stage = makeS<HashJoinStage>(std::move(ast.nodes[0]->nodes[2]->stage),  // outer
-                                     std::move(ast.nodes[1]->nodes[2]->stage),  // inner
-                                     ast.nodes[0]->nodes[0]->identifiers,       // outer conditions
-                                     ast.nodes[0]->nodes[1]->identifiers,       // outer projections
-                                     ast.nodes[1]->nodes[0]->identifiers,       // inner conditions
-                                     ast.nodes[1]->nodes[1]->identifiers        // inner projections
-    );
+    ast.stage =
+        makeS<HashJoinStage>(std::move(ast.nodes[0]->nodes[2]->stage),          // outer
+                             std::move(ast.nodes[1]->nodes[2]->stage),          // inner
+                             lookupSlots(ast.nodes[0]->nodes[0]->identifiers),  // outer conditions
+                             lookupSlots(ast.nodes[0]->nodes[1]->identifiers),  // outer projections
+                             lookupSlots(ast.nodes[1]->nodes[0]->identifiers),  // inner conditions
+                             lookupSlots(ast.nodes[1]->nodes[1]->identifiers)   // inner projections
+        );
 }
 
 void Parser::walkNLJoin(AstQuery& ast) {
@@ -655,8 +657,8 @@ void Parser::walkNLJoin(AstQuery& ast) {
 
     ast.stage = makeS<LoopJoinStage>(std::move(ast.nodes[outerPos]->stage),
                                      std::move(ast.nodes[innerPos]->stage),
-                                     ast.nodes[0]->identifiers,
-                                     ast.nodes[1]->identifiers,
+                                     lookupSlots(ast.nodes[0]->identifiers),
+                                     lookupSlots(ast.nodes[1]->identifiers),
                                      std::move(predicate));
 }
 
@@ -694,9 +696,9 @@ void Parser::walkTraverse(AstQuery& ast) {
     }
     ast.stage = makeS<TraverseStage>(std::move(ast.nodes[fromPos]->stage),
                                      std::move(ast.nodes[inPos]->stage),
-                                     ast.nodes[2]->identifier,
-                                     ast.nodes[0]->identifier,
-                                     ast.nodes[1]->identifier,
+                                     lookupSlotStrict(ast.nodes[2]->identifier),
+                                     lookupSlotStrict(ast.nodes[0]->identifier),
+                                     lookupSlotStrict(ast.nodes[1]->identifier),
                                      foldPos ? std::move(ast.nodes[foldPos]->expr) : nullptr,
                                      finalPos ? std::move(ast.nodes[finalPos]->expr) : nullptr);
 }
@@ -715,7 +717,7 @@ void Parser::walkExchange(AstQuery& ast) {
     }();
     ast.stage = makeS<ExchangeConsumer>(std::move(ast.nodes[3]->stage),
                                         std::stoll(ast.nodes[1]->token),
-                                        ast.nodes[0]->identifiers,
+                                        lookupSlots(ast.nodes[0]->identifiers),
                                         policy,
                                         nullptr,
                                         nullptr);

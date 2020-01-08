@@ -32,6 +32,8 @@
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/parser/peglib.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/values/slot_id_generator.h"
+#include "mongo/db/query/sbe_stage_builder.h"
 
 namespace mongo {
 namespace sbe {
@@ -53,6 +55,48 @@ class Parser {
     peg::parser _parser;
     OperationContext* _opCtx{nullptr};
     std::string _defaultDb;
+    std::unordered_map<std::string, value::SlotId> _symbolsLookupTable;
+    std::unique_ptr<value::SlotIdGenerator> _slotIdGenerator{value::makeDefaultSlotIdGenerator()};
+
+    boost::optional<value::SlotId> lookupSlot(const std::string& name) {
+        if (name.empty()) {
+            return boost::none;
+        } else if (name == "$$RESULT") {
+            return stage_builder::SlotBasedStageBuilder::kResultSlot;
+        } else if (name == "$$RID") {
+            return stage_builder::SlotBasedStageBuilder::kRecordIdSlot;
+        } else if (_symbolsLookupTable.find(name) == _symbolsLookupTable.end()) {
+            _symbolsLookupTable[name] = _slotIdGenerator->generate();
+            std::cout << "mapping " << name << " to " << _symbolsLookupTable[name] << std::endl;
+        }
+        return _symbolsLookupTable[name];
+    }
+
+    value::SlotId lookupSlotStrict(const std::string& name) {
+        auto slot = lookupSlot(name);
+        uassert(ErrorCodes::InternalError,
+                str::stream() << "Unable lookup SlotId for [" << name << "]",
+                slot);
+        return *slot;
+    }
+
+    std::vector<value::SlotId> lookupSlots(const std::vector<std::string>& names) {
+        std::vector<value::SlotId> result;
+        std::transform(names.begin(),
+                       names.end(),
+                       std::back_inserter(result),
+                       [this](const auto& name) { return lookupSlotStrict(name); });
+        return result;
+    }
+
+    template <typename T>
+    std::unordered_map<value::SlotId, T> lookupSlots(std::unordered_map<std::string, T> map) {
+        std::unordered_map<value::SlotId, T> result;
+        for (auto&& [k, v] : map) {
+            result[lookupSlotStrict(k)] = std::move(v);
+        }
+        return result;
+    }
 
     void walkChildren(AstQuery& ast);
     void walkIdent(AstQuery& ast);

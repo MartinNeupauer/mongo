@@ -33,39 +33,37 @@
 
 #include <map>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class SortStage final : public PlanStage {
     using TableType = std::multimap<value::MaterializedRow, value::MaterializedRow>;
 
     using SortKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using SortValueAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
-    const std::vector<std::string> _obs;
-    const std::vector<std::string> _vals;
+    const std::vector<value::SlotId> _obs;
+    const std::vector<value::SlotId> _vals;
 
     std::vector<value::SlotAccessor*> _inKeyAccessors;
     std::vector<value::SlotAccessor*> _inValueAccessors;
 
-    std::map<std::string, std::unique_ptr<value::SlotAccessor>, std::less<>> _outAccessors;
+    std::map<value::SlotId, std::unique_ptr<value::SlotAccessor>, std::less<>> _outAccessors;
 
     TableType _st;
     TableType::iterator _stIt;
 
 public:
     SortStage(std::unique_ptr<PlanStage> input,
-              const std::vector<std::string>& obs,
-              const std::vector<std::string>& vals);
+              const std::vector<value::SlotId>& obs,
+              const std::vector<value::SlotId>& vals);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

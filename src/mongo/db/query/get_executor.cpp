@@ -351,51 +351,58 @@ std::unique_ptr<sbe::PlanStage> getIdHackPlan(const Collection* collection,
             true /* where is isForward? */,
             false /* exclusive */));
 
-    // Construct a simple CTS (constant table scan). It delivers a single row with two fields $$LOW
-    // and $$HI representing seek boundaries.
+    auto slotIdGenerator = sbe::value::makeDefaultSlotIdGenerator();
+    auto lowKeySlot = slotIdGenerator->generate();
+    auto highKeySlot = slotIdGenerator->generate();
+    auto recordIdKeySlot = slotIdGenerator->generate();
+    auto recordIdSlot = stage_builder::SlotBasedStageBuilder::kRecordIdSlot;
+    auto recordSlot = stage_builder::SlotBasedStageBuilder::kResultSlot;
+    // Construct a simple CTS (constant table scan). It delivers a single row with two fields
+    // lowKeySlot and highKeySlot representing seek boundaries.
     auto getKeys =
         sbe::makeProjectStage(sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
-                              "$$LOW"sv,
+                              lowKeySlot,
                               sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
                                                          sbe::value::bitcastFrom(kvLow.release())),
-                              "$$HI"sv,
+                              highKeySlot,
                               sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
                                                          sbe::value::bitcastFrom(kvHi.release())));
 
-    // Scan the _id index in the range [$$LOW, $$HI). Produce a single field $$RIDKEY that will be
-    // used to position into the collection.
+    // Scan the _id index in the range [lowKeySlot, highKeySlot). Produce a single field
+    // recordIdSlot that will be used to position into the collection.
     auto indexScan = sbe::makeS<sbe::IndexScanStage>(
         NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
         descriptor->indexName(),  // "_id_"sv,
-        ""sv,
-        "$$RIDKEY"sv,
+        boost::none,              // recordSlot
+        recordIdKeySlot,
         std::vector<std::string>{},
-        std::vector<std::string>{},
-        "$$LOW"sv,
-        "$$HI"sv);
+        std::vector<sbe::value::SlotId>{},
+        lowKeySlot,
+        highKeySlot);
 
     // Get the keys from the outer side (guaranteed to see exacly one row in the id hack query) and
     // feed them to the inner side.
-    auto indexSeek = sbe::makeS<sbe::LoopJoinStage>(std::move(getKeys),
-                                                    std::move(indexScan),
-                                                    std::vector<std::string>{},
-                                                    std::vector<std::string>{"$$LOW", "$$HI"},
-                                                    nullptr);
+    auto indexSeek =
+        sbe::makeS<sbe::LoopJoinStage>(std::move(getKeys),
+                                       std::move(indexScan),
+                                       std::vector<sbe::value::SlotId>{},
+                                       std::vector<sbe::value::SlotId>{lowKeySlot, highKeySlot},
+                                       nullptr);
 
-    // Scan the collection in the range [$$RIDKEY,$$RIDKEY).
+    // Scan the collection in the range [recordIdKeySlot, recordIdKeySlot).
     auto collScan = sbe::makeS<sbe::ScanStage>(
         NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
-        "$$RESULT"sv,
-        "$$RID"sv,
+        recordSlot,
+        recordIdSlot,
         std::vector<std::string>{},
-        std::vector<std::string>{},
-        "$$RIDKEY"sv);
+        std::vector<sbe::value::SlotId>{},
+        recordIdKeySlot);
 
-    // Get the $$RIDKEY from the outer side and feed it to the inner side.
+    // Get the recordIdSlot from the outer side and feed it to the inner side.
     auto collSeek = sbe::makeS<sbe::LoopJoinStage>(std::move(indexSeek),
                                                    std::move(collScan),
-                                                   std::vector<std::string>{},
-                                                   std::vector<std::string>{"$$RIDKEY"},
+                                                   std::vector<sbe::value::SlotId>{},
+                                                   std::vector<sbe::value::SlotId>{recordIdKeySlot},
                                                    nullptr);
 
     // And we are done.
@@ -477,6 +484,8 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                               "IDHack plan is not supprted by SBE yet"};
             }
 
+            canonicalQuery->requestAdditionalMetadata(
+                QueryMetadataBitSet{}.set(DocumentMetadataFields::kRecordId));
             root =
                 getIdHackPlan(collection, descriptor, canonicalQuery->getQueryObj()["_id"].wrap());
 

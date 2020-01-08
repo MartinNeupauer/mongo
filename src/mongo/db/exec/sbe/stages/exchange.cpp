@@ -31,8 +31,7 @@
 #include "mongo/base/init.h"
 #include "mongo/db/client.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 std::unique_ptr<ThreadPool> s_globalThreadPool;
 MONGO_INITIALIZER(s_globalThreadPool)(InitializerContext* context) {
     ThreadPool::Options options;
@@ -118,7 +117,7 @@ void ExchangePipe::putFullBuffer(std::unique_ptr<ExchangeBuffer> b) {
 }
 
 ExchangeState::ExchangeState(size_t numOfProducers,
-                             const std::vector<std::string>& fields,
+                             const std::vector<value::SlotId>& fields,
                              ExchangePolicy policy,
                              std::unique_ptr<EExpression> partition,
                              std::unique_ptr<EExpression> orderLess)
@@ -155,7 +154,7 @@ void ExchangeConsumer::putBuffer(size_t producerId) {
 
 ExchangeConsumer::ExchangeConsumer(std::unique_ptr<PlanStage> input,
                                    size_t numOfProducers,
-                                   const std::vector<std::string>& fields,
+                                   const std::vector<value::SlotId>& fields,
                                    ExchangePolicy policy,
                                    std::unique_ptr<EExpression> partition,
                                    std::unique_ptr<EExpression> orderLess) {
@@ -179,16 +178,16 @@ void ExchangeConsumer::prepare(CompileCtx& ctx) {
     }
     // compile '<' function
 }
-value::SlotAccessor* ExchangeConsumer::getAccessor(CompileCtx& ctx, std::string_view field) {
+value::SlotAccessor* ExchangeConsumer::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     // accessors to pipes
     for (size_t idx = 0; idx < _state->fields().size(); ++idx) {
-        if (_state->fields()[idx] == field) {
+        if (_state->fields()[idx] == slot) {
             return &_outgoing[idx];
         }
     }
 
     // correlated values and stuff
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 void ExchangeConsumer::open(bool reOpen) {
     if (reOpen) {
@@ -461,8 +460,8 @@ void ExchangeProducer::prepare(CompileCtx& ctx) {
         _incoming.emplace_back(_children[0]->getAccessor(ctx, f));
     }
 }
-value::SlotAccessor* ExchangeProducer::getAccessor(CompileCtx& ctx, std::string_view field) {
-    return _children[0]->getAccessor(ctx, field);
+value::SlotAccessor* ExchangeProducer::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    return _children[0]->getAccessor(ctx, slot);
 }
 void ExchangeProducer::open(bool reOpen) {
     if (reOpen) {
@@ -544,5 +543,4 @@ bool ExchangeBuffer::appendData(std::vector<value::SlotAccessor*>& data) {
     // a simply heuristic for now
     return isFull();
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

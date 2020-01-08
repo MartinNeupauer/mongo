@@ -36,8 +36,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class HashJoinStage final : public PlanStage {
     using TableType = std::unordered_multimap<value::MaterializedRow,
                                               value::MaterializedRow,
@@ -46,26 +45,26 @@ class HashJoinStage final : public PlanStage {
     using HashKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using HashProjectAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
-    const std::vector<std::string> _outerCond;
-    const std::vector<std::string> _outerProjects;
-    const std::vector<std::string> _innerCond;
-    const std::vector<std::string> _innerProjects;
+    const std::vector<value::SlotId> _outerCond;
+    const std::vector<value::SlotId> _outerProjects;
+    const std::vector<value::SlotId> _innerCond;
+    const std::vector<value::SlotId> _innerProjects;
 
     // all defined values from the outer side (i.e. they come from the hash table)
-    std::map<std::string, value::SlotAccessor*, std::less<>> _outOuterAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _outOuterAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    std::map<std::string, value::SlotAccessor*, std::less<>> _inOuterKeyAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inOuterKeyAccessors;
     // accessors of output keys
     std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
 
     // accessors of input projection values that are build inserted into the hash table
-    std::map<std::string, value::SlotAccessor*, std::less<>> _inOuterProjectAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inOuterProjectAccessors;
     // accessors of output projections
     std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    std::map<std::string, value::SlotAccessor*, std::less<>> _inInnerKeyAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inInnerKeyAccessors;
 
     TableType _ht;
     TableType::iterator _htIt;
@@ -78,20 +77,19 @@ class HashJoinStage final : public PlanStage {
 public:
     HashJoinStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
-                  const std::vector<std::string>& outerCond,
-                  const std::vector<std::string>& outerProjects,
-                  const std::vector<std::string>& innerCond,
-                  const std::vector<std::string>& innerProjects);
+                  const std::vector<value::SlotId>& outerCond,
+                  const std::vector<value::SlotId>& outerProjects,
+                  const std::vector<value::SlotId>& innerCond,
+                  const std::vector<value::SlotId>& innerProjects);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

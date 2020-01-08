@@ -31,37 +31,30 @@
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/util/str.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
-                           std::string_view objName,
-                           std::string_view rootName,
+                           value::SlotId objSlot,
+                           boost::optional<value::SlotId> rootSlot,
                            const std::vector<std::string>& restrictFields,
                            const std::vector<std::string>& projectFields,
-                           const std::vector<std::string>& projectVarNames)
-    : _objName(objName),
-      _rootName(rootName),
+                           const std::vector<value::SlotId>& projectVars)
+    : _objSlot(objSlot),
+      _rootSlot(rootSlot),
       _restrictFields(restrictFields),
       _projectFields(projectFields),
-      _projectVarNames(projectVarNames) {
+      _projectVars(projectVars) {
     _children.emplace_back(std::move(input));
-    if (_projectVarNames.size() != _projectFields.size()) {
-        uasserted(ErrorCodes::InternalError, "projects and renames do not match");
-    }
+    invariant(_projectVars.size() == _projectFields.size());
 }
 std::unique_ptr<PlanStage> MakeObjStage::clone() {
-    return std::make_unique<MakeObjStage>(_children[0]->clone(),
-                                          _objName,
-                                          _rootName,
-                                          _restrictFields,
-                                          _projectFields,
-                                          _projectVarNames);
+    return std::make_unique<MakeObjStage>(
+        _children[0]->clone(), _objSlot, _rootSlot, _restrictFields, _projectFields, _projectVars);
 }
 void MakeObjStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    if (!_rootName.empty()) {
-        _root = _children[0]->getAccessor(ctx, _rootName);
+    if (_rootSlot) {
+        _root = _children[0]->getAccessor(ctx, *_rootSlot);
     }
     for (auto& p : _restrictFields) {
         auto [it, inserted] = _restrictFieldsSet.emplace(p);
@@ -72,15 +65,15 @@ void MakeObjStage::prepare(CompileCtx& ctx) {
 
         auto [it, inserted] = _projectFieldsSet.emplace(p);
         uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
-        _projects.emplace_back(p, _children[0]->getAccessor(ctx, _projectVarNames[idx]));
+        _projects.emplace_back(p, _children[0]->getAccessor(ctx, _projectVars[idx]));
     }
     _compiled = true;
 }
-value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (_compiled && field == _objName) {
+value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_compiled && slot == _objSlot) {
         return &_obj;
     } else {
-        return _children[0]->getAccessor(ctx, field);
+        return _children[0]->getAccessor(ctx, slot);
     }
 }
 void MakeObjStage::open(bool reOpen) {
@@ -149,10 +142,10 @@ std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "mkobj");
 
-    DebugPrinter::addIdentifier(ret, _objName);
+    DebugPrinter::addIdentifier(ret, _objSlot);
 
-    if (!_rootName.empty()) {
-        DebugPrinter::addIdentifier(ret, _rootName);
+    if (_rootSlot) {
+        DebugPrinter::addIdentifier(ret, *_rootSlot);
 
         ret.emplace_back(DebugPrinter::Block("[`"));
         for (size_t idx = 0; idx < _restrictFields.size(); ++idx) {
@@ -176,12 +169,12 @@ std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
     ret.emplace_back(DebugPrinter::Block("`]"));
 
     ret.emplace_back(DebugPrinter::Block("[`"));
-    for (size_t idx = 0; idx < _projectVarNames.size(); ++idx) {
+    for (size_t idx = 0; idx < _projectVars.size(); ++idx) {
         if (idx) {
             ret.emplace_back(DebugPrinter::Block("`,"));
         }
 
-        DebugPrinter::addIdentifier(ret, _projectVarNames[idx]);
+        DebugPrinter::addIdentifier(ret, _projectVars[idx]);
     }
     ret.emplace_back(DebugPrinter::Block("`]"));
 
@@ -190,5 +183,4 @@ std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
 
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

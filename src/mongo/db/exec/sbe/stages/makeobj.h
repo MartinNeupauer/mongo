@@ -38,14 +38,13 @@
 #include <unordered_set>
 #include <vector>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class MakeObjStage final : public PlanStage {
-    const std::string _objName;
-    const std::string _rootName;
+    const value::SlotId _objSlot;
+    const boost::optional<value::SlotId> _rootSlot;
     const std::vector<std::string> _restrictFields;
     const std::vector<std::string> _projectFields;
-    const std::vector<std::string> _projectVarNames;
+    const std::vector<value::SlotId> _projectVars;
     std::set<std::string, std::less<>> _restrictFieldsSet;
     std::set<std::string, std::less<>> _projectFieldsSet;
 
@@ -59,21 +58,20 @@ class MakeObjStage final : public PlanStage {
 
 public:
     MakeObjStage(std::unique_ptr<PlanStage> input,
-                 std::string_view objName,
-                 std::string_view rootName,
+                 value::SlotId objSlot,
+                 boost::optional<value::SlotId> rootSlot,
                  const std::vector<std::string>& restrictFields,
                  const std::vector<std::string>& projectFields,
-                 const std::vector<std::string>& projectVarNames);
+                 const std::vector<value::SlotId>& projectVars);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

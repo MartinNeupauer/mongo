@@ -45,36 +45,36 @@ protected:
 
 public:
     ScanStage(const NamespaceStringOrUUID& name,
-              std::string_view recordName,
-              std::string_view recordIdName,
+              boost::optional<value::SlotId> recordSlot,
+              boost::optional<value::SlotId> recordIdSlot,
               const std::vector<std::string>& fields,
-              const std::vector<std::string>& varNames,
-              std::string_view seekKeyName);
+              const std::vector<value::SlotId>& vars,
+              boost::optional<value::SlotId> seekKeySlot);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 
 private:
     const NamespaceStringOrUUID _name;
-    const std::string _recordName;
-    const std::string _recordIdName;
+    const boost::optional<value::SlotId> _recordSlot;
+    const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<std::string> _varNames;
-    const std::string _seekKeyName;
+    const std::vector<value::SlotId> _vars;
+    const boost::optional<value::SlotId> _seekKeySlot;
 
     OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
     std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<std::string, value::SlotAccessor*, std::less<>> _varAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
     value::SlotAccessor* _seekKeyAccessor{nullptr};
 
     std::unique_ptr<SeekableRecordCursor> _cursor;
@@ -103,41 +103,41 @@ class ParallelScanStage final : public PlanStage {
     }
 
 protected:
-    void doSaveState() override;
-    void doRestoreState() override;
-    void doDetachFromOperationContext() override;
-    void doAttachFromOperationContext(OperationContext* opCtx) override;
+    void doSaveState() final;
+    void doRestoreState() final;
+    void doDetachFromOperationContext() final;
+    void doAttachFromOperationContext(OperationContext* opCtx) final;
 
 public:
     ParallelScanStage(const NamespaceStringOrUUID& name,
-                      std::string_view recordName,
-                      std::string_view recordIdName,
+                      boost::optional<value::SlotId> recordSlot,
+                      boost::optional<value::SlotId> recordIdSlot,
                       const std::vector<std::string>& fields,
-                      const std::vector<std::string>& varNames);
+                      const std::vector<value::SlotId>& vars);
 
     ParallelScanStage(const std::shared_ptr<ParallelState>& state,
                       const NamespaceStringOrUUID& name,
-                      std::string_view recordName,
-                      std::string_view recordIdName,
+                      boost::optional<value::SlotId> recordSlot,
+                      boost::optional<value::SlotId> recordIdSlot,
                       const std::vector<std::string>& fields,
-                      const std::vector<std::string>& varNames);
+                      const std::vector<value::SlotId>& vars);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 
 private:
     const NamespaceStringOrUUID _name;
-    const std::string _recordName;
-    const std::string _recordIdName;
+    const boost::optional<value::SlotId> _recordSlot;
+    const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<std::string> _varNames;
+    const std::vector<value::SlotId> _vars;
 
     std::shared_ptr<ParallelState> _state;
 
@@ -147,7 +147,7 @@ private:
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
     std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<std::string, value::SlotAccessor*, std::less<>> _varAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
 
     size_t _currentRange{std::numeric_limits<std::size_t>::max()};
     Range _range;

@@ -33,13 +33,11 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
-namespace mongo {
-namespace sbe {
-
+namespace mongo::sbe {
 class TraverseStage final : public PlanStage {
-    const std::string _inField;
-    const std::string _outField;
-    const std::string _outFieldInner;
+    const value::SlotId _inField;
+    const value::SlotId _outField;
+    const value::SlotId _outFieldInner;
     const std::unique_ptr<EExpression> _fold;
     const std::unique_ptr<EExpression> _final;
 
@@ -63,21 +61,20 @@ class TraverseStage final : public PlanStage {
 public:
     TraverseStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
-                  std::string_view inField,
-                  std::string_view outField,
-                  std::string_view outFieldInner,
+                  value::SlotId inField,
+                  value::SlotId outField,
+                  value::SlotId outFieldInner,
                   std::unique_ptr<EExpression> foldExpr,
                   std::unique_ptr<EExpression> finalExpr);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe
