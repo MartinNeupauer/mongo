@@ -33,13 +33,13 @@
 namespace mongo {
 namespace sbe {
 HashAggStage::HashAggStage(std::unique_ptr<PlanStage> input,
-                           const std::vector<std::string>& gbs,
-                           std::unordered_map<std::string, std::unique_ptr<EExpression>> aggs)
+                           const std::vector<value::SlotId>& gbs,
+                           std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs)
     : _gbs(gbs), _aggs(std::move(aggs)) {
     _children.emplace_back(std::move(input));
 }
 std::unique_ptr<PlanStage> HashAggStage::clone() {
-    std::unordered_map<std::string, std::unique_ptr<EExpression>> aggs;
+    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs;
     for (auto& [k, v] : _aggs) {
         aggs.emplace(k, v->clone());
     }
@@ -50,25 +50,25 @@ void HashAggStage::prepare(CompileCtx& ctx) {
 
     size_t counter = 0;
     // process group by columns
-    for (auto& name : _gbs) {
-        auto [it, inserted] = _inKeyAccessors.emplace(name, _children[0]->getAccessor(ctx, name));
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << name, inserted);
+    for (auto& slot : _gbs) {
+        auto [it, inserted] = _inKeyAccessors.emplace(slot, _children[0]->getAccessor(ctx, slot));
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
         _outKeyAccessors.emplace_back(std::make_unique<HashKeyAccessor>(_htIt, counter++));
-        _outAccessors[name] = _outKeyAccessors.back().get();
+        _outAccessors[slot] = _outKeyAccessors.back().get();
     }
 
     counter = 0;
-    for (auto& [name, expr] : _aggs) {
+    for (auto& [slot, expr] : _aggs) {
         _outAggAccessors.emplace_back(std::make_unique<HashAggAccessor>(_htIt, counter++));
         // Some compilers do not allow to capture local bindings by lambda functions (the one
         // is used implicitly in uassert below), so we need a local variable to construct an
         // error message.
-        const auto fieldName = name;
+        const auto slotId = slot;
         uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << fieldName,
-                !_outAccessors.count(name));
-        _outAccessors[name] = _outAggAccessors.back().get();
+                str::stream() << "duplicate field: " << slotId,
+                !_outAccessors.count(slot));
+        _outAccessors[slot] = _outAggAccessors.back().get();
 
         ctx.root = this;
         ctx.aggExpression = true;
@@ -79,16 +79,16 @@ void HashAggStage::prepare(CompileCtx& ctx) {
     }
     _compiled = true;
 }
-value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, std::string_view field) {
+value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_compiled) {
-        if (auto it = _outAccessors.find(field); it != _outAccessors.end()) {
+        if (auto it = _outAccessors.find(slot); it != _outAccessors.end()) {
             return it->second;
         }
     } else {
-        return _children[0]->getAccessor(ctx, field);
+        return _children[0]->getAccessor(ctx, slot);
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 void HashAggStage::open(bool reOpen) {
     _children[0]->open(reOpen);

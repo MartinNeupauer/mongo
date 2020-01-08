@@ -357,18 +357,17 @@ std::vector<DebugPrinter::Block> EIf::debugPrint() {
     return ret;
 }
 
-value::SlotAccessor* CompileCtx::getAccessor(std::string_view name) {
+value::SlotAccessor* CompileCtx::getAccessor(value::SlotId slot) {
     for (auto it = correlated.rbegin(); it != correlated.rend(); ++it) {
-        if (it->first == name) {
+        if (it->first == slot) {
             return it->second;
         }
     }
 
-    uasserted(ErrorCodes::InternalError,
-              str::stream() << "undefined slot accessor:" << std::string{name});
+    uasserted(ErrorCodes::InternalError, str::stream() << "undefined slot accessor:" << slot);
 }
-void CompileCtx::pushCorrelated(const std::string& name, value::SlotAccessor* accessor) {
-    correlated.emplace_back(name, accessor);
+void CompileCtx::pushCorrelated(value::SlotId slot, value::SlotAccessor* accessor) {
+    correlated.emplace_back(slot, accessor);
 }
 void CompileCtx::popCorrelated() {
     correlated.pop_back();

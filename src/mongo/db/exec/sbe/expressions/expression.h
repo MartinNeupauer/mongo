@@ -44,12 +44,12 @@ class PlanStage;
 struct CompileCtx {
     PlanStage* root{nullptr};
     value::SlotAccessor* accumulator{nullptr};
-    std::vector<std::pair<std::string, value::SlotAccessor*>> correlated;
+    std::vector<std::pair<value::SlotId, value::SlotAccessor*>> correlated;
     bool aggExpression{false};
 
-    value::SlotAccessor* getAccessor(std::string_view name);
+    value::SlotAccessor* getAccessor(value::SlotId slot);
 
-    void pushCorrelated(const std::string& name, value::SlotAccessor* accessor);
+    void pushCorrelated(value::SlotId slot, value::SlotAccessor* accessor);
     void popCorrelated();
 };
 
@@ -84,26 +84,26 @@ inline std::vector<std::unique_ptr<EExpression>> makeEs(Ts&&... pack) {
 
 namespace detail {
 // base case
-inline void makeEM_unwind(std::unordered_map<std::string, std::unique_ptr<EExpression>>& result,
-                          std::string_view name,
+inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExpression>>& result,
+                          value::SlotId slot,
                           std::unique_ptr<EExpression> expr) {
-    result.emplace(name, std::move(expr));
+    result.emplace(slot, std::move(expr));
 }
 
 // recursive case
 template <typename... Ts>
-inline void makeEM_unwind(std::unordered_map<std::string, std::unique_ptr<EExpression>>& result,
-                          std::string_view name,
+inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExpression>>& result,
+                          value::SlotId slot,
                           std::unique_ptr<EExpression> expr,
                           Ts&&... rest) {
-    result.emplace(name, std::move(expr));
+    result.emplace(slot, std::move(expr));
     makeEM_unwind(result, std::forward<Ts>(rest)...);
 }
 }  // namespace detail
 
 template <typename... Ts>
 auto makeEM(Ts&&... pack) {
-    std::unordered_map<std::string, std::unique_ptr<EExpression>> result;
+    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> result;
     detail::makeEM_unwind(result, std::forward<Ts>(pack)...);
     return result;
 }
@@ -137,10 +137,10 @@ public:
 };
 
 class EVariable final : public EExpression {
-    std::string _var;
+    value::SlotId _var;
 
 public:
-    EVariable(std::string_view var) : _var(var) {}
+    EVariable(value::SlotId var) : _var(var) {}
 
     std::unique_ptr<EExpression> clone() override;
 

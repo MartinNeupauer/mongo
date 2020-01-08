@@ -35,10 +35,10 @@ namespace mongo {
 namespace sbe {
 HashJoinStage::HashJoinStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<PlanStage> inner,
-                             const std::vector<std::string>& outerCond,
-                             const std::vector<std::string>& outerProjects,
-                             const std::vector<std::string>& innerCond,
-                             const std::vector<std::string>& innerProjects)
+                             const std::vector<value::SlotId>& outerCond,
+                             const std::vector<value::SlotId>& outerProjects,
+                             const std::vector<value::SlotId>& innerCond,
+                             const std::vector<value::SlotId>& innerProjects)
     : _outerCond(outerCond),
       _outerProjects(outerProjects),
       _innerCond(innerCond),
@@ -92,16 +92,16 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
     _compiled = true;
 }
 
-value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, std::string_view field) {
+value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_compiled) {
-        if (auto it = _outOuterAccessors.find(field); it != _outOuterAccessors.end()) {
+        if (auto it = _outOuterAccessors.find(slot); it != _outOuterAccessors.end()) {
             return it->second;
         }
 
-        return _children[1]->getAccessor(ctx, field);
+        return _children[1]->getAccessor(ctx, slot);
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 void HashJoinStage::open(bool reOpen) {
     _children[0]->open(reOpen);

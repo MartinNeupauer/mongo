@@ -30,12 +30,11 @@
 #include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/util/str.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 LoopJoinStage::LoopJoinStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<PlanStage> inner,
-                             const std::vector<std::string>& outerProjects,
-                             const std::vector<std::string> outerCorrelated,
+                             const std::vector<value::SlotId>& outerProjects,
+                             const std::vector<value::SlotId>& outerCorrelated,
                              std::unique_ptr<EExpression> predicate)
     : _outerProjects(outerProjects),
       _outerCorrelated(outerCorrelated),
@@ -71,12 +70,12 @@ void LoopJoinStage::prepare(CompileCtx& ctx) {
         _predicateCode = _predicate->compile(ctx);
     }
 }
-value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (_outerRefs.count(field)) {
-        return _children[0]->getAccessor(ctx, field);
+value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_outerRefs.count(slot)) {
+        return _children[0]->getAccessor(ctx, slot);
     }
 
-    return _children[1]->getAccessor(ctx, field);
+    return _children[1]->getAccessor(ctx, slot);
 }
 void LoopJoinStage::open(bool reOpen) {
     _children[0]->open(reOpen);
@@ -142,5 +141,4 @@ void LoopJoinStage::close() {
 std::vector<DebugPrinter::Block> LoopJoinStage::debugPrint() {
     return std::vector<DebugPrinter::Block>();
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

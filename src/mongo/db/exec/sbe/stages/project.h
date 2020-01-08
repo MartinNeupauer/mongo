@@ -37,12 +37,11 @@
 #include <unordered_map>
 #include <vector>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class ProjectStage final : public PlanStage {
-    const std::unordered_map<std::string, std::unique_ptr<EExpression>> _projects;
+    const std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> _projects;
 
-    std::map<std::string,
+    std::map<value::SlotId,
              std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>,
              std::less<>>
         _fields;
@@ -53,22 +52,21 @@ class ProjectStage final : public PlanStage {
 
 public:
     ProjectStage(std::unique_ptr<PlanStage> input,
-                 std::unordered_map<std::string, std::unique_ptr<EExpression>> projects);
+                 std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
 
 template <typename... Ts>
 inline auto makeProjectStage(std::unique_ptr<PlanStage> input, Ts&&... pack) {
     return makeS<ProjectStage>(std::move(input), makeEM(std::forward<Ts>(pack)...));
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

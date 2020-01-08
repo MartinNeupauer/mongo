@@ -60,7 +60,7 @@ public:
     virtual std::unique_ptr<PlanStage> clone() = 0;
 
     virtual void prepare(CompileCtx& ctx) = 0;
-    virtual value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) = 0;
+    virtual value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) = 0;
     virtual void open(bool reOpen) = 0;
     virtual PlanState getNext() = 0;
     virtual void close() = 0;

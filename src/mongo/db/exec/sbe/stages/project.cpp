@@ -32,13 +32,13 @@
 namespace mongo {
 namespace sbe {
 ProjectStage::ProjectStage(std::unique_ptr<PlanStage> input,
-                           std::unordered_map<std::string, std::unique_ptr<EExpression>> projects)
+                           std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects)
     : _projects(std::move(projects)) {
     _children.emplace_back(std::move(input));
 }
 
 std::unique_ptr<PlanStage> ProjectStage::clone() {
-    std::unordered_map<std::string, std::unique_ptr<EExpression>> projects;
+    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects;
     for (auto& [k, v] : _projects) {
         projects.emplace(k, v->clone());
     }
@@ -49,19 +49,19 @@ void ProjectStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
     // compile project expressions here
-    for (auto& [name, expr] : _projects) {
+    for (auto& [slot, expr] : _projects) {
         ctx.root = this;
         auto code = expr->compile(ctx);
-        _fields[name] = {std::move(code), value::OwnedValueAccessor{}};
+        _fields[slot] = {std::move(code), value::OwnedValueAccessor{}};
     }
     _compiled = true;
 }
 
-value::SlotAccessor* ProjectStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (auto it = _fields.find(field); _compiled && it != _fields.end()) {
+value::SlotAccessor* ProjectStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (auto it = _fields.find(slot); _compiled && it != _fields.end()) {
         return &it->second.second;
     } else {
-        return _children[0]->getAccessor(ctx, field);
+        return _children[0]->getAccessor(ctx, slot);
     }
 }
 void ProjectStage::open(bool reOpen) {

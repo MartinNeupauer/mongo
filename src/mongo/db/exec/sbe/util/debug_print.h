@@ -32,6 +32,9 @@
 #include <string>
 #include <vector>
 
+#include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/util/str.h"
+
 namespace mongo {
 namespace sbe {
 class PlanStage;
@@ -76,6 +79,14 @@ public:
     static void addKeyword(std::vector<Block>& ret, std::string_view k) {
         ret.emplace_back(Block::cmdColorCyan);
         ret.emplace_back(Block{Block::cmdNoneNoSpace, k});
+        ret.emplace_back(Block::cmdColorNone);
+        ret.emplace_back(Block{Block::cmdNoneNoSpace, " "});
+    }
+
+    static void addIdentifier(std::vector<Block>& ret, value::SlotId slot) {
+        std::string name{str::stream() << "s" << slot};
+        ret.emplace_back(Block::cmdColorGreen);
+        ret.emplace_back(Block{Block::cmdNoneNoSpace, name});
         ret.emplace_back(Block::cmdColorNone);
         ret.emplace_back(Block{Block::cmdNoneNoSpace, " "});
     }

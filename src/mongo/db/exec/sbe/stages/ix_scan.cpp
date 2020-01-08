@@ -32,46 +32,44 @@
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/index/index_access_method.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
                                std::string_view indexName,
-                               std::string_view recordName,
-                               std::string_view recordIdName,
+                               boost::optional<value::SlotId> recordSlot,
+                               boost::optional<value::SlotId> recordIdSlot,
                                const std::vector<std::string>& fields,
-                               const std::vector<std::string>& varNames,
-                               std::string_view seekKeyNameLow,
-                               std::string_view seekKeyNameHi)
+                               const std::vector<value::SlotId>& vars,
+                               boost::optional<value::SlotId> seekKeySlotLow,
+                               boost::optional<value::SlotId> seekKeySlotHi)
     : _name(name),
       _indexName(indexName),
-      _recordName(recordName),
-      _recordIdName(recordIdName),
+      _recordSlot(recordSlot),
+      _recordIdSlot(recordIdSlot),
       _fields(fields),
-      _varNames(varNames),
-      _seekKeyNameLow(seekKeyNameLow),
-      _seekKeyNameHi(seekKeyNameHi) {
-    invariant(_fields.size() == _varNames.size());
-    invariant((_seekKeyNameLow.empty() && _seekKeyNameHi.empty()) ||
-              (!_seekKeyNameLow.empty() && !_seekKeyNameHi.empty()));
+      _vars(vars),
+      _seekKeySlotLow(seekKeySlotLow),
+      _seekKeySlotHi(seekKeySlotHi) {
+    invariant(_fields.size() == _vars.size());
+    invariant((_seekKeySlotLow && _seekKeySlotHi) || (_seekKeySlotLow && !_seekKeySlotHi));
 }
 
 std::unique_ptr<PlanStage> IndexScanStage::clone() {
     return std::make_unique<IndexScanStage>(_name,
                                             _indexName,
-                                            _recordName,
-                                            _recordIdName,
+                                            _recordSlot,
+                                            _recordIdSlot,
                                             _fields,
-                                            _varNames,
-                                            _seekKeyNameLow,
-                                            _seekKeyNameHi);
+                                            _vars,
+                                            _seekKeySlotLow,
+                                            _seekKeySlotHi);
 }
 
 void IndexScanStage::prepare(CompileCtx& ctx) {
-    if (!_recordName.empty()) {
+    if (*_recordSlot) {
         _recordAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
-    if (!_recordIdName.empty()) {
+    if (*_recordIdSlot) {
         _recordIdAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
@@ -81,34 +79,34 @@ void IndexScanStage::prepare(CompileCtx& ctx) {
         uassert(ErrorCodes::InternalError,
                 str::stream() << "duplicate field: " << _fields[idx],
                 inserted);
-        auto [itRename, insertedRename] = _varAccessors.emplace(_varNames[idx], it->second.get());
+        auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
         uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _varNames[idx],
+                str::stream() << "duplicate field: " << _vars[idx],
                 insertedRename);
     }
 
-    if (!_seekKeyNameLow.empty()) {
-        _seekKeyLowAccessor = ctx.getAccessor(_seekKeyNameLow);
+    if (_seekKeySlotLow) {
+        _seekKeyLowAccessor = ctx.getAccessor(*_seekKeySlotLow);
     }
-    if (!_seekKeyNameHi.empty()) {
-        _seekKeyHiAccessor = ctx.getAccessor(_seekKeyNameHi);
+    if (_seekKeySlotHi) {
+        _seekKeyHiAccessor = ctx.getAccessor(*_seekKeySlotHi);
     }
 }
 
-value::SlotAccessor* IndexScanStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    if (!_recordName.empty() && _recordName == field) {
+value::SlotAccessor* IndexScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    if (_recordSlot && *_recordSlot == slot) {
         return _recordAccessor.get();
     }
 
-    if (!_recordIdName.empty() && _recordIdName == field) {
+    if (_recordIdSlot && *_recordIdSlot == slot) {
         return _recordIdAccessor.get();
     }
 
-    if (auto it = _varAccessors.find(field); it != _varAccessors.end()) {
+    if (auto it = _varAccessors.find(slot); it != _varAccessors.end()) {
         return it->second;
     }
 
-    return ctx.getAccessor(field);
+    return ctx.getAccessor(slot);
 }
 
 void IndexScanStage::doSaveState() {
@@ -240,9 +238,6 @@ void IndexScanStage::close() {
 std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "ixscan");
-
     return ret;
 }
-
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

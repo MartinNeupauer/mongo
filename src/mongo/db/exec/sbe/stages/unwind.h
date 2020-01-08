@@ -31,12 +31,11 @@
 
 #include "mongo/db/exec/sbe/stages/stages.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class UnwindStage final : public PlanStage {
-    const std::string _inField;
-    const std::string _outField;
-    const std::string _outIndex;
+    const value::SlotId _inField;
+    const value::SlotId _outField;
+    const value::SlotId _outIndex;
 
     value::SlotAccessor* _inFieldAccessor{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
@@ -49,19 +48,18 @@ class UnwindStage final : public PlanStage {
 
 public:
     UnwindStage(std::unique_ptr<PlanStage> input,
-                const std::string& inField,
-                const std::string& outField,
-                const std::string& outIndex);
+                value::SlotId inField,
+                value::SlotId outField,
+                value::SlotId outIndex);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

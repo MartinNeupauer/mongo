@@ -30,6 +30,7 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/values/slot_id_generator.h"
 #include "mongo/db/query/stage_builder.h"
 
 namespace mongo::stage_builder {
@@ -38,8 +39,14 @@ namespace mongo::stage_builder {
  */
 class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage> {
 public:
+    enum SystemSlots { kResultSlot = -1, kRecordIdSlot = -2 };
+
     using StageBuilder<sbe::PlanStage>::StageBuilder;
 
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
+
+private:
+    std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
+        sbe::value::makeDefaultSlotIdGenerator()};
 };
 }  // namespace mongo::stage_builder

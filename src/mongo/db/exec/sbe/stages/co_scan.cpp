@@ -30,15 +30,14 @@
 #include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 CoScanStage::CoScanStage() {}
 std::unique_ptr<PlanStage> CoScanStage::clone() {
     return std::make_unique<CoScanStage>();
 }
 void CoScanStage::prepare(CompileCtx& ctx) {}
-value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    return ctx.getAccessor(field);
+value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    return ctx.getAccessor(slot);
 }
 void CoScanStage::open(bool reOpen) {}
 PlanState CoScanStage::getNext() {
@@ -49,8 +48,6 @@ void CoScanStage::close() {}
 std::vector<DebugPrinter::Block> CoScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "coscan");
-
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

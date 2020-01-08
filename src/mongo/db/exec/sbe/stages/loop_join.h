@@ -35,18 +35,17 @@
 
 #include <set>
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 class LoopJoinStage final : public PlanStage {
     // Set of variables coming from the outer side.
-    const std::vector<std::string> _outerProjects;
+    const std::vector<value::SlotId> _outerProjects;
     // Set of correlated variables from the outer side that are visible on the inner side. They must
     // be also present in the _outerProjects.
-    const std::vector<std::string> _outerCorrelated;
+    const std::vector<value::SlotId> _outerCorrelated;
     // If not set then this is a cross product.
     const std::unique_ptr<EExpression> _predicate;
 
-    std::set<std::string, std::less<>> _outerRefs;
+    std::set<value::SlotId, std::less<>> _outerRefs;
 
     std::vector<value::SlotAccessor*> _correlatedAccessors;
     std::unique_ptr<vm::CodeFragment> _predicateCode;
@@ -60,19 +59,18 @@ class LoopJoinStage final : public PlanStage {
 public:
     LoopJoinStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
-                  const std::vector<std::string>& outerProjects,
-                  const std::vector<std::string> outerCorrelated,
+                  const std::vector<value::SlotId>& outerProjects,
+                  const std::vector<value::SlotId>& outerCorrelated,
                   std::unique_ptr<EExpression> predicate);
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() final;
 
-    void prepare(CompileCtx& ctx) override;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, std::string_view field) override;
-    void open(bool reOpen) override;
-    PlanState getNext() override;
-    void close() override;
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

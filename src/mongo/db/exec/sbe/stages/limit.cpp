@@ -29,8 +29,7 @@
 
 #include "mongo/db/exec/sbe/stages/limit.h"
 
-namespace mongo {
-namespace sbe {
+namespace mongo::sbe {
 LimitStage::LimitStage(std::unique_ptr<PlanStage> input, int limit) : _limit(limit), _current(0) {
     _children.emplace_back(std::move(input));
 }
@@ -43,8 +42,8 @@ void LimitStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 }
 
-value::SlotAccessor* LimitStage::getAccessor(CompileCtx& ctx, std::string_view field) {
-    return _children[0]->getAccessor(ctx, field);
+value::SlotAccessor* LimitStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+    return _children[0]->getAccessor(ctx, slot);
 }
 void LimitStage::open(bool reOpen) {
     _current = 0;
@@ -71,5 +70,4 @@ std::vector<DebugPrinter::Block> LimitStage::debugPrint() {
 
     return ret;
 }
-}  // namespace sbe
-}  // namespace mongo
+}  // namespace mongo::sbe

@@ -80,13 +80,12 @@ namespace {
  * A struct for storing context across calls to visit() methods in MatchExpressionVisitor's.
  */
 struct MatchExpressionVisitorContext {
-    MatchExpressionVisitorContext(std::unique_ptr<sbe::PlanStage> inputStage,
-                                  std::string_view inputVar)
-        : inputStage{std::move(inputStage)}, inputVar{inputVar} {}
-
-    std::string generateVarId() {
-        return str::stream() << "v" << currentVarId++;
-    }
+    MatchExpressionVisitorContext(sbe::value::SlotIdGenerator* slotIdGenerartor,
+                                  std::unique_ptr<sbe::PlanStage> inputStage,
+                                  sbe::value::SlotId inputVar)
+        : slotIdGenerartor{slotIdGenerartor},
+          inputStage{std::move(inputStage)},
+          inputVar{inputVar} {}
 
     std::unique_ptr<sbe::PlanStage> done() {
         if (!predicateVars.empty()) {
@@ -99,11 +98,11 @@ struct MatchExpressionVisitorContext {
     }
 
 
+    sbe::value::SlotIdGenerator* slotIdGenerartor;
     std::unique_ptr<sbe::PlanStage> inputStage;
-    std::stack<std::string> predicateVars;
+    std::stack<sbe::value::SlotId> predicateVars;
     std::stack<std::pair<const MatchExpression*, size_t>> nestedLogicalExprs;
-    std::string_view inputVar;
-    size_t currentVarId{0};
+    sbe::value::SlotId inputVar;
 };
 
 /**
@@ -176,7 +175,7 @@ private:
  */
 std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorContext* context,
                                                        std::unique_ptr<sbe::PlanStage> inputStage,
-                                                       std::string_view inputVar,
+                                                       sbe::value::SlotId inputVar,
                                                        sbe::EPrimBinary::Op op,
                                                        const ComparisonMatchExpression* expr,
                                                        size_t level) {
@@ -188,9 +187,9 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
     // The global traversal result.
     const auto& traversePredicateVar = context->predicateVars.top();
     // The field we will be traversing at the current nested level.
-    auto fieldVar{context->generateVarId()};
+    auto fieldVar{context->slotIdGenerartor->generate()};
     // The result coming from the 'in' branch of the traverse plan stage.
-    auto elemPredicateVar{context->generateVarId()};
+    auto elemPredicateVar{context->slotIdGenerartor->generate()};
 
     // Generate the projection stage to read a sub-field at the current nested level and bind it
     // to 'fieldVar'.
@@ -250,7 +249,7 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
 void generateTraverse(MatchExpressionVisitorContext* context,
                       sbe::EPrimBinary::Op op,
                       const ComparisonMatchExpression* expr) {
-    context->predicateVars.push(context->generateVarId());
+    context->predicateVars.push(context->slotIdGenerartor->generate());
     context->inputStage = generateTraverseHelper(
         context, std::move(context->inputStage), context->inputVar, op, expr, 0);
 
@@ -290,7 +289,7 @@ void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpr
     }
 
     if (!context->nestedLogicalExprs.empty()) {
-        context->predicateVars.push(context->generateVarId());
+        context->predicateVars.push(context->slotIdGenerartor->generate());
         context->inputStage = sbe::makeProjectStage(
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
     } else {
@@ -318,12 +317,11 @@ void generateLogicalAnd(MatchExpressionVisitorContext* context, const AndMatchEx
         context->inputStage =
             sbe::makeS<sbe::FilterStage>(std::move(context->inputStage), std::move(filter));
     } else {
-        context->predicateVars.push(context->generateVarId());
+        context->predicateVars.push(context->slotIdGenerartor->generate());
         context->inputStage = sbe::makeProjectStage(
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
     }
 }
-
 
 /**
  * A match expression pre-visitor used for maintaining nested logical expressions while traversing
@@ -644,8 +642,9 @@ private:
  */
 std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
                                                std::unique_ptr<sbe::PlanStage> stage,
-                                               std::string_view inputVar) {
-    MatchExpressionVisitorContext context{std::move(stage), inputVar};
+                                               sbe::value::SlotIdGenerator* slotIdGenerator,
+                                               sbe::value::SlotId inputVar) {
+    MatchExpressionVisitorContext context{slotIdGenerator, std::move(stage), inputVar};
     MatchExpressionPreVisitor preVisitor{&context};
     MatchExpressionInVisitor inVisitor{&context};
     MatchExpressionPostVisitor postVisitor{&context};
@@ -662,16 +661,19 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
 
     switch (root->getType()) {
         case STAGE_COLLSCAN: {
+            auto resultSlot = kResultSlot;
+            auto recordIdSlot = kRecordIdSlot;
             auto stage = sbe::makeS<sbe::ScanStage>(
                 NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-                "$$RESULT"sv,
-                "$$RID"sv,
+                resultSlot,
+                recordIdSlot,
                 std::vector<std::string>{},
-                std::vector<std::string>{},
-                ""sv);
+                std::vector<sbe::value::SlotId>{},
+                boost::none);
 
             if (root->filter) {
-                stage = generateFilter(root->filter.get(), std::move(stage), "$$RESULT"sv);
+                stage = generateFilter(
+                    root->filter.get(), std::move(stage), _slotIdGenerator.get(), resultSlot);
             }
 
             return stage;
