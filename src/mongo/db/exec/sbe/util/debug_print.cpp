@@ -28,7 +28,7 @@
  */
 
 #include "mongo/db/exec/sbe/util/debug_print.h"
-//#include "stages/stages.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 
 namespace mongo {
 namespace sbe {
@@ -101,8 +101,7 @@ std::string DebugPrinter::print(std::vector<Block> blocks) {
     return ret;
 }
 std::string DebugPrinter::print(PlanStage* s) {
-    // return print(s->debugPrint());
-    return "";
+    return print(s->debugPrint());
 }
 }  // namespace sbe
 }  // namespace mongo

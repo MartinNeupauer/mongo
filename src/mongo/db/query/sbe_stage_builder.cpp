@@ -98,9 +98,10 @@ struct MatchExpressionVisitorContext {
         return std::move(inputStage);
     }
 
+
     std::unique_ptr<sbe::PlanStage> inputStage;
     std::stack<std::string> predicateVars;
-    std::stack<const MatchExpression*> nestedLogicalExprs;
+    std::stack<std::pair<const MatchExpression*, size_t>> nestedLogicalExprs;
     std::string_view inputVar;
     size_t currentVarId{0};
 };
@@ -112,8 +113,9 @@ struct MatchExpressionVisitorContext {
 class MatchExpressionWalker final {
 public:
     MatchExpressionWalker(MatchExpressionConstVisitor* preVisitor,
+                          MatchExpressionConstVisitor* inVisitor,
                           MatchExpressionConstVisitor* postVisitor)
-        : _preVisitor{preVisitor}, _postVisitor{postVisitor} {}
+        : _preVisitor{preVisitor}, _inVisitor{inVisitor}, _postVisitor{postVisitor} {}
 
     void preVisit(const MatchExpression* expr) {
         expr->acceptVisitor(_preVisitor);
@@ -123,10 +125,13 @@ public:
         expr->acceptVisitor(_postVisitor);
     }
 
-    void inVisit(long count, const MatchExpression* expr) {}
+    void inVisit(long count, const MatchExpression* expr) {
+        expr->acceptVisitor(_inVisitor);
+    }
 
 private:
     MatchExpressionConstVisitor* _preVisitor;
+    MatchExpressionConstVisitor* _inVisitor;
     MatchExpressionConstVisitor* _postVisitor;
 };
 
@@ -248,15 +253,27 @@ void generateTraverse(MatchExpressionVisitorContext* context,
     context->predicateVars.push(context->generateVarId());
     context->inputStage = generateTraverseHelper(
         context, std::move(context->inputStage), context->inputVar, op, expr, 0);
+
+    // If this comparison expression is a branch of a logical $and expression, but not the last
+    // one, inject a filter stage to bail out early from the $and predicate without the need to
+    // evaluate all branches. If this is the last branch of the $and expression, or if it's not
+    // within a logical expression at all, just keep the predicate var on the top on the stack
+    // and let the parent expression process it.
+    if (!context->nestedLogicalExprs.empty()) {
+        if (context->nestedLogicalExprs.top().second > 1 &&
+            context->nestedLogicalExprs.top().first->matchType() == MatchExpression::AND) {
+            context->inputStage = sbe::makeS<sbe::FilterStage>(
+                std::move(context->inputStage),
+                sbe::makeE<sbe::EVariable>(context->predicateVars.top()));
+            context->predicateVars.pop();
+        }
+    }
 }
 
 /**
- * Generates an SBE plan stage sub-tree implementing a logical expression, such as
- * $and or $or.
+ * Generates an SBE plan stage sub-tree implementing a logical $or expression.
  */
-void generateLogical(MatchExpressionVisitorContext* context,
-                     sbe::EPrimBinary::Op op,
-                     const MatchExpression* expr) {
+void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpression* expr) {
     invariant(!context->predicateVars.empty());
     invariant(context->predicateVars.size() >= expr->numChildren());
 
@@ -265,8 +282,10 @@ void generateLogical(MatchExpressionVisitorContext* context,
 
     auto numChildren = expr->numChildren() - 1;
     for (size_t childNum = 0; childNum < numChildren; ++childNum) {
-        filter = sbe::makeE<sbe::EPrimBinary>(
-            op, std::move(filter), sbe::makeE<sbe::EVariable>(context->predicateVars.top()));
+        filter =
+            sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicOr,
+                                         std::move(filter),
+                                         sbe::makeE<sbe::EVariable>(context->predicateVars.top()));
         context->predicateVars.pop();
     }
 
@@ -279,6 +298,32 @@ void generateLogical(MatchExpressionVisitorContext* context,
             sbe::makeS<sbe::FilterStage>(std::move(context->inputStage), std::move(filter));
     }
 }
+
+/**
+ * Generates an SBE plan stage sub-tree implementing a logical $and expression.
+ */
+void generateLogicalAnd(MatchExpressionVisitorContext* context, const AndMatchExpression* expr) {
+    invariant(!context->predicateVars.empty());
+
+    auto filter = sbe::makeE<sbe::EVariable>(context->predicateVars.top());
+    context->predicateVars.pop();
+
+    // If this $and expression is a branch of another $and expression, or is a top-level logical
+    // expression we can just inject a filter stage without propagating the result of the predicate
+    // evaluation to the parent expression, to form a sub-tree of stage->FILTER->stage->FILTER plan
+    // stages to support early exit for the $and branches. Otherwise, just project out the result
+    // of the predicate evaluation and let the parent expression handle it.
+    if (context->nestedLogicalExprs.empty() ||
+        context->nestedLogicalExprs.top().first->matchType() == MatchExpression::AND) {
+        context->inputStage =
+            sbe::makeS<sbe::FilterStage>(std::move(context->inputStage), std::move(filter));
+    } else {
+        context->predicateVars.push(context->generateVarId());
+        context->inputStage = sbe::makeProjectStage(
+            std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
+    }
+}
+
 
 /**
  * A match expression pre-visitor used for maintaining nested logical expressions while traversing
@@ -295,7 +340,7 @@ public:
         unsupportedExpression(expr);
     }
     void visit(const AndMatchExpression* expr) final {
-        _context->nestedLogicalExprs.push(expr);
+        _context->nestedLogicalExprs.push({expr, expr->numChildren()});
     }
     void visit(const BitsAllClearMatchExpression* expr) final {
         unsupportedExpression(expr);
@@ -405,7 +450,7 @@ public:
         unsupportedExpression(expr);
     }
     void visit(const OrMatchExpression* expr) final {
-        _context->nestedLogicalExprs.push(expr);
+        _context->nestedLogicalExprs.push({expr, expr->numChildren()});
     }
     void visit(const RegexMatchExpression* expr) final {
         unsupportedExpression(expr);
@@ -454,7 +499,7 @@ public:
     void visit(const AlwaysTrueMatchExpression* expr) final {}
     void visit(const AndMatchExpression* expr) final {
         _context->nestedLogicalExprs.pop();
-        generateLogical(_context, sbe::EPrimBinary::logicAnd, expr);
+        generateLogicalAnd(_context, expr);
     }
     void visit(const BitsAllClearMatchExpression* expr) final {}
     void visit(const BitsAllSetMatchExpression* expr) final {}
@@ -507,7 +552,77 @@ public:
     void visit(const NotMatchExpression* expr) final {}
     void visit(const OrMatchExpression* expr) final {
         _context->nestedLogicalExprs.pop();
-        generateLogical(_context, sbe::EPrimBinary::logicOr, expr);
+        generateLogicalOr(_context, expr);
+    }
+    void visit(const RegexMatchExpression* expr) final {}
+    void visit(const SizeMatchExpression* expr) final {}
+    void visit(const TextMatchExpression* expr) final {}
+    void visit(const TextNoOpMatchExpression* expr) final {}
+    void visit(const TwoDPtInAnnulusExpression* expr) final {}
+    void visit(const TypeMatchExpression* expr) final {}
+    void visit(const WhereMatchExpression* expr) final {}
+    void visit(const WhereNoOpMatchExpression* expr) final {}
+
+private:
+    MatchExpressionVisitorContext* _context;
+};
+
+/**
+ * A match expression in-visitor used for maintaining the counter of the processed child expressions
+ * of the nested logical expressions in the match expression tree being traversed.
+ */
+class MatchExpressionInVisitor final : public MatchExpressionConstVisitor {
+public:
+    MatchExpressionInVisitor(MatchExpressionVisitorContext* context) : _context(context) {}
+
+    void visit(const AlwaysFalseMatchExpression* expr) final {}
+    void visit(const AlwaysTrueMatchExpression* expr) final {}
+    void visit(const AndMatchExpression* expr) final {
+        invariant(_context->nestedLogicalExprs.top().first == expr);
+        _context->nestedLogicalExprs.top().second--;
+    }
+    void visit(const BitsAllClearMatchExpression* expr) final {}
+    void visit(const BitsAllSetMatchExpression* expr) final {}
+    void visit(const BitsAnyClearMatchExpression* expr) final {}
+    void visit(const BitsAnySetMatchExpression* expr) final {}
+    void visit(const ElemMatchObjectMatchExpression* expr) final {}
+    void visit(const ElemMatchValueMatchExpression* expr) final {}
+    void visit(const EqualityMatchExpression* expr) final {}
+    void visit(const ExistsMatchExpression* expr) final {}
+    void visit(const ExprMatchExpression* expr) final {}
+    void visit(const GTEMatchExpression* expr) final {}
+    void visit(const GTMatchExpression* expr) final {}
+    void visit(const GeoMatchExpression* expr) final {}
+    void visit(const GeoNearMatchExpression* expr) final {}
+    void visit(const InMatchExpression* expr) final {}
+    void visit(const InternalExprEqMatchExpression* expr) final {}
+    void visit(const InternalSchemaAllElemMatchFromIndexMatchExpression* expr) final {}
+    void visit(const InternalSchemaAllowedPropertiesMatchExpression* expr) final {}
+    void visit(const InternalSchemaBinDataEncryptedTypeExpression* expr) final {}
+    void visit(const InternalSchemaBinDataSubTypeExpression* expr) final {}
+    void visit(const InternalSchemaCondMatchExpression* expr) final {}
+    void visit(const InternalSchemaEqMatchExpression* expr) final {}
+    void visit(const InternalSchemaFmodMatchExpression* expr) final {}
+    void visit(const InternalSchemaMatchArrayIndexMatchExpression* expr) final {}
+    void visit(const InternalSchemaMaxItemsMatchExpression* expr) final {}
+    void visit(const InternalSchemaMaxLengthMatchExpression* expr) final {}
+    void visit(const InternalSchemaMaxPropertiesMatchExpression* expr) final {}
+    void visit(const InternalSchemaMinItemsMatchExpression* expr) final {}
+    void visit(const InternalSchemaMinLengthMatchExpression* expr) final {}
+    void visit(const InternalSchemaMinPropertiesMatchExpression* expr) final {}
+    void visit(const InternalSchemaObjectMatchExpression* expr) final {}
+    void visit(const InternalSchemaRootDocEqMatchExpression* expr) final {}
+    void visit(const InternalSchemaTypeExpression* expr) final {}
+    void visit(const InternalSchemaUniqueItemsMatchExpression* expr) final {}
+    void visit(const InternalSchemaXorMatchExpression* expr) final {}
+    void visit(const LTEMatchExpression* expr) final {}
+    void visit(const LTMatchExpression* expr) final {}
+    void visit(const ModMatchExpression* expr) final {}
+    void visit(const NorMatchExpression* expr) final {}
+    void visit(const NotMatchExpression* expr) final {}
+    void visit(const OrMatchExpression* expr) final {
+        invariant(_context->nestedLogicalExprs.top().first == expr);
+        _context->nestedLogicalExprs.top().second--;
     }
     void visit(const RegexMatchExpression* expr) final {}
     void visit(const SizeMatchExpression* expr) final {}
@@ -532,8 +647,9 @@ std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
                                                std::string_view inputVar) {
     MatchExpressionVisitorContext context{std::move(stage), inputVar};
     MatchExpressionPreVisitor preVisitor{&context};
+    MatchExpressionInVisitor inVisitor{&context};
     MatchExpressionPostVisitor postVisitor{&context};
-    MatchExpressionWalker walker{&preVisitor, &postVisitor};
+    MatchExpressionWalker walker{&preVisitor, &inVisitor, &postVisitor};
     tree_walker::walk<true, MatchExpression>(root, &walker);
     return context.done();
 }
