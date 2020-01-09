@@ -302,10 +302,16 @@ void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpr
  * Generates an SBE plan stage sub-tree implementing a logical $and expression.
  */
 void generateLogicalAnd(MatchExpressionVisitorContext* context, const AndMatchExpression* expr) {
-    invariant(!context->predicateVars.empty());
-
-    auto filter = sbe::makeE<sbe::EVariable>(context->predicateVars.top());
-    context->predicateVars.pop();
+    auto filter = [&]() {
+        if (expr->numChildren() > 0) {
+            invariant(!context->predicateVars.empty());
+            auto predicateVar = context->predicateVars.top();
+            context->predicateVars.pop();
+            return sbe::makeE<sbe::EVariable>(predicateVar);
+        } else {
+            return sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, 1);
+        }
+    }();
 
     // If this $and expression is a branch of another $and expression, or is a top-level logical
     // expression we can just inject a filter stage without propagating the result of the predicate
