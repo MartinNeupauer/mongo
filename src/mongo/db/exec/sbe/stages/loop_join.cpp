@@ -139,6 +139,50 @@ void LoopJoinStage::close() {
     _children[0]->close();
 }
 std::vector<DebugPrinter::Block> LoopJoinStage::debugPrint() {
-    return std::vector<DebugPrinter::Block>();
+    std::vector<DebugPrinter::Block> ret;
+    DebugPrinter::addKeyword(ret, "nlj");
+
+    ret.emplace_back(DebugPrinter::Block("[`"));
+    for (size_t idx = 0; idx < _outerProjects.size(); ++idx) {
+        if (idx) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _outerProjects[idx]);
+    }
+    ret.emplace_back(DebugPrinter::Block("`]"));
+
+    ret.emplace_back(DebugPrinter::Block("[`"));
+    for (size_t idx = 0; idx < _outerCorrelated.size(); ++idx) {
+        if (idx) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _outerCorrelated[idx]);
+    }
+    ret.emplace_back(DebugPrinter::Block("`]"));
+
+    if (_predicate) {
+        ret.emplace_back("{`");
+        DebugPrinter::addBlocks(ret, _predicate->debugPrint());
+        ret.emplace_back("`}");
+    }
+
+    ret.emplace_back(DebugPrinter::Block::cmdIncIndent);
+
+    DebugPrinter::addKeyword(ret, "left");
+    ret.emplace_back(DebugPrinter::Block::cmdIncIndent);
+    DebugPrinter::addBlocks(ret, _children[0]->debugPrint());
+    ret.emplace_back(DebugPrinter::Block::cmdDecIndent);
+
+
+    DebugPrinter::addKeyword(ret, "right");
+    ret.emplace_back(DebugPrinter::Block::cmdIncIndent);
+    DebugPrinter::addBlocks(ret, _children[1]->debugPrint());
+    ret.emplace_back(DebugPrinter::Block::cmdDecIndent);
+
+    ret.emplace_back(DebugPrinter::Block::cmdDecIndent);
+
+    return ret;
 }
 }  // namespace mongo::sbe

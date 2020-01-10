@@ -66,7 +66,7 @@ std::unique_ptr<vm::CodeFragment> EConstant::compile(CompileCtx& ctx) {
 std::vector<DebugPrinter::Block> EConstant::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     std::stringstream ss;
-    // value::printValue(ss, _tag, _val);
+    value::printValue(ss, _tag, _val);
 
     ret.emplace_back(ss.str());
 

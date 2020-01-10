@@ -230,7 +230,40 @@ void ScanStage::close() {
 
 std::vector<DebugPrinter::Block> ScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "scan");
+
+    if (_seekKeySlot) {
+        DebugPrinter::addKeyword(ret, "seek");
+
+        DebugPrinter::addIdentifier(ret, _seekKeySlot.get());
+    } else {
+        DebugPrinter::addKeyword(ret, "scan");
+    }
+
+
+    if (_recordSlot) {
+        DebugPrinter::addIdentifier(ret, _recordSlot.get());
+    }
+
+    if (_recordIdSlot) {
+        DebugPrinter::addIdentifier(ret, _recordIdSlot.get());
+    }
+
+    ret.emplace_back(DebugPrinter::Block("[`"));
+    for (size_t idx = 0; idx < _fields.size(); ++idx) {
+        if (idx) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _vars[idx]);
+        ret.emplace_back("=");
+        DebugPrinter::addIdentifier(ret, _fields[idx]);
+    }
+    ret.emplace_back(DebugPrinter::Block("`]"));
+
+    ret.emplace_back("@\"`");
+    DebugPrinter::addIdentifier(ret, _name.toString());
+    ret.emplace_back("`\"");
+
     return ret;
 }
 
@@ -460,6 +493,31 @@ void ParallelScanStage::close() {
 std::vector<DebugPrinter::Block> ParallelScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "pscan");
+
+    if (_recordSlot) {
+        DebugPrinter::addIdentifier(ret, _recordSlot.get());
+    }
+
+    if (_recordIdSlot) {
+        DebugPrinter::addIdentifier(ret, _recordIdSlot.get());
+    }
+
+    ret.emplace_back(DebugPrinter::Block("[`"));
+    for (size_t idx = 0; idx < _fields.size(); ++idx) {
+        if (idx) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _vars[idx]);
+        ret.emplace_back("=");
+        DebugPrinter::addIdentifier(ret, _fields[idx]);
+    }
+    ret.emplace_back(DebugPrinter::Block("`]"));
+
+    ret.emplace_back("@\"`");
+    DebugPrinter::addIdentifier(ret, _name.toString());
+    ret.emplace_back("`\"");
+
     return ret;
 }
 }  // namespace sbe

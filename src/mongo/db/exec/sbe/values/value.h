@@ -122,6 +122,7 @@ using Value = uint64_t;
  */
 void releaseValue(TypeTags tag, Value val) noexcept;
 std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val);
+void printValue(std::ostream& os, TypeTags tag, Value val);
 
 /**
  * Object class.
