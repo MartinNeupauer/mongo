@@ -133,6 +133,134 @@ std::ostream& operator<<(std::ostream& os, const TypeTags tag) {
     return os;
 }
 
+void printValue(std::ostream& os, TypeTags tag, Value val) {
+    switch (tag) {
+        case value::TypeTags::NumberInt32:
+            os << bitcastTo<int32_t>(val);
+            break;
+        case value::TypeTags::NumberInt64:
+            os << bitcastTo<int64_t>(val);
+            break;
+        case value::TypeTags::NumberDouble:
+            os << bitcastTo<double>(val);
+            break;
+        case value::TypeTags::NumberDecimal:
+            os << getDecimalView(val)->toString();
+            break;
+        case value::TypeTags::Boolean:
+            os << ((val) ? "true" : "false");
+            break;
+        case value::TypeTags::Null:
+            os << "null";
+            break;
+        case value::TypeTags::StringSmall:
+            os << '"' << getSmallStringView(val) << '"';
+            break;
+        case value::TypeTags::StringBig:
+            os << '"' << getBigStringView(val) << '"';
+            break;
+        case value::TypeTags::Array: {
+            auto arr = getArrayView(val);
+            os << '[';
+            for (size_t idx = 0; idx < arr->size(); ++idx) {
+                if (idx != 0) {
+                    os << ", ";
+                }
+                auto [tag, val] = arr->getAt(idx);
+                printValue(os, tag, val);
+            }
+            os << ']';
+            break;
+        }
+        case value::TypeTags::Object: {
+            auto obj = getObjectView(val);
+            os << '{';
+            for (size_t idx = 0; idx < obj->size(); ++idx) {
+                if (idx != 0) {
+                    os << ", ";
+                }
+                os << '"' << obj->field(idx) << '"';
+                os << " : ";
+                auto [tag, val] = obj->getAt(idx);
+                printValue(os, tag, val);
+            }
+            os << '}';
+            break;
+        }
+        case value::TypeTags::ObjectId: {
+            auto objId = getObjectIdView(val);
+            os << "ObjectId(\"" << OID::from(objId->data()).toString() << "\")";
+            break;
+        }
+        case value::TypeTags::Nothing:
+            os << "---===*** NOTHING ***===---";
+            break;
+        case value::TypeTags::bsonArray: {
+            auto be = value::bitcastTo<const char*>(val);
+            auto end = be + value::readFromMemory<uint32_t>(be);
+            bool first = true;
+            // skip document length
+            be += 4;
+            os << '[';
+            while (*be != 0) {
+                auto sv = bson::fieldNameView(be);
+
+                if (!first) {
+                    os << ", ";
+                }
+                first = false;
+
+                auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
+                printValue(os, tag, val);
+
+                // advance
+                be = bson::advance(be, sv.size());
+            }
+            os << ']';
+            break;
+        }
+        case value::TypeTags::bsonObject: {
+            auto be = value::bitcastTo<const char*>(val);
+            auto end = be + value::readFromMemory<uint32_t>(be);
+            bool first = true;
+            // skip document length
+            be += 4;
+            os << '{';
+            while (*be != 0) {
+                auto sv = bson::fieldNameView(be);
+
+                if (!first) {
+                    os << ", ";
+                }
+                first = false;
+
+                os << '"' << sv << '"';
+                os << " : ";
+                auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
+                printValue(os, tag, val);
+
+                // advance
+                be = bson::advance(be, sv.size());
+            }
+            os << '}';
+            break;
+        }
+        case value::TypeTags::bsonString:
+            os << '"' << getStringView(value::TypeTags::bsonString, val) << '"';
+            break;
+        case value::TypeTags::bsonObjectId:
+            os << "---===*** bsonObjectId ***===---";
+            break;
+        case value::TypeTags::ksValue: {
+            auto ks = getKeyStringView(val);
+            os << "KS(" << ks->toString() << ")";
+            break;
+        }
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
 std::size_t hashValue(TypeTags tag, Value val) noexcept {
     switch (tag) {
         case TypeTags::NumberInt32:

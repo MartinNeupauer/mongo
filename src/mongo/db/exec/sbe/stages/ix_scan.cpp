@@ -50,7 +50,8 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
       _seekKeySlotLow(seekKeySlotLow),
       _seekKeySlotHi(seekKeySlotHi) {
     invariant(_fields.size() == _vars.size());
-    invariant((_seekKeySlotLow && _seekKeySlotHi) || (_seekKeySlotLow && !_seekKeySlotHi));
+    // Either both boundaries are set or none is set.
+    invariant((_seekKeySlotLow && _seekKeySlotHi) || (!_seekKeySlotLow && !_seekKeySlotHi));
 }
 
 std::unique_ptr<PlanStage> IndexScanStage::clone() {
@@ -237,7 +238,45 @@ void IndexScanStage::close() {
 
 std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "ixscan");
+
+    if (_seekKeySlotLow) {
+        DebugPrinter::addKeyword(ret, "ixseek");
+
+        DebugPrinter::addIdentifier(ret, _seekKeySlotLow.get());
+        DebugPrinter::addIdentifier(ret, _seekKeySlotHi.get());
+    } else {
+        DebugPrinter::addKeyword(ret, "ixscan");
+    }
+
+
+    if (_recordSlot) {
+        DebugPrinter::addIdentifier(ret, _recordSlot.get());
+    }
+
+    if (_recordIdSlot) {
+        DebugPrinter::addIdentifier(ret, _recordIdSlot.get());
+    }
+
+    ret.emplace_back(DebugPrinter::Block("[`"));
+    for (size_t idx = 0; idx < _fields.size(); ++idx) {
+        if (idx) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _vars[idx]);
+        ret.emplace_back("=");
+        DebugPrinter::addIdentifier(ret, _fields[idx]);
+    }
+    ret.emplace_back(DebugPrinter::Block("`]"));
+
+    ret.emplace_back("@\"`");
+    DebugPrinter::addIdentifier(ret, _name.toString());
+    ret.emplace_back("`\"");
+
+    ret.emplace_back("@\"`");
+    DebugPrinter::addIdentifier(ret, _indexName);
+    ret.emplace_back("`\"");
+
     return ret;
 }
 }  // namespace mongo::sbe

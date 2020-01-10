@@ -209,8 +209,12 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
         // out the result as 'elemPredicateVar'. The 'rhs' BSON element will contain the value to
         // compare the document field against.
         const auto& rhs = expr->getData();
-        auto [tag, val] = sbe::bson::convertFrom(
+        auto [tagView, valView] = sbe::bson::convertFrom(
             true, rhs.rawdata(), rhs.rawdata() + rhs.size(), rhs.fieldNameSize() - 1);
+
+        // SBE EConstant assumes the ownership of the value so we have to make a copy here.
+        auto [tag, val] = sbe::value::copyValue(tagView, valView);
+
         innerBranch = sbe::makeProjectStage(
             sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
             elemPredicateVar,

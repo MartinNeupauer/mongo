@@ -42,7 +42,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     std::unique_ptr<sbe::PlanStage> root,
     NamespaceString nss) {
 
-    LOG(3) << "SBE plan: " << sbe::DebugPrinter{}.print(root.get());
+    LOG(3) << "SBE plan:\n" << sbe::DebugPrinter{}.print(root.get());
 
     sbe::CompileCtx ctx;
     root->prepare(ctx);
