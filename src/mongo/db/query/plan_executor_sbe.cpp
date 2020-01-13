@@ -27,13 +27,13 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongo/db/query/plan_executor_sbe.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/query/sbe_stage_builder.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 
 namespace mongo {
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
@@ -42,7 +42,8 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     std::unique_ptr<sbe::PlanStage> root,
     NamespaceString nss) {
 
-    LOG(3) << "SBE plan:\n" << sbe::DebugPrinter{}.print(root.get());
+    LOGV2_DEBUG(
+        47429003, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
 
     sbe::CompileCtx ctx;
     root->prepare(ctx);

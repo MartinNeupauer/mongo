@@ -42,6 +42,7 @@
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/index/index_access_method.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
 #include "mongo/db/matcher/expression_array.h"
 #include "mongo/db/matcher/expression_expr.h"
@@ -71,6 +72,7 @@
 #include "mongo/db/matcher/schema/expression_internal_schema_root_doc_eq.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_unique_items.h"
 #include "mongo/db/matcher/schema/expression_internal_schema_xor.h"
+#include "mongo/db/query/index_bounds_builder.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
@@ -662,6 +664,52 @@ std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
     tree_walker::walk<true, MatchExpression>(root, &walker);
     return context.done();
 }
+
+std::tuple<boost::optional<sbe::value::SlotId>,
+           boost::optional<sbe::value::SlotId>,
+           std::unique_ptr<KeyString::Value>,
+           std::unique_ptr<KeyString::Value>>
+makeLowAndHighKeysFromIndexBounds(const IndexBounds& bounds,
+                                  bool forward,
+                                  const IndexAccessMethod* accessMethod,
+                                  sbe::value::SlotIdGenerator* slotIdGenerator) {
+    auto startKey{bounds.startKey};
+    auto endKey{bounds.endKey};
+    auto startKeyInclusive{IndexBounds::isStartIncludedInBound(bounds.boundInclusion)};
+    auto endKeyInclusive{IndexBounds::isEndIncludedInBound(bounds.boundInclusion)};
+
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Only forward index scans are supported in SBE",
+            forward);
+
+    if (bounds.isSimpleRange ||
+        IndexBoundsBuilder::isSingleInterval(
+            bounds, &startKey, &startKeyInclusive, &endKey, &endKeyInclusive)) {
+        auto lowKey = std::make_unique<KeyString::Value>(
+            IndexEntryComparison::makeKeyStringFromBSONKeyForSeek(
+                startKey,
+                accessMethod->getSortedDataInterface()->getKeyStringVersion(),
+                accessMethod->getSortedDataInterface()->getOrdering(),
+                forward,
+                startKeyInclusive));
+        auto highKey = std::make_unique<KeyString::Value>(
+            IndexEntryComparison::makeKeyStringFromBSONKeyForSeek(
+                endKey,
+                accessMethod->getSortedDataInterface()->getKeyStringVersion(),
+                accessMethod->getSortedDataInterface()->getOrdering(),
+                forward,
+                endKeyInclusive));
+
+        return {slotIdGenerator->generate(),
+                slotIdGenerator->generate(),
+                std::move(lowKey),
+                std::move(highKey)};
+
+    } else {
+        uasserted(ErrorCodes::InternalErrorNotSupported,
+                  "Multi-interval index scans not supported in SBE");
+    };
+}
 }  // namespace
 
 // Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
@@ -669,32 +717,122 @@ std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
     using namespace std::literals;
 
-    switch (root->getType()) {
-        case STAGE_COLLSCAN: {
-            auto resultSlot = sbe::value::SystemSlots::kResultSlot;
-            auto recordIdSlot = sbe::value::SystemSlots::kRecordIdSlot;
-            auto stage = sbe::makeS<sbe::ScanStage>(
-                NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-                resultSlot,
-                recordIdSlot,
-                std::vector<std::string>{},
-                std::vector<sbe::value::SlotId>{},
-                boost::none);
+    auto stage = [root, this]() -> std::unique_ptr<sbe::PlanStage> {
+        switch (root->getType()) {
+            case STAGE_COLLSCAN: {
+                _resultSlot = _slotIdGenerator->generate();
+                _recordIdSlot = _slotIdGenerator->generate();
+                auto stage = sbe::makeS<sbe::ScanStage>(
+                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+                    _resultSlot,
+                    _recordIdSlot,
+                    std::vector<std::string>{},
+                    std::vector<sbe::value::SlotId>{},
+                    boost::none);
 
-            if (root->filter) {
-                stage = generateFilter(
-                    root->filter.get(), std::move(stage), _slotIdGenerator.get(), resultSlot);
+                if (root->filter) {
+                    stage = generateFilter(
+                        root->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+                }
+
+                return stage;
             }
+            case STAGE_IXSCAN: {
+                auto ixn = static_cast<const IndexScanNode*>(root);
+                auto descriptor = _collection->getIndexCatalog()->findIndexByName(
+                    _opCtx, ixn->index.identifier.catalogName);
+                auto [lowKeySlot, highKeySlot, lowKey, highKey] = makeLowAndHighKeysFromIndexBounds(
+                    ixn->bounds,
+                    ixn->direction == 1,
+                    _collection->getIndexCatalog()->getEntry(descriptor)->accessMethod(),
+                    _slotIdGenerator.get());
 
-            return stage;
+                _recordIdSlot = _slotIdGenerator->generate();
+                auto indexScan = sbe::makeS<sbe::IndexScanStage>(
+                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+                    ixn->index.identifier.catalogName,
+                    boost::none,
+                    _recordIdSlot,
+                    std::vector<std::string>{},
+                    std::vector<sbe::value::SlotId>{},
+                    lowKeySlot,
+                    highKeySlot);
+                if (!lowKeySlot && !highKeySlot) {
+                    return indexScan;
+                } else {
+                    invariant(lowKeySlot && highKeySlot);
+
+                    auto projectKeysStage = sbe::makeProjectStage(
+                        sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+                        *lowKeySlot,
+                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                                   sbe::value::bitcastFrom(lowKey.release())),
+                        *highKeySlot,
+                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                                   sbe::value::bitcastFrom(highKey.release())));
+
+                    return sbe::makeS<sbe::LoopJoinStage>(
+                        std::move(projectKeysStage),
+                        std::move(indexScan),
+                        std::vector<sbe::value::SlotId>{},
+                        std::vector<sbe::value::SlotId>{*lowKeySlot, *highKeySlot},
+                        nullptr);
+                }
+            }
+            case STAGE_FETCH: {
+                auto fn = static_cast<const FetchNode*>(root);
+                auto inputStage = build(fn->children[0]);
+
+                uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _recordIdSlot);
+
+                auto recordIdKeySlot = _recordIdSlot;
+                _resultSlot = _slotIdGenerator->generate();
+                _recordIdSlot = _slotIdGenerator->generate();
+                auto collScan = sbe::makeS<sbe::ScanStage>(
+                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+                    _resultSlot,
+                    _recordIdSlot,
+                    std::vector<std::string>{},
+                    std::vector<sbe::value::SlotId>{},
+                    recordIdKeySlot);
+
+                auto loopStage = sbe::makeS<sbe::LoopJoinStage>(
+                    std::move(inputStage),
+                    std::move(collScan),
+                    std::vector<sbe::value::SlotId>{},
+                    std::vector<sbe::value::SlotId>{*recordIdKeySlot},
+                    nullptr);
+
+                return loopStage;
+            }
+            case STAGE_LIMIT: {
+                const auto ln = static_cast<const LimitNode*>(root);
+                auto inputStage = build(ln->children[0]);
+                return std::make_unique<sbe::LimitStage>(std::move(inputStage), ln->limit);
+            }
+            default: {
+                str::stream ss;
+                ss << "Can't build exec tree for node ";
+                root->appendToString(&ss, 0);
+                std::string nodeStr(ss);
+                uasserted(ErrorCodes::InternalErrorNotSupported, ss);
+            }
         }
-        default: {
-            str::stream ss;
-            ss << "Can't build exec tree for node ";
-            root->appendToString(&ss, 0);
-            std::string nodeStr(ss);
-            uasserted(ErrorCodes::InternalErrorNotSupported, ss);
-        }
+    }();
+
+    if (root == _solution.root.get()) {
+        uassert(ErrorCodes::InternalError, "Result slot is not defined in SBE plan", _resultSlot);
+
+        stage = _recordIdSlot ? sbe::makeProjectStage(std::move(stage),
+                                                      sbe::value::SystemSlots::kResultSlot,
+                                                      sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                                      sbe::value::SystemSlots::kRecordIdSlot,
+                                                      sbe::makeE<sbe::EVariable>(*_recordIdSlot))
+                              : sbe::makeProjectStage(std::move(stage),
+                                                      sbe::value::SystemSlots::kResultSlot,
+                                                      sbe::makeE<sbe::EVariable>(*_resultSlot));
     }
+
+    return stage;
 }
 }  // namespace mongo::stage_builder
