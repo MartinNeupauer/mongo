@@ -32,6 +32,7 @@
 #include <string>
 #include <vector>
 
+#include "mongo/db/exec/sbe/values/slot_id_generator.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/util/str.h"
 
@@ -84,6 +85,14 @@ public:
     }
 
     static void addIdentifier(std::vector<Block>& ret, value::SlotId slot) {
+        if (slot == value::SystemSlots::kResultSlot) {
+            return addKeyword(ret, "$$RESULT");
+        }
+
+        if (slot == value::SystemSlots::kRecordIdSlot) {
+            return addKeyword(ret, "$$RID");
+        }
+
         std::string name{str::stream() << "s" << slot};
         ret.emplace_back(Block::cmdColorGreen);
         ret.emplace_back(Block{Block::cmdNoneNoSpace, name});

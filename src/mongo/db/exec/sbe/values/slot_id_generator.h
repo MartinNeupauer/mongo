@@ -32,6 +32,11 @@
 #include "mongo/db/exec/sbe/values/value.h"
 
 namespace mongo::sbe::value {
+/*
+ * System reserved slot ids.
+ */
+enum SystemSlots : int64_t { kResultSlot = -1, kRecordIdSlot = -2 };
+
 /**
  * An interface for SlotId generators which provides a single method to generate unique SlotId's.
  * The uniqueness of the generated SlotId's is restricted to the life time of a specific SlotId

@@ -62,9 +62,9 @@ class Parser {
         if (name.empty()) {
             return boost::none;
         } else if (name == "$$RESULT") {
-            return stage_builder::SlotBasedStageBuilder::kResultSlot;
+            return value::SystemSlots::kResultSlot;
         } else if (name == "$$RID") {
-            return stage_builder::SlotBasedStageBuilder::kRecordIdSlot;
+            return value::SystemSlots::kRecordIdSlot;
         } else if (_symbolsLookupTable.find(name) == _symbolsLookupTable.end()) {
             _symbolsLookupTable[name] = _slotIdGenerator->generate();
             std::cout << "mapping " << name << " to " << _symbolsLookupTable[name] << std::endl;

@@ -39,8 +39,6 @@ namespace mongo::stage_builder {
  */
 class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage> {
 public:
-    enum SystemSlots { kResultSlot = -1, kRecordIdSlot = -2 };
-
     using StageBuilder<sbe::PlanStage>::StageBuilder;
 
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;

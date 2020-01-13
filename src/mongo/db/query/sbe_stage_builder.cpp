@@ -671,8 +671,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
 
     switch (root->getType()) {
         case STAGE_COLLSCAN: {
-            auto resultSlot = kResultSlot;
-            auto recordIdSlot = kRecordIdSlot;
+            auto resultSlot = sbe::value::SystemSlots::kResultSlot;
+            auto recordIdSlot = sbe::value::SystemSlots::kRecordIdSlot;
             auto stage = sbe::makeS<sbe::ScanStage>(
                 NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
                 resultSlot,
