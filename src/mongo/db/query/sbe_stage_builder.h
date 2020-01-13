@@ -46,5 +46,7 @@ public:
 private:
     std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
         sbe::value::makeDefaultSlotIdGenerator()};
+    boost::optional<sbe::value::SlotId> _recordIdSlot;
+    boost::optional<sbe::value::SlotId> _resultSlot;
 };
 }  // namespace mongo::stage_builder
