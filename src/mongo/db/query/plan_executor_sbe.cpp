@@ -46,13 +46,12 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
 
     sbe::CompileCtx ctx;
     root->prepare(ctx);
-    auto resultSlot = root->getAccessor(ctx, stage_builder::SlotBasedStageBuilder::kResultSlot);
+    auto resultSlot = root->getAccessor(ctx, sbe::value::SystemSlots::kResultSlot);
     uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
 
     sbe::value::SlotAccessor* resultRecordId{nullptr};
     if (cq && cq->metadataDeps()[DocumentMetadataFields::kRecordId]) {
-        resultRecordId =
-            root->getAccessor(ctx, stage_builder::SlotBasedStageBuilder::kRecordIdSlot);
+        resultRecordId = root->getAccessor(ctx, sbe::value::SystemSlots::kRecordIdSlot);
         uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
     }
 

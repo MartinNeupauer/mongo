@@ -355,8 +355,8 @@ std::unique_ptr<sbe::PlanStage> getIdHackPlan(const Collection* collection,
     auto lowKeySlot = slotIdGenerator->generate();
     auto highKeySlot = slotIdGenerator->generate();
     auto recordIdKeySlot = slotIdGenerator->generate();
-    auto recordIdSlot = stage_builder::SlotBasedStageBuilder::kRecordIdSlot;
-    auto recordSlot = stage_builder::SlotBasedStageBuilder::kResultSlot;
+    auto recordIdSlot = sbe::value::SystemSlots::kRecordIdSlot;
+    auto recordSlot = sbe::value::SystemSlots::kResultSlot;
     // Construct a simple CTS (constant table scan). It delivers a single row with two fields
     // lowKeySlot and highKeySlot representing seek boundaries.
     auto getKeys =
