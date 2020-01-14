@@ -95,8 +95,8 @@ void HashAggStage::open(bool reOpen) {
 
     value::MaterializedRow key;
     value::MaterializedRow agg;
-    key._fields.reserve(_inKeyAccessors.size());
     while (_children[0]->getNext() == PlanState::ADVANCED) {
+        key._fields.reserve(_inKeyAccessors.size());
         // copy keys in order to do the lookup
         for (auto& p : _inKeyAccessors) {
             key._fields.push_back(value::OwnedValueAccessor{});

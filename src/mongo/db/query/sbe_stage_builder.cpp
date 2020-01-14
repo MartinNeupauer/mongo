@@ -41,6 +41,7 @@
 #include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
+#include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/matcher/expression_always_boolean.h"
@@ -809,6 +810,51 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                 const auto ln = static_cast<const LimitNode*>(root);
                 auto inputStage = build(ln->children[0]);
                 return std::make_unique<sbe::LimitStage>(std::move(inputStage), ln->limit);
+            }
+            case STAGE_SORT_KEY_GENERATOR: {
+                const auto kn = static_cast<const SortKeyGeneratorNode*>(root);
+                // SBE does not use key generator, skip it.
+                return build(kn->children[0]);
+            }
+            case STAGE_SORT: {
+                const auto sn = static_cast<const SortNode*>(root);
+                uassert(ErrorCodes::InternalErrorNotSupported,
+                        "Sort with limit not supported",
+                        sn->limit == 0);
+                auto sortPattern = SortPattern{sn->pattern, _cq.getExpCtx()};
+                auto inputStage = build(sn->children[0]);
+                std::vector<sbe::value::SlotId> orderBy;
+                for (const auto& part : sortPattern) {
+                    uassert(ErrorCodes::InternalErrorNotSupported,
+                            "Sorting by expression not supported",
+                            !part.expression);
+                    uassert(ErrorCodes::InternalErrorNotSupported,
+                            "Sorting by dotted paths not supported",
+                            part.fieldPath && part.fieldPath->getPathLength() == 1);
+
+                    // slot holding the sort key
+                    auto sortFieldVar{_slotIdGenerator->generate()};
+                    orderBy.push_back(sortFieldVar);
+
+                    // Generate projection to get the value of the soft key. Ideally, this should be
+                    // tracked by a 'reference tracker' at higher level.
+                    auto fieldName = part.fieldPath->getFieldName(0);
+                    auto fieldNameSV = std::string_view{fieldName.rawData(), fieldName.size()};
+                    inputStage = sbe::makeProjectStage(
+                        std::move(inputStage),
+                        sortFieldVar,
+                        sbe::makeE<sbe::EFunction>(
+                            "getField"sv,
+                            sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                        sbe::makeE<sbe::EConstant>(fieldNameSV))));
+                }
+
+                std::vector<sbe::value::SlotId> values;
+                values.push_back(*_resultSlot);
+                if (_recordIdSlot) {
+                    values.push_back(*_recordIdSlot);
+                }
+                return sbe::makeS<sbe::SortStage>(std::move(inputStage), orderBy, values);
             }
             default: {
                 str::stream ss;
