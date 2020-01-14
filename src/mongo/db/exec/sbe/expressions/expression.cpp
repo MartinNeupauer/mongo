@@ -187,8 +187,14 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
         case EPrimBinary::less:
             ret.emplace_back("<");
             break;
+        case EPrimBinary::lessEq:
+            ret.emplace_back("<=");
+            break;
         case EPrimBinary::greater:
             ret.emplace_back(">");
+            break;
+        case EPrimBinary::greaterEq:
+            ret.emplace_back(">=");
             break;
         case EPrimBinary::eq:
             ret.emplace_back("==");

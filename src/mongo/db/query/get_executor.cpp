@@ -351,87 +351,6 @@ bool shouldWaitForOplogVisibility(OperationContext* opCtx,
 }
 
 namespace {
-
-std::unique_ptr<sbe::PlanStage> getIdHackPlan(const Collection* collection,
-                                              const IndexDescriptor* descriptor,
-                                              const BSONObj& key) {
-    using namespace std::literals;
-    auto am = collection->getIndexCatalog()->getEntry(descriptor)->accessMethod();
-
-    // Convert the seek key to KeyString as indexes traffic in KeyStrings not BSONs.
-    auto kvLow =
-        std::make_unique<KeyString::Value>(IndexEntryComparison::makeKeyStringFromBSONKeyForSeek(
-            key,
-            am->getSortedDataInterface()->getKeyStringVersion(),
-            am->getSortedDataInterface()->getOrdering(),
-            true /* where is isForward? */,
-            true /* inclusive */));
-    auto kvHi =
-        std::make_unique<KeyString::Value>(IndexEntryComparison::makeKeyStringFromBSONKeyForSeek(
-            key,
-            am->getSortedDataInterface()->getKeyStringVersion(),
-            am->getSortedDataInterface()->getOrdering(),
-            true /* where is isForward? */,
-            false /* exclusive */));
-
-    auto slotIdGenerator = sbe::value::makeDefaultSlotIdGenerator();
-    auto lowKeySlot = slotIdGenerator->generate();
-    auto highKeySlot = slotIdGenerator->generate();
-    auto recordIdKeySlot = slotIdGenerator->generate();
-    auto recordIdSlot = sbe::value::SystemSlots::kRecordIdSlot;
-    auto recordSlot = sbe::value::SystemSlots::kResultSlot;
-    // Construct a simple CTS (constant table scan). It delivers a single row with two fields
-    // lowKeySlot and highKeySlot representing seek boundaries.
-    auto getKeys =
-        sbe::makeProjectStage(sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
-                              lowKeySlot,
-                              sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                                         sbe::value::bitcastFrom(kvLow.release())),
-                              highKeySlot,
-                              sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                                         sbe::value::bitcastFrom(kvHi.release())));
-
-    // Scan the _id index in the range [lowKeySlot, highKeySlot). Produce a single field
-    // recordIdSlot that will be used to position into the collection.
-    auto indexScan = sbe::makeS<sbe::IndexScanStage>(
-        NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
-        descriptor->indexName(),  // "_id_"sv,
-        boost::none,              // recordSlot
-        recordIdKeySlot,
-        std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
-        lowKeySlot,
-        highKeySlot);
-
-    // Get the keys from the outer side (guaranteed to see exacly one row in the id hack query) and
-    // feed them to the inner side.
-    auto indexSeek =
-        sbe::makeS<sbe::LoopJoinStage>(std::move(getKeys),
-                                       std::move(indexScan),
-                                       std::vector<sbe::value::SlotId>{},
-                                       std::vector<sbe::value::SlotId>{lowKeySlot, highKeySlot},
-                                       nullptr);
-
-    // Scan the collection in the range [recordIdKeySlot, recordIdKeySlot).
-    auto collScan = sbe::makeS<sbe::ScanStage>(
-        NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
-        recordSlot,
-        recordIdSlot,
-        std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
-        recordIdKeySlot);
-
-    // Get the recordIdSlot from the outer side and feed it to the inner side.
-    auto collSeek = sbe::makeS<sbe::LoopJoinStage>(std::move(indexSeek),
-                                                   std::move(collScan),
-                                                   std::vector<sbe::value::SlotId>{},
-                                                   std::vector<sbe::value::SlotId>{recordIdKeySlot},
-                                                   nullptr);
-
-    // And we are done.
-    return collSeek;
-}
-
 template <typename PlanStageType>
 struct PrepareExecutionResult {
     PrepareExecutionResult(unique_ptr<CanonicalQuery> canonicalQuery,
@@ -514,12 +433,14 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                               "IDHack plan is not supprted by SBE yet"};
             }
 
+            // Override planner parameters to force FETCH+IXSCAN plan on _id index, and fall back to
+            // normal planning.
+            plannerParams.options = QueryPlannerParams::NO_TABLE_SCAN;
+            plannerParams.indices.clear();
+            plannerParams.indices.push_back(indexEntryFromIndexCatalogEntry(
+                opCtx, *collection->getIndexCatalog()->getEntry(descriptor), canonicalQuery.get()));
             canonicalQuery->requestAdditionalMetadata(
                 QueryMetadataBitSet{}.set(DocumentMetadataFields::kRecordId));
-            root =
-                getIdHackPlan(collection, descriptor, canonicalQuery->getQueryObj()["_id"].wrap());
-
-            return PrepareExecutionResult(std::move(canonicalQuery), nullptr, std::move(root));
         } else {
             root = std::make_unique<IDHackStage>(
                 canonicalQuery->getExpCtx().get(), canonicalQuery.get(), ws, descriptor);
