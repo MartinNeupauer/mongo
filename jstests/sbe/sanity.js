@@ -23,6 +23,8 @@ assert.commandWorked(coll.insert([
     {_id: 14, z: [1, 2, 3]},
     {_id: 15, z: 3},
     {_id: 16, z: 4},
+    {_id: 17, a: 10, x: 1},
+    {_id: 18, a: 10, x: 10},
 ]));
 
 function runDbQuery({query, proj, sort, hint, limit, skip}) {
@@ -84,6 +86,7 @@ function runQuery(
     runQuery({query: {a: {$gt: 1, $lte: 3}}, hint: hint});
     runQuery({query: {a: {$gte: 1, $lt: 3}}, hint: hint});
     runQuery({query: {a: {$gte: 1, $lte: 3}}, hint: hint});
+    runQuery({query: {a: 10, x: 1}, hint: hint});
 
     // Sort queries.
     runQuery({sort: {a: 1}, hint: hint});

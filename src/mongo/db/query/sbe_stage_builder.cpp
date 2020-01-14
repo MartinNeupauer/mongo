@@ -766,9 +766,9 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                     std::vector<sbe::value::SlotId>{},
                     boost::none);
 
-                if (root->filter) {
+                if (csn->filter) {
                     stage = generateFilter(
-                        root->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+                        csn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
                 }
 
                 return stage;
@@ -785,6 +785,9 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                 uassert(ErrorCodes::InternalErrorNotSupported,
                         "Index scans with key metadata are not supported in SBE",
                         !ixn->addKeyMetadata);
+                uassert(ErrorCodes::InternalErrorNotSupported,
+                        "Index scans with a filter are not supported in SBE",
+                        !ixn->filter);
 
                 auto descriptor = _collection->getIndexCatalog()->findIndexByName(
                     _opCtx, ixn->index.identifier.catalogName);
@@ -856,12 +859,19 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
 
                 // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the
                 // inner side.
-                return sbe::makeS<sbe::LoopJoinStage>(
+                auto stage = sbe::makeS<sbe::LoopJoinStage>(
                     std::move(inputStage),
                     std::move(collScan),
                     std::vector<sbe::value::SlotId>{},
                     std::vector<sbe::value::SlotId>{*recordIdKeySlot},
                     nullptr);
+
+                if (fn->filter) {
+                    stage = generateFilter(
+                        fn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+                }
+
+                return stage;
             }
             case STAGE_LIMIT: {
                 const auto ln = static_cast<const LimitNode*>(root);
