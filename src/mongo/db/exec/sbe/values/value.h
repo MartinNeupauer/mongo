@@ -118,6 +118,10 @@ inline constexpr bool isObjectId(TypeTags tag) noexcept {
 using Value = uint64_t;
 
 /**
+ * Sort direction of ordered sequence.
+ */
+enum class SortDirection : uint8_t { Descending, Ascending };
+/**
  * Forward declarations.
  */
 void releaseValue(TypeTags tag, Value val) noexcept;
@@ -484,14 +488,13 @@ inline TypeTags getWidestNumericalType(TypeTags lhsTag, TypeTags rhsTag) noexcep
 }
 
 std::size_t hashValue(TypeTags tag, Value val) noexcept;
-std::pair<TypeTags, Value> eqValue(TypeTags lhsTag,
-                                   Value lhsValue,
-                                   TypeTags rhsTag,
-                                   Value rhsValue);
-std::pair<TypeTags, Value> lessValue(TypeTags lhsTag,
-                                     Value lhsValue,
-                                     TypeTags rhsTag,
-                                     Value rhsValue);
+/*
+ * Three ways value comparison (aka spacehip operator).
+ */
+std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
+                                        Value lhsValue,
+                                        TypeTags rhsTag,
+                                        Value rhsValue);
 
 class SlotAccessor {
 public:
@@ -578,7 +581,53 @@ public:
     }
 };
 
-class ArrayAccessor final : public SlotAccessor {
+class ObjectEnumerator {
+    TypeTags _tagObject{TypeTags::Nothing};
+    Value _valObject{0};
+
+    // Object
+    Object* _object{nullptr};
+    size_t _index{0};
+
+    // bsonObject
+    const char* _objectCurrent{nullptr};
+    const char* _objectEnd{nullptr};
+
+public:
+    ObjectEnumerator() = default;
+    ObjectEnumerator(TypeTags tag, Value val) {
+        reset(tag, val);
+    }
+    void reset(TypeTags tag, Value val) {
+        _tagObject = tag;
+        _valObject = val;
+        _object = nullptr;
+        _index = 0;
+
+        if (tag == TypeTags::Object) {
+            _object = getObjectView(val);
+        } else if (tag == TypeTags::bsonObject) {
+            auto bson = bitcastTo<const char*>(val);
+            _objectCurrent = bson + 4;
+            _objectEnd = bson + value::readFromMemory<uint32_t>(bson);
+        } else {
+            MONGO_UNREACHABLE;
+        }
+    }
+    std::pair<TypeTags, Value> getViewOfValue() const;
+    std::string_view getFieldName() const;
+
+    bool atEnd() const {
+        if (_object) {
+            return _index == _object->size();
+        } else {
+            return *_objectCurrent == 0;
+        }
+    }
+
+    bool advance();
+};
+class ArrayEnumerator {
     TypeTags _tagArray{TypeTags::Nothing};
     Value _valArray{0};
 
@@ -591,6 +640,10 @@ class ArrayAccessor final : public SlotAccessor {
     const char* _arrayEnd{nullptr};
 
 public:
+    ArrayEnumerator() = default;
+    ArrayEnumerator(TypeTags tag, Value val) {
+        reset(tag, val);
+    }
     void reset(TypeTags tag, Value val) {
         _tagArray = tag;
         _valArray = val;
@@ -607,14 +660,7 @@ public:
             MONGO_UNREACHABLE;
         }
     }
-
-    // Return non-owning view of the value
-    std::pair<TypeTags, Value> getViewOfValue() const override;
-    std::pair<TypeTags, Value> copyOrMoveValue() override {
-        // we can never move out values from array
-        auto [tag, val] = getViewOfValue();
-        return copyValue(tag, val);
-    }
+    std::pair<TypeTags, Value> getViewOfValue() const;
 
     bool atEnd() const {
         if (_array) {
@@ -625,6 +671,33 @@ public:
     }
 
     bool advance();
+};
+
+class ArrayAccessor final : public SlotAccessor {
+    ArrayEnumerator _enumerator;
+
+public:
+    void reset(TypeTags tag, Value val) {
+        _enumerator.reset(tag, val);
+    }
+
+    // Return non-owning view of the value
+    std::pair<TypeTags, Value> getViewOfValue() const override {
+        return _enumerator.getViewOfValue();
+    }
+    std::pair<TypeTags, Value> copyOrMoveValue() override {
+        // we can never move out values from array
+        auto [tag, val] = getViewOfValue();
+        return copyValue(tag, val);
+    }
+
+    bool atEnd() const {
+        return _enumerator.atEnd();
+    }
+
+    bool advance() {
+        return _enumerator.advance();
+    }
 };
 
 struct MaterializedRow {
@@ -641,40 +714,46 @@ struct MaterializedRow {
         for (size_t idx = 0; idx < _fields.size(); ++idx) {
             auto [lhsTag, lhsVal] = _fields[idx].getViewOfValue();
             auto [rhsTag, rhsVal] = rhs._fields[idx].getViewOfValue();
-            auto [tag, val] = eqValue(lhsTag, lhsVal, rhsTag, rhsVal);
+            auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
 
-            if (!((tag == TypeTags::Boolean) && (val != 0))) {
+            if (tag != TypeTags::NumberInt64 || val != 0) {
                 return false;
             }
         }
 
         return true;
     }
+};
 
-    bool operator<(const MaterializedRow& rhs) const {
-        for (size_t idx = 0; idx < _fields.size(); ++idx) {
-            auto [lhsTag, lhsVal] = _fields[idx].getViewOfValue();
+struct MaterializedRowComparator {
+    const std::vector<SortDirection>& _direction;
+    // TODO - add collator and whatnot.
+
+    MaterializedRowComparator(const std::vector<value::SortDirection>& direction)
+        : _direction(direction) {}
+
+    bool operator()(const MaterializedRow& lhs, const MaterializedRow& rhs) const {
+        for (size_t idx = 0; idx < lhs._fields.size(); ++idx) {
+            auto [lhsTag, lhsVal] = lhs._fields[idx].getViewOfValue();
             auto [rhsTag, rhsVal] = rhs._fields[idx].getViewOfValue();
-            {
-                auto [tag, val] = lessValue(lhsTag, lhsVal, rhsTag, rhsVal);
-
-                if ((tag == TypeTags::Boolean) && (val != 0)) {
-                    return true;
-                }
+            auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
+            if (tag != TypeTags::NumberInt64) {
+                return false;
             }
-            {
-                auto [tag, val] = eqValue(lhsTag, lhsVal, rhsTag, rhsVal);
-
-                if ((tag == TypeTags::Boolean) && (val == 0)) {
-                    return false;
-                }
+            if (bitcastTo<int64_t>(val) < 0 && _direction[idx] == SortDirection::Ascending) {
+                return true;
+            }
+            if (bitcastTo<int64_t>(val) > 0 && _direction[idx] == SortDirection::Descending) {
+                return true;
+            }
+            if (bitcastTo<int64_t>(val) != 0) {
+                return false;
             }
         }
 
         return false;
     }
 };
-
 struct MaterializedRowHasher {
     std::size_t operator()(const MaterializedRow& k) const {
         size_t res = 17;

@@ -37,12 +37,20 @@ namespace mongo {
 namespace sbe {
 SortStage::SortStage(std::unique_ptr<PlanStage> input,
                      const std::vector<value::SlotId>& obs,
-                     const std::vector<value::SlotId>& vals)
-    : _obs(obs), _vals(vals) {
+                     const std::vector<value::SortDirection>& dirs,
+                     const std::vector<value::SlotId>& vals,
+                     size_t limit)
+    : _obs(obs),
+      _dirs(dirs),
+      _vals(vals),
+      _limit(limit),
+      _st(value::MaterializedRowComparator{_dirs}) {
     _children.emplace_back(std::move(input));
+
+    invariant(_obs.size() == _dirs.size());
 }
 std::unique_ptr<PlanStage> SortStage::clone() {
-    return std::make_unique<SortStage>(_children[0]->clone(), _obs, _vals);
+    return std::make_unique<SortStage>(_children[0]->clone(), _obs, _dirs, _vals, _limit);
 }
 void SortStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
@@ -98,6 +106,9 @@ void SortStage::open(bool reOpen) {
         }
 
         _st.emplace(std::move(keys), std::move(vals));
+        if (_st.size() - 1 == _limit) {
+            _st.erase(--_st.end());
+        }
     }
 
     _children[0]->close();
@@ -141,6 +152,10 @@ std::vector<DebugPrinter::Block> SortStage::debugPrint() {
         DebugPrinter::addIdentifier(ret, _vals[idx]);
     }
     ret.emplace_back("`]");
+
+    if (_limit != std::numeric_limits<size_t>::max()) {
+        ret.emplace_back(std::to_string(_limit));
+    }
 
     DebugPrinter::addNewLine(ret);
     DebugPrinter::addBlocks(ret, _children[0]->debugPrint());
