@@ -81,10 +81,11 @@ void SortStage::open(bool reOpen) {
 
     value::MaterializedRow keys;
     value::MaterializedRow vals;
-    keys._fields.reserve(_inKeyAccessors.size());
-    vals._fields.reserve(_inValueAccessors.size());
 
     while (_children[0]->getNext() == PlanState::ADVANCED) {
+        keys._fields.reserve(_inKeyAccessors.size());
+        vals._fields.reserve(_inValueAccessors.size());
+
         for (auto accesor : _inKeyAccessors) {
             keys._fields.push_back(value::OwnedValueAccessor{});
             auto [tag, val] = accesor->copyOrMoveValue();

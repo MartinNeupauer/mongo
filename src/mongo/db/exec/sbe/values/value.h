@@ -539,6 +539,8 @@ class OwnedValueAccessor final : public SlotAccessor {
     }
 
 public:
+    // TODO - either disallow copying/moving or provide proper constructors.
+
     ~OwnedValueAccessor() {
         // release any value here
         release();
