@@ -716,228 +716,235 @@ makeLowAndHighKeysFromIndexBounds(const IndexBounds& bounds,
 }
 }  // namespace
 
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildCollScan(
+    const QuerySolutionNode* root) {
+    auto csn = static_cast<const CollectionScanNode*>(root);
+
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Tailable collection scans are not supported in SBE",
+            !csn->tailable);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Only forward collection scans are supported in SBE",
+            csn->direction == 1);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with shouldTrackLatestOplogTimestamp are not supported "
+            "in SBE",
+            !csn->shouldTrackLatestOplogTimestamp);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with shouldWaitForOplogVisibility are not supported in SBE",
+            !csn->shouldWaitForOplogVisibility);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with minTs are not supported in SBE",
+            !csn->minTs);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with maxTs are not supported in SBE",
+            !csn->maxTs);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with requestResumeToken are not supported in SBE",
+            !csn->requestResumeToken);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with resumeAfterRecordId are not supported in SBE",
+            !csn->resumeAfterRecordId);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Collection scans with stopApplyingFilterAfterFirstMatch are not supported "
+            "in SBE",
+            !csn->stopApplyingFilterAfterFirstMatch);
+
+    _resultSlot = _slotIdGenerator->generate();
+    _recordIdSlot = _slotIdGenerator->generate();
+    auto stage = sbe::makeS<sbe::ScanStage>(
+        NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+        _resultSlot,
+        _recordIdSlot,
+        std::vector<std::string>{},
+        std::vector<sbe::value::SlotId>{},
+        boost::none);
+
+    if (csn->filter) {
+        stage = generateFilter(
+            csn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+    }
+
+    return stage;
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
+    const QuerySolutionNode* root) {
+    auto ixn = static_cast<const IndexScanNode*>(root);
+
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Only forward index scans are supported in SBE",
+            ixn->direction == 1);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Index scans with key metadata are not supported in SBE",
+            !ixn->addKeyMetadata);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            "Index scans with a filter are not supported in SBE",
+            !ixn->filter);
+
+    auto descriptor =
+        _collection->getIndexCatalog()->findIndexByName(_opCtx, ixn->index.identifier.catalogName);
+    auto [lowKeySlot, highKeySlot, lowKey, highKey] = makeLowAndHighKeysFromIndexBounds(
+        ixn->bounds,
+        ixn->direction == 1,
+        _collection->getIndexCatalog()->getEntry(descriptor)->accessMethod(),
+        _slotIdGenerator.get());
+
+    // Scan the index in the range {'lowKeySlot', 'highKeySlot'} (subject to inclusive
+    // or exclusive boundaries), and produce a single field recordIdSlot that can be
+    // used to position into the collection.
+    _recordIdSlot = _slotIdGenerator->generate();
+    auto stage = sbe::makeS<sbe::IndexScanStage>(
+        NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+        ixn->index.identifier.catalogName,
+        boost::none,
+        _recordIdSlot,
+        std::vector<std::string>{},
+        std::vector<sbe::value::SlotId>{},
+        lowKeySlot,
+        highKeySlot);
+    if (lowKeySlot && highKeySlot) {
+        // Construct a constant table scan to deliver a single row with two fields
+        // 'lowKeySlot' and 'highKeySlot', representing seek boundaries, into the
+        // index scan.
+        auto projectKeysStage = sbe::makeProjectStage(
+            sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+            *lowKeySlot,
+            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                       sbe::value::bitcastFrom(lowKey.release())),
+            *highKeySlot,
+            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                       sbe::value::bitcastFrom(highKey.release())));
+
+        // Get the keys from the outer side (guaranteed to see exactly one row) and feed
+        // them to the inner side.
+        stage = sbe::makeS<sbe::LoopJoinStage>(
+            std::move(projectKeysStage),
+            std::move(stage),
+            std::vector<sbe::value::SlotId>{},
+            std::vector<sbe::value::SlotId>{*lowKeySlot, *highKeySlot},
+            nullptr);
+    } else {
+        invariant(!lowKeySlot && !highKeySlot);
+    }
+
+    if (ixn->shouldDedup) {
+        stage = sbe::makeS<sbe::HashAggStage>(
+            std::move(stage),
+            std::vector<sbe::value::SlotId>{*_recordIdSlot},
+            std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>>{});
+    }
+
+    return stage;
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySolutionNode* root) {
+    auto fn = static_cast<const FetchNode*>(root);
+    auto inputStage = build(fn->children[0]);
+
+    uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _recordIdSlot);
+
+    auto recordIdKeySlot = _recordIdSlot;
+    _resultSlot = _slotIdGenerator->generate();
+    _recordIdSlot = _slotIdGenerator->generate();
+
+    // Scan the collection in the range [recordIdKeySlot, recordIdKeySlot).
+    auto collScan = sbe::makeS<sbe::ScanStage>(
+        NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+        _resultSlot,
+        _recordIdSlot,
+        std::vector<std::string>{},
+        std::vector<sbe::value::SlotId>{},
+        recordIdKeySlot);
+
+    // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the
+    // inner side.
+    auto stage = sbe::makeS<sbe::LoopJoinStage>(std::move(inputStage),
+                                                std::move(collScan),
+                                                std::vector<sbe::value::SlotId>{},
+                                                std::vector<sbe::value::SlotId>{*recordIdKeySlot},
+                                                nullptr);
+
+    if (fn->filter) {
+        stage = generateFilter(
+            fn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+    }
+
+    return stage;
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildLimit(const QuerySolutionNode* root) {
+    const auto ln = static_cast<const LimitNode*>(root);
+    auto inputStage = build(ln->children[0]);
+    return std::make_unique<sbe::LimitStage>(std::move(inputStage), ln->limit);
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolutionNode* root) {
+    using namespace std::literals;
+
+    const auto sn = static_cast<const SortNode*>(root);
+    uassert(ErrorCodes::InternalErrorNotSupported, "Sort with limit not supported", sn->limit == 0);
+    auto sortPattern = SortPattern{sn->pattern, _cq.getExpCtx()};
+    auto inputStage = build(sn->children[0]);
+    std::vector<sbe::value::SlotId> orderBy;
+    for (const auto& part : sortPattern) {
+        uassert(ErrorCodes::InternalErrorNotSupported,
+                "Sorting by expression not supported",
+                !part.expression);
+        uassert(ErrorCodes::InternalErrorNotSupported,
+                "Sorting by dotted paths not supported",
+                part.fieldPath && part.fieldPath->getPathLength() == 1);
+
+        // slot holding the sort key
+        auto sortFieldVar{_slotIdGenerator->generate()};
+        orderBy.push_back(sortFieldVar);
+
+        // Generate projection to get the value of the soft key. Ideally, this should be
+        // tracked by a 'reference tracker' at higher level.
+        auto fieldName = part.fieldPath->getFieldName(0);
+        auto fieldNameSV = std::string_view{fieldName.rawData(), fieldName.size()};
+        inputStage = sbe::makeProjectStage(
+            std::move(inputStage),
+            sortFieldVar,
+            sbe::makeE<sbe::EFunction>("getField"sv,
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                                   sbe::makeE<sbe::EConstant>(fieldNameSV))));
+    }
+
+    std::vector<sbe::value::SlotId> values;
+    values.push_back(*_resultSlot);
+    if (_recordIdSlot) {
+        values.push_back(*_recordIdSlot);
+    }
+    return sbe::makeS<sbe::SortStage>(std::move(inputStage), orderBy, values);
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSortKeyGeneraror(
+    const QuerySolutionNode* root) {
+    const auto kn = static_cast<const SortKeyGeneratorNode*>(root);
+    // SBE does not use key generator, skip it.
+    return build(kn->children[0]);
+}
+
 // Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
 // could not be constructed.
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
-    using namespace std::literals;
+    static const std::unordered_map<StageType,
+                                    std::function<std::unique_ptr<sbe::PlanStage>(
+                                        SlotBasedStageBuilder&, const QuerySolutionNode* root)>>
+        kStageBuilders = {
+            {STAGE_COLLSCAN, std::mem_fn(&SlotBasedStageBuilder::buildCollScan)},
+            {STAGE_IXSCAN, std::mem_fn(&SlotBasedStageBuilder::buildIndexScan)},
+            {STAGE_FETCH, std::mem_fn(&SlotBasedStageBuilder::buildFetch)},
+            {STAGE_LIMIT, std::mem_fn(&SlotBasedStageBuilder::buildLimit)},
+            {STAGE_SORT, std::mem_fn(&SlotBasedStageBuilder::buildSort)},
+            {STAGE_SORT_KEY_GENERATOR, std::mem_fn(&SlotBasedStageBuilder::buildSortKeyGeneraror)}};
 
-    auto stage = [root, this]() -> std::unique_ptr<sbe::PlanStage> {
-        switch (root->getType()) {
-            case STAGE_COLLSCAN: {
-                auto csn = static_cast<const CollectionScanNode*>(root);
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            str::stream() << "Can't build exec tree for node: " << root->toString(),
+            kStageBuilders.find(root->getType()) != kStageBuilders.end());
 
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Tailable collection scans are not supported in SBE",
-                        !csn->tailable);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Only forward collection scans are supported in SBE",
-                        csn->direction == 1);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with shouldTrackLatestOplogTimestamp are not supported "
-                        "in SBE",
-                        !csn->shouldTrackLatestOplogTimestamp);
-                uassert(
-                    ErrorCodes::InternalErrorNotSupported,
-                    "Collection scans with shouldWaitForOplogVisibility are not supported in SBE",
-                    !csn->shouldWaitForOplogVisibility);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with minTs are not supported in SBE",
-                        !csn->minTs);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with maxTs are not supported in SBE",
-                        !csn->maxTs);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with requestResumeToken are not supported in SBE",
-                        !csn->requestResumeToken);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with resumeAfterRecordId are not supported in SBE",
-                        !csn->resumeAfterRecordId);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Collection scans with stopApplyingFilterAfterFirstMatch are not supported "
-                        "in SBE",
-                        !csn->stopApplyingFilterAfterFirstMatch);
-
-                _resultSlot = _slotIdGenerator->generate();
-                _recordIdSlot = _slotIdGenerator->generate();
-                auto stage = sbe::makeS<sbe::ScanStage>(
-                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-                    _resultSlot,
-                    _recordIdSlot,
-                    std::vector<std::string>{},
-                    std::vector<sbe::value::SlotId>{},
-                    boost::none);
-
-                if (csn->filter) {
-                    stage = generateFilter(
-                        csn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
-                }
-
-                return stage;
-            }
-            case STAGE_IXSCAN: {
-                auto ixn = static_cast<const IndexScanNode*>(root);
-
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Only forward index scans are supported in SBE",
-                        ixn->direction == 1);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Index scans with key metadata are not supported in SBE",
-                        !ixn->addKeyMetadata);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Index scans with a filter are not supported in SBE",
-                        !ixn->filter);
-
-                auto descriptor = _collection->getIndexCatalog()->findIndexByName(
-                    _opCtx, ixn->index.identifier.catalogName);
-                auto [lowKeySlot, highKeySlot, lowKey, highKey] = makeLowAndHighKeysFromIndexBounds(
-                    ixn->bounds,
-                    ixn->direction == 1,
-                    _collection->getIndexCatalog()->getEntry(descriptor)->accessMethod(),
-                    _slotIdGenerator.get());
-
-                // Scan the index in the range {'lowKeySlot', 'highKeySlot'} (subject to inclusive
-                // or exclusive boundaries), and produce a single field recordIdSlot that can be
-                // used to position into the collection.
-                _recordIdSlot = _slotIdGenerator->generate();
-                auto stage = sbe::makeS<sbe::IndexScanStage>(
-                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-                    ixn->index.identifier.catalogName,
-                    boost::none,
-                    _recordIdSlot,
-                    std::vector<std::string>{},
-                    std::vector<sbe::value::SlotId>{},
-                    lowKeySlot,
-                    highKeySlot);
-                if (lowKeySlot && highKeySlot) {
-                    // Construct a constant table scan to deliver a single row with two fields
-                    // 'lowKeySlot' and 'highKeySlot', representing seek boundaries, into the
-                    // index scan.
-                    auto projectKeysStage = sbe::makeProjectStage(
-                        sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
-                        *lowKeySlot,
-                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                                   sbe::value::bitcastFrom(lowKey.release())),
-                        *highKeySlot,
-                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                                   sbe::value::bitcastFrom(highKey.release())));
-
-                    // Get the keys from the outer side (guaranteed to see exactly one row) and feed
-                    // them to the inner side.
-                    stage = sbe::makeS<sbe::LoopJoinStage>(
-                        std::move(projectKeysStage),
-                        std::move(stage),
-                        std::vector<sbe::value::SlotId>{},
-                        std::vector<sbe::value::SlotId>{*lowKeySlot, *highKeySlot},
-                        nullptr);
-                } else {
-                    invariant(!lowKeySlot && !highKeySlot);
-                }
-
-                if (ixn->shouldDedup) {
-                    stage = sbe::makeS<sbe::HashAggStage>(
-                        std::move(stage),
-                        std::vector<sbe::value::SlotId>{*_recordIdSlot},
-                        std::unordered_map<sbe::value::SlotId,
-                                           std::unique_ptr<sbe::EExpression>>{});
-                }
-
-                return stage;
-            }
-            case STAGE_FETCH: {
-                auto fn = static_cast<const FetchNode*>(root);
-                auto inputStage = build(fn->children[0]);
-
-                uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _recordIdSlot);
-
-                auto recordIdKeySlot = _recordIdSlot;
-                _resultSlot = _slotIdGenerator->generate();
-                _recordIdSlot = _slotIdGenerator->generate();
-
-                // Scan the collection in the range [recordIdKeySlot, recordIdKeySlot).
-                auto collScan = sbe::makeS<sbe::ScanStage>(
-                    NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-                    _resultSlot,
-                    _recordIdSlot,
-                    std::vector<std::string>{},
-                    std::vector<sbe::value::SlotId>{},
-                    recordIdKeySlot);
-
-                // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the
-                // inner side.
-                auto stage = sbe::makeS<sbe::LoopJoinStage>(
-                    std::move(inputStage),
-                    std::move(collScan),
-                    std::vector<sbe::value::SlotId>{},
-                    std::vector<sbe::value::SlotId>{*recordIdKeySlot},
-                    nullptr);
-
-                if (fn->filter) {
-                    stage = generateFilter(
-                        fn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
-                }
-
-                return stage;
-            }
-            case STAGE_LIMIT: {
-                const auto ln = static_cast<const LimitNode*>(root);
-                auto inputStage = build(ln->children[0]);
-                return std::make_unique<sbe::LimitStage>(std::move(inputStage), ln->limit);
-            }
-            case STAGE_SORT_KEY_GENERATOR: {
-                const auto kn = static_cast<const SortKeyGeneratorNode*>(root);
-                // SBE does not use key generator, skip it.
-                return build(kn->children[0]);
-            }
-            case STAGE_SORT: {
-                const auto sn = static_cast<const SortNode*>(root);
-                uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Sort with limit not supported",
-                        sn->limit == 0);
-                auto sortPattern = SortPattern{sn->pattern, _cq.getExpCtx()};
-                auto inputStage = build(sn->children[0]);
-                std::vector<sbe::value::SlotId> orderBy;
-                for (const auto& part : sortPattern) {
-                    uassert(ErrorCodes::InternalErrorNotSupported,
-                            "Sorting by expression not supported",
-                            !part.expression);
-                    uassert(ErrorCodes::InternalErrorNotSupported,
-                            "Sorting by dotted paths not supported",
-                            part.fieldPath && part.fieldPath->getPathLength() == 1);
-
-                    // slot holding the sort key
-                    auto sortFieldVar{_slotIdGenerator->generate()};
-                    orderBy.push_back(sortFieldVar);
-
-                    // Generate projection to get the value of the soft key. Ideally, this should be
-                    // tracked by a 'reference tracker' at higher level.
-                    auto fieldName = part.fieldPath->getFieldName(0);
-                    auto fieldNameSV = std::string_view{fieldName.rawData(), fieldName.size()};
-                    inputStage = sbe::makeProjectStage(
-                        std::move(inputStage),
-                        sortFieldVar,
-                        sbe::makeE<sbe::EFunction>(
-                            "getField"sv,
-                            sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
-                                        sbe::makeE<sbe::EConstant>(fieldNameSV))));
-                }
-
-                std::vector<sbe::value::SlotId> values;
-                values.push_back(*_resultSlot);
-                if (_recordIdSlot) {
-                    values.push_back(*_recordIdSlot);
-                }
-                return sbe::makeS<sbe::SortStage>(std::move(inputStage), orderBy, values);
-            }
-            default: {
-                str::stream ss;
-                ss << "Can't build exec tree for node ";
-                root->appendToString(&ss, 0);
-                std::string nodeStr(ss);
-                uasserted(ErrorCodes::InternalErrorNotSupported, ss);
-            }
-        }
-    }();
-
+    auto stage = std::invoke(kStageBuilders.at(root->getType()), *this, root);
     if (root == _solution.root.get()) {
         uassert(ErrorCodes::InternalError, "Result slot is not defined in SBE plan", _resultSlot);
 

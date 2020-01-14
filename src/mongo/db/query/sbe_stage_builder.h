@@ -44,6 +44,13 @@ public:
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
 
 private:
+    std::unique_ptr<sbe::PlanStage> buildCollScan(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildIndexScan(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildFetch(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildLimit(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildSort(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
+
     std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
         sbe::value::makeDefaultSlotIdGenerator()};
     boost::optional<sbe::value::SlotId> _recordIdSlot;
