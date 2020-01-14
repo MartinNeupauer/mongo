@@ -261,6 +261,52 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
     }
 }
 
+BSONType tagToType(TypeTags tag) noexcept {
+    switch (tag) {
+        case TypeTags::Nothing:
+            return BSONType::EOO;
+        case TypeTags::NumberInt32:
+            return BSONType::NumberInt;
+        case TypeTags::NumberInt64:
+            return BSONType::NumberLong;
+        case TypeTags::NumberDouble:
+            return BSONType::NumberDouble;
+        case TypeTags::NumberDecimal:
+            return BSONType::NumberDecimal;
+        case TypeTags::Date:
+            return BSONType::Date;
+        case TypeTags::Timestamp:
+            return BSONType::bsonTimestamp;
+        case TypeTags::Boolean:
+            return BSONType::Bool;
+        case TypeTags::Null:
+            return BSONType::jstNULL;
+        case TypeTags::StringSmall:
+            return BSONType::String;
+        case TypeTags::StringBig:
+            return BSONType::String;
+        case TypeTags::Array:
+            return BSONType::Array;
+        case TypeTags::Object:
+            return BSONType::Object;
+        case TypeTags::ObjectId:
+            return BSONType::jstOID;
+        case TypeTags::bsonObject:
+            return BSONType::Object;
+        case TypeTags::bsonArray:
+            return BSONType::Array;
+        case TypeTags::bsonString:
+            return BSONType::String;
+        case TypeTags::bsonObjectId:
+            return BSONType::jstOID;
+        case TypeTags::ksValue:
+            // This is completely arbitrary.
+            return BSONType::EOO;
+        default:
+            MONGO_UNREACHABLE;
+    }
+}
+
 std::size_t hashValue(TypeTags tag, Value val) noexcept {
     switch (tag) {
         case TypeTags::NumberInt32:
@@ -301,32 +347,38 @@ std::size_t hashValue(TypeTags tag, Value val) noexcept {
 }
 
 
-// comparison used by a hash table
-std::pair<TypeTags, Value> eqValue(TypeTags lhsTag,
-                                   Value lhsValue,
-                                   TypeTags rhsTag,
-                                   Value rhsValue) {
+template <typename T>
+int64_t compareHelper(const T lhs, const T rhs) noexcept {
+    return lhs < rhs ? -1 : (lhs == rhs ? 0 : 1);
+}
+/*
+ * Three ways value comparison (aka spacehip operator).
+ */
+std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
+                                        Value lhsValue,
+                                        TypeTags rhsTag,
+                                        Value rhsValue) {
     if (isNumber(lhsTag) && isNumber(rhsTag)) {
         switch (getWidestNumericalType(lhsTag, rhsTag)) {
             case TypeTags::NumberInt32: {
-                auto result = numericCast<int32_t>(lhsTag, lhsValue) ==
-                    numericCast<int32_t>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
+                auto result = compareHelper(numericCast<int32_t>(lhsTag, lhsValue),
+                                            numericCast<int32_t>(rhsTag, rhsValue));
+                return {TypeTags::NumberInt64, bitcastFrom(result)};
             }
             case TypeTags::NumberInt64: {
-                auto result = numericCast<int64_t>(lhsTag, lhsValue) ==
-                    numericCast<int64_t>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
+                auto result = compareHelper(numericCast<int64_t>(lhsTag, lhsValue),
+                                            numericCast<int64_t>(rhsTag, rhsValue));
+                return {TypeTags::NumberInt64, bitcastFrom(result)};
             }
             case TypeTags::NumberDouble: {
-                auto result =
-                    numericCast<double>(lhsTag, lhsValue) == numericCast<double>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
+                auto result = compareHelper(numericCast<double>(lhsTag, lhsValue),
+                                            numericCast<double>(rhsTag, rhsValue));
+                return {TypeTags::NumberInt64, bitcastFrom(result)};
             }
             case TypeTags::NumberDecimal: {
-                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
-                                  .isEqual(numericCast<Decimal128>(rhsTag, rhsValue));
-                return {TypeTags::Boolean, bitcastFrom(result)};
+                auto result = compareHelper(numericCast<Decimal128>(lhsTag, lhsValue),
+                                            numericCast<Decimal128>(rhsTag, rhsValue));
+                return {TypeTags::NumberInt64, bitcastFrom(result)};
             }
             default:
                 MONGO_UNREACHABLE;
@@ -334,91 +386,89 @@ std::pair<TypeTags, Value> eqValue(TypeTags lhsTag,
     } else if (isString(lhsTag) && isString(rhsTag)) {
         auto lhsStr = getStringView(lhsTag, lhsValue);
         auto rhsStr = getStringView(rhsTag, rhsValue);
-
-        return {TypeTags::Boolean, lhsStr.compare(rhsStr) == 0};
+        int64_t result = lhsStr.compare(rhsStr);
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Date && rhsTag == TypeTags::Date) {
-        return {TypeTags::Boolean, bitcastTo<int64_t>(lhsValue) == bitcastTo<int64_t>(rhsValue)};
+        auto result = compareHelper(bitcastTo<int64_t>(lhsValue), bitcastTo<int64_t>(rhsValue));
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Timestamp && rhsTag == TypeTags::Timestamp) {
-        return {TypeTags::Boolean, bitcastTo<uint64_t>(lhsValue) == bitcastTo<uint64_t>(rhsValue)};
+        auto result = compareHelper(bitcastTo<uint64_t>(lhsValue), bitcastTo<uint64_t>(rhsValue));
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Boolean && rhsTag == TypeTags::Boolean) {
-        return {TypeTags::Boolean, (lhsValue != 0) == (rhsValue != 0)};
+        auto result = compareHelper(lhsValue != 0, rhsValue != 0);
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Null && rhsTag == TypeTags::Null) {
         // This is where Mongo differs from SQL.
-        return {TypeTags::Boolean, true};
-    } else if (lhsTag == TypeTags::ObjectId && rhsTag == TypeTags::ObjectId) {
-        return {TypeTags::Boolean, (*getObjectIdView(lhsValue)) == (*getObjectIdView(rhsValue))};
-    } else if (lhsTag == TypeTags::ksValue && rhsTag == TypeTags::ksValue) {
-        return {TypeTags::Boolean,
-                getKeyStringView(lhsValue)->compare(*getKeyStringView(lhsValue)) == 0};
-    } else if (lhsTag == TypeTags::Nothing && rhsTag == TypeTags::Nothing) {
-        // special case for Nothing in a hash table (group) comparison
-        return {TypeTags::Boolean, 1};
-    } else {
-        return {TypeTags::Nothing, 0};
-    }
-}
+        return {TypeTags::NumberInt64, 0};
+    } else if (isArray(lhsTag) && isArray(rhsTag)) {
+        auto lhsArr = ArrayEnumerator{lhsTag, lhsValue};
+        auto rhsArr = ArrayEnumerator{rhsTag, rhsValue};
+        while (!lhsArr.atEnd() && !rhsArr.atEnd()) {
+            auto [lhsTag, lhsVal] = lhsArr.getViewOfValue();
+            auto [rhsTag, rhsVal] = rhsArr.getViewOfValue();
 
-// comparison used by a sort operator
-std::pair<TypeTags, Value> lessValue(TypeTags lhsTag,
-                                     Value lhsValue,
-                                     TypeTags rhsTag,
-                                     Value rhsValue) {
-    if (isNumber(lhsTag) && isNumber(rhsTag)) {
-        switch (getWidestNumericalType(lhsTag, rhsTag)) {
-            case TypeTags::NumberInt32: {
-                auto result =
-                    numericCast<int32_t>(lhsTag, lhsValue) < numericCast<int32_t>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
+            auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
+            if (tag != TypeTags::NumberInt64 || val != 0) {
+                return {tag, val};
             }
-            case TypeTags::NumberInt64: {
-                auto result =
-                    numericCast<int64_t>(lhsTag, lhsValue) < numericCast<int64_t>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
-            }
-            case TypeTags::NumberDouble: {
-                auto result =
-                    numericCast<double>(lhsTag, lhsValue) < numericCast<double>(rhsTag, rhsValue);
-                return {TypeTags::Boolean, bitcastFrom(result)};
-            }
-            case TypeTags::NumberDecimal: {
-                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
-                                  .isLess(numericCast<Decimal128>(rhsTag, rhsValue));
-                return {TypeTags::Boolean, bitcastFrom(result)};
-            }
-            default:
-                MONGO_UNREACHABLE;
+            lhsArr.advance();
+            rhsArr.advance();
         }
-    } else if (isString(lhsTag) && isString(rhsTag)) {
-        auto lhsStr = getStringView(lhsTag, lhsValue);
-        auto rhsStr = getStringView(rhsTag, rhsValue);
+        if (lhsArr.atEnd() && rhsArr.atEnd()) {
+            return {TypeTags::NumberInt64, 0};
+        } else if (lhsArr.atEnd()) {
+            return {TypeTags::NumberInt64, bitcastFrom<int64_t>(-1)};
+        } else {
+            return {TypeTags::NumberInt64, bitcastFrom<int64_t>(1)};
+        }
+    } else if (isObject(lhsTag) && isObject(rhsTag)) {
+        auto lhsObj = ObjectEnumerator{lhsTag, lhsValue};
+        auto rhsObj = ObjectEnumerator{rhsTag, rhsValue};
+        while (!lhsObj.atEnd() && !rhsObj.atEnd()) {
+            int64_t fieldCmp = lhsObj.getFieldName().compare(rhsObj.getFieldName());
+            if (fieldCmp != 0) {
+                return {TypeTags::NumberInt64, bitcastFrom(fieldCmp)};
+            }
 
-        return {TypeTags::Boolean, lhsStr.compare(rhsStr) < 0};
-    } else if (lhsTag == TypeTags::Date && rhsTag == TypeTags::Date) {
-        return {TypeTags::Boolean, bitcastTo<int64_t>(lhsValue) < bitcastTo<int64_t>(rhsValue)};
-    } else if (lhsTag == TypeTags::Timestamp && rhsTag == TypeTags::Timestamp) {
-        return {TypeTags::Boolean, bitcastTo<uint64_t>(lhsValue) < bitcastTo<uint64_t>(rhsValue)};
-    } else if (lhsTag == TypeTags::Boolean && rhsTag == TypeTags::Boolean) {
-        return {TypeTags::Boolean, (lhsValue != 0) < (rhsValue != 0)};
-    } else if (lhsTag == TypeTags::ObjectId && rhsTag == TypeTags::ObjectId) {
-        return {TypeTags::Boolean, (*getObjectIdView(lhsValue)) < (*getObjectIdView(rhsValue))};
+            auto [lhsTag, lhsVal] = lhsObj.getViewOfValue();
+            auto [rhsTag, rhsVal] = rhsObj.getViewOfValue();
+
+            auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
+            if (tag != TypeTags::NumberInt64 || val != 0) {
+                return {tag, val};
+            }
+            lhsObj.advance();
+            rhsObj.advance();
+        }
+        if (lhsObj.atEnd() && rhsObj.atEnd()) {
+            return {TypeTags::NumberInt64, 0};
+        } else if (lhsObj.atEnd()) {
+            return {TypeTags::NumberInt64, bitcastFrom<int64_t>(-1)};
+        } else {
+            return {TypeTags::NumberInt64, bitcastFrom<int64_t>(1)};
+        }
+    } else if (isObjectId(lhsTag) && isObjectId(rhsTag)) {
+        auto lhsObjId = lhsTag == TypeTags::ObjectId ? getObjectIdView(lhsValue)->data()
+                                                     : bitcastTo<uint8_t*>(lhsValue);
+        auto rhsObjId = rhsTag == TypeTags::ObjectId ? getObjectIdView(rhsValue)->data()
+                                                     : bitcastTo<uint8_t*>(rhsValue);
+        int64_t result = memcmp(lhsObjId, rhsObjId, sizeof(ObjectIdType));
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::ksValue && rhsTag == TypeTags::ksValue) {
-        return {TypeTags::Boolean,
-                getKeyStringView(lhsValue)->compare(*getKeyStringView(lhsValue)) < 0};
+        int64_t result = getKeyStringView(lhsValue)->compare(*getKeyStringView(lhsValue));
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Nothing && rhsTag == TypeTags::Nothing) {
-        // special case for Nothing
-        return {TypeTags::Boolean, 0};
-    } else if (lhsTag == TypeTags::Nothing) {
-        // special case for Nothing
-        return {TypeTags::Boolean, 1};
-    } else if (rhsTag == TypeTags::Nothing) {
-        // special case for Nothing
-        return {TypeTags::Boolean, 0};
+        // special case for Nothing in a hash table (group) and sort comparison.
+        return {TypeTags::NumberInt64, 0};
     } else {
-        return {TypeTags::Nothing, 0};
+        // Different types.
+        int64_t result =
+            canonicalizeBSONType(tagToType(lhsTag)) - canonicalizeBSONType(tagToType(rhsTag));
+        return {TypeTags::NumberInt64, bitcastFrom(result)};
     }
 }
 
-std::pair<TypeTags, Value> ArrayAccessor::getViewOfValue() const {
+std::pair<TypeTags, Value> ArrayEnumerator::getViewOfValue() const {
     if (_array) {
         return _array->getAt(_index);
     } else {
@@ -427,7 +477,7 @@ std::pair<TypeTags, Value> ArrayAccessor::getViewOfValue() const {
     }
 }
 
-bool ArrayAccessor::advance() {
+bool ArrayEnumerator::advance() {
     if (_array) {
         if (_index < _array->size()) {
             ++_index;
@@ -441,6 +491,49 @@ bool ArrayAccessor::advance() {
         }
 
         return *_arrayCurrent != 0;
+    }
+}
+
+std::pair<TypeTags, Value> ObjectEnumerator::getViewOfValue() const {
+    if (_object) {
+        return _object->getAt(_index);
+    } else {
+        auto sv = bson::fieldNameView(_objectCurrent);
+        return bson::convertFrom(true, _objectCurrent, _objectEnd, sv.size());
+    }
+}
+
+bool ObjectEnumerator::advance() {
+    if (_object) {
+        if (_index < _object->size()) {
+            ++_index;
+        }
+
+        return _index < _object->size();
+    } else {
+        if (*_objectCurrent != 0) {
+            auto sv = bson::fieldNameView(_objectCurrent);
+            _objectCurrent = bson::advance(_objectCurrent, sv.size());
+        }
+
+        return *_objectCurrent != 0;
+    }
+}
+
+std::string_view ObjectEnumerator::getFieldName() const {
+    using namespace std::literals;
+    if (_object) {
+        if (_index < _object->size()) {
+            return _object->field(_index);
+        } else {
+            return ""sv;
+        }
+    } else {
+        if (*_objectCurrent != 0) {
+            return bson::fieldNameView(_objectCurrent);
+        } else {
+            return ""sv;
+        }
     }
 }
 

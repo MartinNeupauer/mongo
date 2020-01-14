@@ -579,9 +579,15 @@ void Parser::walkFilter(AstQuery& ast) {
 void Parser::walkSort(AstQuery& ast) {
     walkChildren(ast);
 
+    // TODO parse asc/desc
+    std::vector<value::SortDirection> dirs(ast.nodes[0]->identifiers.size(),
+                                           value::SortDirection::Ascending);
+
     ast.stage = makeS<SortStage>(std::move(ast.nodes[2]->stage),
                                  lookupSlots(ast.nodes[0]->identifiers),
-                                 lookupSlots(ast.nodes[1]->identifiers));
+                                 dirs,
+                                 lookupSlots(ast.nodes[1]->identifiers),
+                                 std::numeric_limits<std::size_t>::max());
 }
 
 void Parser::walkUnwind(AstQuery& ast) {

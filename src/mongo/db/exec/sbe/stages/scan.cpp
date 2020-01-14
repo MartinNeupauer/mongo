@@ -100,7 +100,6 @@ void ScanStage::doSaveState() {
         _cursor->save();
     }
 
-    invariant(_coll);
     _coll.reset();
 }
 void ScanStage::doRestoreState() {

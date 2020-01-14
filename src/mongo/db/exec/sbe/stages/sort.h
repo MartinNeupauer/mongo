@@ -35,13 +35,16 @@
 
 namespace mongo::sbe {
 class SortStage final : public PlanStage {
-    using TableType = std::multimap<value::MaterializedRow, value::MaterializedRow>;
+    using TableType = std::
+        multimap<value::MaterializedRow, value::MaterializedRow, value::MaterializedRowComparator>;
 
     using SortKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using SortValueAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
     const std::vector<value::SlotId> _obs;
+    const std::vector<value::SortDirection> _dirs;
     const std::vector<value::SlotId> _vals;
+    const size_t _limit;
 
     std::vector<value::SlotAccessor*> _inKeyAccessors;
     std::vector<value::SlotAccessor*> _inValueAccessors;
@@ -54,7 +57,9 @@ class SortStage final : public PlanStage {
 public:
     SortStage(std::unique_ptr<PlanStage> input,
               const std::vector<value::SlotId>& obs,
-              const std::vector<value::SlotId>& vals);
+              const std::vector<value::SortDirection>& dirs,
+              const std::vector<value::SlotId>& vals,
+              size_t limit);
 
     std::unique_ptr<PlanStage> clone() final;
 

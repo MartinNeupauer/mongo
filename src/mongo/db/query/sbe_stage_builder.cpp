@@ -883,10 +883,12 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
     using namespace std::literals;
 
     const auto sn = static_cast<const SortNode*>(root);
-    uassert(ErrorCodes::InternalErrorNotSupported, "Sort with limit not supported", sn->limit == 0);
     auto sortPattern = SortPattern{sn->pattern, _cq.getExpCtx()};
     auto inputStage = build(sn->children[0]);
     std::vector<sbe::value::SlotId> orderBy;
+    std::vector<sbe::value::SortDirection> direction;
+    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projectMap;
+
     for (const auto& part : sortPattern) {
         uassert(ErrorCodes::InternalErrorNotSupported,
                 "Sorting by expression not supported",
@@ -898,25 +900,33 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
         // slot holding the sort key
         auto sortFieldVar{_slotIdGenerator->generate()};
         orderBy.push_back(sortFieldVar);
+        direction.push_back(part.isAscending ? sbe::value::SortDirection::Ascending
+                                             : sbe::value::SortDirection::Descending);
 
         // Generate projection to get the value of the soft key. Ideally, this should be
         // tracked by a 'reference tracker' at higher level.
         auto fieldName = part.fieldPath->getFieldName(0);
         auto fieldNameSV = std::string_view{fieldName.rawData(), fieldName.size()};
-        inputStage = sbe::makeProjectStage(
-            std::move(inputStage),
+        projectMap.emplace(
             sortFieldVar,
             sbe::makeE<sbe::EFunction>("getField"sv,
                                        sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
                                                    sbe::makeE<sbe::EConstant>(fieldNameSV))));
     }
 
+    inputStage = sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projectMap));
+
     std::vector<sbe::value::SlotId> values;
     values.push_back(*_resultSlot);
     if (_recordIdSlot) {
         values.push_back(*_recordIdSlot);
     }
-    return sbe::makeS<sbe::SortStage>(std::move(inputStage), orderBy, values);
+    return sbe::makeS<sbe::SortStage>(std::move(inputStage),
+                                      orderBy,
+                                      direction,
+                                      values,
+                                      sn->limit ? sn->limit
+                                                : std::numeric_limits<std::size_t>::max());
 }
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSortKeyGeneraror(
