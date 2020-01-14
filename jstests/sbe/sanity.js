@@ -61,46 +61,55 @@ function runQuery(
     }
 }
 
-[{hint: null, indexes: []}, {hint: {a: 1}, indexes: [{a: 1}]}].forEach((entry) => {
-    assert.commandWorked(coll.dropIndexes());
-    const hint = entry.hint;
-    entry.indexes.forEach((index) => {
-        assert.commandWorked(coll.createIndex(index));
+[{hint: null, indexes: []}, {hint: {a: 1}, indexes: [{a: 1}]}, {hint: {z: 1}, indexes: [{z: 1}]}]
+    .forEach((entry) => {
+        assert.commandWorked(coll.dropIndexes());
+        const hint = entry.hint;
+        entry.indexes.forEach((index) => {
+            assert.commandWorked(coll.createIndex(index));
+        });
+
+        // Id hack.
+        runQuery({query: {_id: 2}});
+
+        // Empty filter.
+        runQuery({hint: hint});
+
+        // Point query.
+        runQuery({query: {a: 2}, hint: hint});
+
+        // Single interval queries.
+        runQuery({query: {a: {$gt: 1}}, hint: hint});
+        runQuery({query: {a: {$gte: 1}}, hint: hint});
+        runQuery({query: {a: {$lt: 1}}, hint: hint});
+        runQuery({query: {a: {$lte: 1}}, hint: hint});
+        runQuery({query: {a: {$gt: 1, $lt: 3}}, hint: hint});
+        runQuery({query: {a: {$gt: 1, $lte: 3}}, hint: hint});
+        runQuery({query: {a: {$gte: 1, $lt: 3}}, hint: hint});
+        runQuery({query: {a: {$gte: 1, $lte: 3}}, hint: hint});
+        runQuery({query: {a: 10, x: 1}, hint: hint});
+
+        // Sort queries.
+        // TODO: allow sort queries with all indexes when SBE can properly sort array fields.
+        if (!hint || hint == {a: 1}) {
+            runQuery({sort: {a: 1}, hint: hint});
+            runQuery({sort: {b: 1, a: 1}, hint: hint});
+            runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, hint: hint});
+            runQuery({query: {a: {$lte: 1}}, sort: {b: 1, a: 1}, hint: hint});
+        }
+
+        // Limit queries.
+        // TODO: Since we don't support top=k sort yet in SBE, we cannot use sort+limit in the
+        // queries to produce a stable result. So, we'll run the limit queries only when no
+        // indexes are available to rely on natural sorting order when reading documents.
+        if (!hint) {
+            runQuery({limit: 1, hint: hint});
+            runQuery({a: {$gt: 1}, limit: 1, hint: hint});
+            runQuery({a: 1, limit: 2, hint: hint});
+        }
+
+        // Path traversal in match expressions.
+        runQuery({query: {'z': 2}, hint: hint});
+        runQuery({query: {'x.y': 2}, hint: hint});
     });
-
-    // Id hack.
-    runQuery({query: {_id: 2}});
-
-    // Empty filter.
-    runQuery({hint: hint});
-
-    // Point query.
-    runQuery({query: {a: 2}, hint: hint});
-
-    // Single interval queries.
-    runQuery({query: {a: {$gt: 1}}, hint: hint});
-    runQuery({query: {a: {$gte: 1}}, hint: hint});
-    runQuery({query: {a: {$lt: 1}}, hint: hint});
-    runQuery({query: {a: {$lte: 1}}, hint: hint});
-    runQuery({query: {a: {$gt: 1, $lt: 3}}, hint: hint});
-    runQuery({query: {a: {$gt: 1, $lte: 3}}, hint: hint});
-    runQuery({query: {a: {$gte: 1, $lt: 3}}, hint: hint});
-    runQuery({query: {a: {$gte: 1, $lte: 3}}, hint: hint});
-    runQuery({query: {a: 10, x: 1}, hint: hint});
-
-    // Sort queries.
-    runQuery({sort: {a: 1}, hint: hint});
-    runQuery({sort: {b: 1, a: 1}, hint: hint});
-    runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, hint: hint});
-    runQuery({query: {a: {$lte: 1}}, sort: {b: 1, a: 1}, hint: hint});
-
-    // Limit queries.
-    runQuery({limit: 1, hint: hint});
-    runQuery({a: {$gt: 1}, limit: 1, hint: hint});
-    runQuery({a: 1, limit: 2, hint: hint});
-
-    // Path traversal in match expressions.
-    runQuery({query: {'z': 2}});
-    runQuery({query: {'x.y': 2}});
-});
 })();

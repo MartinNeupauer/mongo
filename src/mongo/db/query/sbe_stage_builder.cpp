@@ -36,6 +36,7 @@
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
 #include "mongo/db/exec/sbe/stages/limit.h"
 #include "mongo/db/exec/sbe/stages/loop_join.h"
@@ -780,9 +781,6 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                         "Only forward index scans are supported in SBE",
                         ixn->direction == 1);
                 uassert(ErrorCodes::InternalErrorNotSupported,
-                        "Index scans with dedup are not supported in SBE",
-                        !ixn->shouldDedup);
-                uassert(ErrorCodes::InternalErrorNotSupported,
                         "Index scans with key metadata are not supported in SBE",
                         !ixn->addKeyMetadata);
                 uassert(ErrorCodes::InternalErrorNotSupported,
@@ -801,7 +799,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                 // or exclusive boundaries), and produce a single field recordIdSlot that can be
                 // used to position into the collection.
                 _recordIdSlot = _slotIdGenerator->generate();
-                auto indexScan = sbe::makeS<sbe::IndexScanStage>(
+                auto stage = sbe::makeS<sbe::IndexScanStage>(
                     NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
                     ixn->index.identifier.catalogName,
                     boost::none,
@@ -810,12 +808,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
                     std::vector<sbe::value::SlotId>{},
                     lowKeySlot,
                     highKeySlot);
-                if (!lowKeySlot && !highKeySlot) {
-                    // No seek boundaries have been specified, perform a full index scan.
-                    return indexScan;
-                } else {
-                    invariant(lowKeySlot && highKeySlot);
-
+                if (lowKeySlot && highKeySlot) {
                     // Construct a constant table scan to deliver a single row with two fields
                     // 'lowKeySlot' and 'highKeySlot', representing seek boundaries, into the
                     // index scan.
@@ -830,13 +823,25 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
 
                     // Get the keys from the outer side (guaranteed to see exactly one row) and feed
                     // them to the inner side.
-                    return sbe::makeS<sbe::LoopJoinStage>(
+                    stage = sbe::makeS<sbe::LoopJoinStage>(
                         std::move(projectKeysStage),
-                        std::move(indexScan),
+                        std::move(stage),
                         std::vector<sbe::value::SlotId>{},
                         std::vector<sbe::value::SlotId>{*lowKeySlot, *highKeySlot},
                         nullptr);
+                } else {
+                    invariant(!lowKeySlot && !highKeySlot);
                 }
+
+                if (ixn->shouldDedup) {
+                    stage = sbe::makeS<sbe::HashAggStage>(
+                        std::move(stage),
+                        std::vector<sbe::value::SlotId>{*_recordIdSlot},
+                        std::unordered_map<sbe::value::SlotId,
+                                           std::unique_ptr<sbe::EExpression>>{});
+                }
+
+                return stage;
             }
             case STAGE_FETCH: {
                 auto fn = static_cast<const FetchNode*>(root);
