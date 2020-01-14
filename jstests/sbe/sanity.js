@@ -41,11 +41,13 @@ function runDbQuery({query, proj, sort, hint, limit, skip}) {
 
 function runQuery(
     {query = {}, proj = {}, sort = null, hint = null, limit = null, skip = null} = {}) {
-    db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": true});
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": true}));
     const actual =
         runDbQuery({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
 
-    db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": false});
+    assert.commandWorked(
+        db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": false}));
     const expected =
         runDbQuery({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
 
@@ -58,9 +60,11 @@ function runQuery(
 }
 
 [{hint: null, indexes: []}, {hint: {a: 1}, indexes: [{a: 1}]}].forEach((entry) => {
-    coll.dropIndexes();
+    assert.commandWorked(coll.dropIndexes());
     const hint = entry.hint;
-    entry.indexes.forEach((index) => {coll.createIndex(index);});
+    entry.indexes.forEach((index) => {
+        assert.commandWorked(coll.createIndex(index));
+    });
 
     // Id hack.
     runQuery({query: {_id: 2}});
