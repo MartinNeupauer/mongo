@@ -916,10 +916,46 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
 
     inputStage = sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projectMap));
 
+    // Generate traversals to pick the min/max element from arrays.
+    for (size_t idx = 0; idx < orderBy.size(); ++idx) {
+        auto resultVar{_slotIdGenerator->generate()};
+        auto innerVar{_slotIdGenerator->generate()};
+
+        auto innerBranch =
+            sbe::makeProjectStage(sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+                                  innerVar,
+                                  sbe::makeE<sbe::EVariable>(orderBy[idx]));
+
+        auto op = direction[idx] == sbe::value::SortDirection::Ascending
+            ? sbe::EPrimBinary::less
+            : sbe::EPrimBinary::greater;
+        auto minmax = sbe::makeE<sbe::EIf>(
+            sbe::makeE<sbe::EPrimBinary>(
+                op,
+                sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w,
+                                             sbe::makeE<sbe::EVariable>(innerVar),
+                                             sbe::makeE<sbe::EVariable>(resultVar)),
+                sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0)),
+            sbe::makeE<sbe::EVariable>(innerVar),
+            sbe::makeE<sbe::EVariable>(resultVar));
+
+        inputStage = sbe::makeS<sbe::TraverseStage>(std::move(inputStage),
+                                                    std::move(innerBranch),
+                                                    orderBy[idx],
+                                                    resultVar,
+                                                    innerVar,
+                                                    std::move(minmax),
+                                                    nullptr);
+        orderBy[idx] = resultVar;
+    }
+
     std::vector<sbe::value::SlotId> values;
     values.push_back(*_resultSlot);
     if (_recordIdSlot) {
-        values.push_back(*_recordIdSlot);
+        // Break ties with record id if awailable.
+        orderBy.push_back(*_recordIdSlot);
+        // This is arbitrary.
+        direction.push_back(sbe::value::SortDirection::Ascending);
     }
     return sbe::makeS<sbe::SortStage>(std::move(inputStage),
                                       orderBy,

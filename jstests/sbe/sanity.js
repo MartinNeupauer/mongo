@@ -90,18 +90,19 @@ function runQuery(
         runQuery({query: {a: 10, x: 1}, hint: hint});
 
         // Sort queries.
-        // TODO: allow sort queries with all indexes when SBE can properly sort array fields.
+        // TODO: These queries do not produce stable deterministic results. Notably,
+        // document not containing {a:...} form a tie set and there is not defined
+        // orders for ties. The mongo and SBE implementations diverge at this point.
         if (!hint || hint == {a: 1}) {
             runQuery({sort: {a: 1}, hint: hint});
             runQuery({sort: {b: 1, a: 1}, hint: hint});
-            runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, hint: hint});
-            runQuery({query: {a: {$lte: 1}}, sort: {b: 1, a: 1}, hint: hint});
         }
+        // These queries produce stable deterministic results (i.e. no ties).
+        runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, hint: hint});
+        runQuery({query: {a: {$lte: 1}}, sort: {b: 1, a: 1}, hint: hint});
 
         // Limit queries.
-        // TODO: Since we don't support top=k sort yet in SBE, we cannot use sort+limit in the
-        // queries to produce a stable result. So, we'll run the limit queries only when no
-        // indexes are available to rely on natural sorting order when reading documents.
+        // TODO: Same comment applies as previous TODO.
         if (!hint) {
             runQuery({limit: 1, hint: hint});
             runQuery({a: {$gt: 1}, limit: 1, hint: hint});
