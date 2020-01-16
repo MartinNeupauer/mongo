@@ -88,6 +88,9 @@ struct Instruction {
         greaterEq,
         eq,
 
+        // 3 way comparison (spaceship) with bson woCompare semantics.
+        cmp3w,
+
         getField,
 
         sum,
@@ -131,23 +134,26 @@ public:
     void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
     void appendAccessVal(value::SlotAccessor* accessor);
     void appendAdd();
-    void appendLess(bool owned = false) {
-        appendComparison(Instruction::less, owned);
+    void appendLess() {
+        appendSimpleInstruction(Instruction::less);
     }
-    void appendLessEq(bool owned = false) {
-        appendComparison(Instruction::lessEq, owned);
+    void appendLessEq() {
+        appendSimpleInstruction(Instruction::lessEq);
     }
-    void appendGreater(bool owned = false) {
-        appendComparison(Instruction::greater, owned);
+    void appendGreater() {
+        appendSimpleInstruction(Instruction::greater);
     }
-    void appendGreaterEq(bool owned = false) {
-        appendComparison(Instruction::greaterEq, owned);
+    void appendGreaterEq() {
+        appendSimpleInstruction(Instruction::greaterEq);
     }
-    void appendEq(bool owned = false) {
-        appendComparison(Instruction::eq, owned);
+    void appendEq() {
+        appendSimpleInstruction(Instruction::eq);
+    }
+    void appendCmp3w() {
+        appendSimpleInstruction(Instruction::cmp3w);
     }
     void appendGetField();
-    void appendSum(bool owned = false);
+    void appendSum();
     void appendExists();
     void appendIsObject();
     void appendFunction(Builtin f, uint8_t arity);
@@ -156,7 +162,7 @@ public:
     void appendJumpNothing(int jumpOffset);
 
 private:
-    void appendComparison(Instruction::Tags tag, bool owned);
+    void appendSimpleInstruction(Instruction::Tags tag);
 };
 
 class ByteCode {
@@ -181,6 +187,11 @@ class ByteCode {
                                                               value::Value lhsValue,
                                                               value::TypeTags rhsTag,
                                                               value::Value rhsValue);
+
+    std::pair<value::TypeTags, value::Value> compare3way(value::TypeTags lhsTag,
+                                                         value::Value lhsValue,
+                                                         value::TypeTags rhsTag,
+                                                         value::Value rhsValue);
 
     std::tuple<bool, value::TypeTags, value::Value> getField(value::TypeTags objTag,
                                                              value::Value objValue,

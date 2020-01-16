@@ -93,6 +93,19 @@ std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeT
         return {value::TypeTags::Nothing, 0};
     }
 }
+
+std::pair<value::TypeTags, value::Value> ByteCode::compare3way(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue) {
+    if (lhsTag == value::TypeTags::Nothing || rhsTag == value::TypeTags::Nothing) {
+        return {value::TypeTags::Nothing, 0};
+    }
+
+    return value::compareValue(lhsTag, lhsValue, rhsTag, rhsValue);
+}
+
+
 }  // namespace vm
 }  // namespace sbe
 }  // namespace mongo

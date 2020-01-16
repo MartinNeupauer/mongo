@@ -166,6 +166,8 @@ public:
         eq,
         neq,
 
+        cmp3w,
+
         logicAnd,
         logicOr,
     };

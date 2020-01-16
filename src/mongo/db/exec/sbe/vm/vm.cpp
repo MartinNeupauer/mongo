@@ -64,17 +64,11 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
 }
 
 void CodeFragment::appendAdd() {
+    appendSimpleInstruction(Instruction::add);
+}
+void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
     i.owned = false;  // this is not used
-    i.tag = Instruction::add;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
-}
-void CodeFragment::appendComparison(Instruction::Tags tag, bool owned) {
-    Instruction i;
-    i.owned = owned;
     i.tag = tag;
 
     auto offset = allocateSpace(sizeof(Instruction));
@@ -82,40 +76,16 @@ void CodeFragment::appendComparison(Instruction::Tags tag, bool owned) {
     offset += value::writeToMemory(offset, i);
 }
 void CodeFragment::appendGetField() {
-    Instruction i;
-    i.owned = false;  // this is not used
-    i.tag = Instruction::getField;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
+    appendSimpleInstruction(Instruction::getField);
 }
-void CodeFragment::appendSum(bool owned) {
-    Instruction i;
-    i.owned = owned;
-    i.tag = Instruction::sum;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
+void CodeFragment::appendSum() {
+    appendSimpleInstruction(Instruction::sum);
 }
 void CodeFragment::appendExists() {
-    Instruction i;
-    i.owned = false;
-    i.tag = Instruction::exists;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
+    appendSimpleInstruction(Instruction::exists);
 }
 void CodeFragment::appendIsObject() {
-    Instruction i;
-    i.owned = false;
-    i.tag = Instruction::isObject;
-
-    auto offset = allocateSpace(sizeof(Instruction));
-
-    offset += value::writeToMemory(offset, i);
+    appendSimpleInstruction(Instruction::isObject);
 }
 void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     Instruction i;
@@ -554,6 +524,23 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
                     auto [tag, val] = genericCompareEq(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(i.owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::cmp3w: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = compare3way(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(i.owned, tag, val);
 

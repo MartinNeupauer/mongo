@@ -130,6 +130,11 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code->append(std::move(rhs));
             code->appendEq();
             break;
+        case EPrimBinary::cmp3w:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendCmp3w();
+            break;
         case EPrimBinary::logicAnd: {
             auto codeFalseBranch = std::make_unique<vm::CodeFragment>();
             codeFalseBranch->appendConstVal(value::TypeTags::Boolean, false);
@@ -198,6 +203,9 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
             break;
         case EPrimBinary::eq:
             ret.emplace_back("==");
+            break;
+        case EPrimBinary::cmp3w:
+            ret.emplace_back("<=>");
             break;
         case EPrimBinary::logicAnd:
             ret.emplace_back("&&");
