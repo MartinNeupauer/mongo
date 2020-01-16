@@ -35,6 +35,7 @@
 
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/exchange.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
@@ -752,17 +753,36 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildCollScan(
 
     _resultSlot = _slotIdGenerator->generate();
     _recordIdSlot = _slotIdGenerator->generate();
-    auto stage = sbe::makeS<sbe::ScanStage>(
-        NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-        _resultSlot,
-        _recordIdSlot,
-        std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
-        boost::none);
+    size_t localDop = internalQueryDefaultDOP.load();
+    std::unique_ptr<sbe::PlanStage> stage;
+    if (localDop > 1) {
+        stage = sbe::makeS<sbe::ParallelScanStage>(
+            NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+            _resultSlot,
+            _recordIdSlot,
+            std::vector<std::string>{},
+            std::vector<sbe::value::SlotId>{});
+    } else {
+        stage = sbe::makeS<sbe::ScanStage>(
+            NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
+            _resultSlot,
+            _recordIdSlot,
+            std::vector<std::string>{},
+            std::vector<sbe::value::SlotId>{},
+            boost::none);
+    }
 
     if (csn->filter) {
         stage = generateFilter(
             csn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+    }
+
+    if (localDop > 1) {
+        std::vector<sbe::value::SlotId> fields;
+        fields.push_back(*_resultSlot);
+        fields.push_back(*_recordIdSlot);
+        stage = sbe::makeS<sbe::ExchangeConsumer>(
+            std::move(stage), localDop, fields, sbe::ExchangePolicy::roundrobin, nullptr, nullptr);
     }
 
     return stage;
