@@ -116,8 +116,11 @@ public:
      * Returns whether a constant value for 'id' has been defined using setConstantValue().
      */
     bool hasConstantValue(Variables::Id id) const {
+        if (auto it = _valueList.find(id); it != _valueList.end() && it->second.isConstant) {
+            return true;
+        }
 
-        return _valueList.size() > static_cast<size_t>(id) && _valueList[id].isConstant;
+        return false;
     }
 
     /**
@@ -148,8 +151,11 @@ public:
 private:
     struct ValueAndState {
         ValueAndState() = default;
-
+        ValueAndState(const ValueAndState&) = default;
+        ValueAndState(ValueAndState&&) = default;
         ValueAndState(Value val, bool isConst) : value(std::move(val)), isConstant(isConst) {}
+
+        ValueAndState& operator=(const ValueAndState&) = default;
 
         Value value;
         bool isConstant = false;
@@ -167,7 +173,7 @@ private:
     }
 
     IdGenerator _idGenerator;
-    std::vector<ValueAndState> _valueList;
+    stdx::unordered_map<Id, ValueAndState> _valueList;
     stdx::unordered_map<Id, Value> _runtimeConstants;
 };
 

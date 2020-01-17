@@ -104,16 +104,11 @@ void Variables::uassertValidNameForUserRead(StringData varName) {
 void Variables::setValue(Id id, const Value& value, bool isConstant) {
     uassert(17199, "can't use Variables::setValue to set a reserved builtin variable", id >= 0);
 
-    const auto idAsSizeT = static_cast<size_t>(id);
-    if (idAsSizeT >= _valueList.size()) {
-        _valueList.resize(idAsSizeT + 1);
-    } else {
-        // If a value has already been set for 'id', and that value was marked as constant, then it
-        // is illegal to modify.
-        invariant(!_valueList[idAsSizeT].isConstant);
-    }
+    // If a value has already been set for 'id', and that value was marked as constant, then it
+    // is illegal to modify.
+    invariant(!hasConstantValue(id));
 
-    _valueList[idAsSizeT] = ValueAndState(value, isConstant);
+    _valueList[id] = ValueAndState(value, isConstant);
 }
 
 void Variables::setValue(Variables::Id id, const Value& value) {
@@ -129,10 +124,11 @@ void Variables::setConstantValue(Variables::Id id, const Value& value) {
 Value Variables::getUserDefinedValue(Variables::Id id) const {
     invariant(isUserDefinedVariable(id));
 
+    auto it = _valueList.find(id);
     uassert(40434,
             str::stream() << "Requesting Variables::getValue with an out of range id: " << id,
-            static_cast<size_t>(id) < _valueList.size());
-    return _valueList[id].value;
+            it != _valueList.end());
+    return it->second.value;
 }
 
 Value Variables::getValue(Id id, const Document& root) const {
