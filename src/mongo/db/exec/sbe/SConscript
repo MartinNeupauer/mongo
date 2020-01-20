@@ -11,7 +11,7 @@ env.Library(
         'stages/filter.cpp',
         'stages/hash_agg.cpp',
         'stages/hash_join.cpp',
-        'stages/limit.cpp',
+        'stages/limit_skip.cpp',
         'stages/loop_join.cpp',
         'stages/makeobj.cpp',
         'stages/project.cpp',

@@ -27,43 +27,55 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/limit_skip.h"
 
 namespace mongo::sbe {
-LimitStage::LimitStage(std::unique_ptr<PlanStage> input, int limit) : _limit(limit), _current(0) {
+LimitSkipStage::LimitSkipStage(std::unique_ptr<PlanStage> input,
+                               boost::optional<long long> limit,
+                               boost::optional<long long> skip)
+    : _limit(limit), _skip(skip), _current(0), _isEOF(false) {
+    invariant(_limit || _skip);
     _children.emplace_back(std::move(input));
 }
 
-std::unique_ptr<PlanStage> LimitStage::clone() {
-    return std::make_unique<LimitStage>(_children[0]->clone(), _limit);
+std::unique_ptr<PlanStage> LimitSkipStage::clone() {
+    return std::make_unique<LimitSkipStage>(_children[0]->clone(), _limit, _skip);
 }
 
-void LimitStage::prepare(CompileCtx& ctx) {
+void LimitSkipStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 }
 
-value::SlotAccessor* LimitStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+value::SlotAccessor* LimitSkipStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     return _children[0]->getAccessor(ctx, slot);
 }
-void LimitStage::open(bool reOpen) {
-    _current = 0;
+void LimitSkipStage::open(bool reOpen) {
+    _isEOF = false;
     _children[0]->open(reOpen);
+
+    if (_skip) {
+        for (_current = 0; _current < *_skip && !_isEOF; _current++) {
+            _isEOF = _children[0]->getNext() == PlanState::IS_EOF;
+        }
+    }
+    _current = 0;
 }
-PlanState LimitStage::getNext() {
-    if (_current++ == _limit) {
+PlanState LimitSkipStage::getNext() {
+    if (_isEOF || (_limit && _current++ == *_limit)) {
         return PlanState::IS_EOF;
     }
 
     return _children[0]->getNext();
 }
-void LimitStage::close() {
+void LimitSkipStage::close() {
     _children[0]->close();
 }
-std::vector<DebugPrinter::Block> LimitStage::debugPrint() {
+std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "limit");
 
-    ret.emplace_back(std::to_string(_limit));
+    DebugPrinter::addKeyword(ret, "limitskip");
+    ret.emplace_back(_limit ? std::to_string(*_limit) : "none");
+    ret.emplace_back(_skip ? std::to_string(*_skip) : "none");
     DebugPrinter::addNewLine(ret);
 
     DebugPrinter::addBlocks(ret, _children[0]->debugPrint());

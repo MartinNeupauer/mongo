@@ -129,6 +129,7 @@ class Parser {
     void walkHashJoin(AstQuery& ast);
     void walkNLJoin(AstQuery& ast);
     void walkLimit(AstQuery& ast);
+    void walkSkip(AstQuery& ast);
     void walkCoScan(AstQuery& ast);
     void walkTraverse(AstQuery& ast);
     void walkExchange(AstQuery& ast);

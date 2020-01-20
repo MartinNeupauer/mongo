@@ -34,8 +34,6 @@
 #include "mongo/db/cursor_manager.h"
 #include "mongo/db/db_raii.h"
 #include "mongo/db/exec/sbe/parser/parser.h"
-#include "mongo/db/exec/sbe/stages/limit.h"
-#include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/query/cursor_request.h"
 #include "mongo/db/query/cursor_response.h"
