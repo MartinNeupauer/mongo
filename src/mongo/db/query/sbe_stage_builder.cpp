@@ -39,8 +39,9 @@
 #include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
-#include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/limit_skip.h"
 #include "mongo/db/exec/sbe/stages/loop_join.h"
+#include "mongo/db/exec/sbe/stages/makeobj.h"
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
@@ -221,19 +222,20 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
         auto [tag, val] = sbe::value::copyValue(tagView, valView);
 
         innerBranch = sbe::makeProjectStage(
-            sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
             elemPredicateVar,
             sbe::makeE<sbe::EPrimBinary>(
                 op, sbe::makeE<sbe::EVariable>(fieldVar), sbe::makeE<sbe::EConstant>(tag, val)));
     } else {
         // Generate nested traversal.
         innerBranch = sbe::makeProjectStage(
-            generateTraverseHelper(context,
-                                   sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
-                                   fieldVar,
-                                   op,
-                                   expr,
-                                   level + 1),
+            generateTraverseHelper(
+                context,
+                sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+                fieldVar,
+                op,
+                expr,
+                level + 1),
             elemPredicateVar,
             sbe::makeE<sbe::EVariable>(traversePredicateVar));
     }
@@ -659,6 +661,12 @@ std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
                                                std::unique_ptr<sbe::PlanStage> stage,
                                                sbe::value::SlotIdGenerator* slotIdGenerator,
                                                sbe::value::SlotId inputVar) {
+    // The planner adds an $and expression without the operands if the query was empty. We can bail
+    // out early without generating the filter plan stage if this is the case.
+    if (root->matchType() == MatchExpression::AND && root->numChildren() == 0) {
+        return stage;
+    }
+
     MatchExpressionVisitorContext context{slotIdGenerator, std::move(stage), inputVar};
     MatchExpressionPreVisitor preVisitor{&context};
     MatchExpressionInVisitor inVisitor{&context};
@@ -828,7 +836,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
         // 'lowKeySlot' and 'highKeySlot', representing seek boundaries, into the
         // index scan.
         auto projectKeysStage = sbe::makeProjectStage(
-            sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
             *lowKeySlot,
             sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
                                        sbe::value::bitcastFrom(lowKey.release())),
@@ -895,8 +903,22 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildLimit(const QuerySolutionNode* root) {
     const auto ln = static_cast<const LimitNode*>(root);
+    // If we have both limit and skip stages and the skip stage is beneath the limit, then we can
+    // combine these two stages into one. So, save the _limit value and let the skip stage builder
+    // handle it.
+    if (ln->children[0]->getType() == StageType::STAGE_SKIP) {
+        _limit = ln->limit;
+    }
     auto inputStage = build(ln->children[0]);
-    return std::make_unique<sbe::LimitStage>(std::move(inputStage), ln->limit);
+    return _limit
+        ? std::move(inputStage)
+        : std::make_unique<sbe::LimitSkipStage>(std::move(inputStage), ln->limit, boost::none);
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSkip(const QuerySolutionNode* root) {
+    const auto sn = static_cast<const SkipNode*>(root);
+    auto inputStage = build(sn->children[0]);
+    return std::make_unique<sbe::LimitSkipStage>(std::move(inputStage), _limit, sn->skip);
 }
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolutionNode* root) {
@@ -941,10 +963,10 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
         auto resultVar{_slotIdGenerator->generate()};
         auto innerVar{_slotIdGenerator->generate()};
 
-        auto innerBranch =
-            sbe::makeProjectStage(sbe::makeS<sbe::LimitStage>(sbe::makeS<sbe::CoScanStage>(), 1),
-                                  innerVar,
-                                  sbe::makeE<sbe::EVariable>(orderBy[idx]));
+        auto innerBranch = sbe::makeProjectStage(
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+            innerVar,
+            sbe::makeE<sbe::EVariable>(orderBy[idx]));
 
         auto op = direction[idx] == sbe::value::SortDirection::Ascending
             ? sbe::EPrimBinary::less
@@ -992,6 +1014,34 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSortKeyGeneraror(
     return build(kn->children[0]);
 }
 
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionSimple(
+    const QuerySolutionNode* root) {
+    using namespace std::literals;
+
+    auto pn = static_cast<const ProjectionNodeSimple*>(root);
+    auto inputStage = build(pn->children[0]);
+    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projections;
+    std::vector<sbe::value::SlotId> fieldSlots;
+
+    for (const auto& field : pn->proj.getRequiredFields()) {
+        fieldSlots.push_back(_slotIdGenerator->generate());
+        projections.emplace(
+            fieldSlots.back(),
+            sbe::makeE<sbe::EFunction>("getField"sv,
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                                   sbe::makeE<sbe::EConstant>(std::string_view{
+                                                       field.c_str(), field.size()}))));
+    }
+
+    return sbe::makeS<sbe::MakeObjStage>(
+        sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projections)),
+        *_resultSlot,
+        boost::none,
+        std::vector<std::string>{},
+        pn->proj.getRequiredFields(),
+        fieldSlots);
+}
+
 // Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
 // could not be constructed.
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
@@ -1003,8 +1053,10 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
             {STAGE_IXSCAN, std::mem_fn(&SlotBasedStageBuilder::buildIndexScan)},
             {STAGE_FETCH, std::mem_fn(&SlotBasedStageBuilder::buildFetch)},
             {STAGE_LIMIT, std::mem_fn(&SlotBasedStageBuilder::buildLimit)},
+            {STAGE_SKIP, std::mem_fn(&SlotBasedStageBuilder::buildSkip)},
             {STAGE_SORT, std::mem_fn(&SlotBasedStageBuilder::buildSort)},
-            {STAGE_SORT_KEY_GENERATOR, std::mem_fn(&SlotBasedStageBuilder::buildSortKeyGeneraror)}};
+            {STAGE_SORT_KEY_GENERATOR, std::mem_fn(&SlotBasedStageBuilder::buildSortKeyGeneraror)},
+            {STAGE_PROJECTION_SIMPLE, std::mem_fn(&SlotBasedStageBuilder::buildProjectionSimple)}};
 
     uassert(ErrorCodes::InternalErrorNotSupported,
             str::stream() << "Can't build exec tree for node: " << root->toString(),

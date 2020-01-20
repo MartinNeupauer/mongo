@@ -27,31 +27,34 @@ assert.commandWorked(coll.insert([
     {_id: 18, a: 10, x: 10},
 ]));
 
-function runDbQuery({query, proj, sort, hint, limit, skip}) {
-    let dbQuery = coll.find(query, proj);
-    if (hint) {
-        dbQuery = dbQuery.hint(hint);
-    }
-    if (sort) {
-        dbQuery = dbQuery.sort(sort);
-    }
-    if (limit) {
-        dbQuery = dbQuery.limit(limit);
-    }
-    return dbQuery.toArray();
-}
-
 function runQuery(
     {query = {}, proj = {}, sort = null, hint = null, limit = null, skip = null} = {}) {
+    const run = function() {
+        let it = coll.find(query, proj);
+        if (hint) {
+            it = it.hint(hint);
+        }
+        if (sort) {
+            it = it.sort(sort);
+        }
+        if (limit) {
+            it = it.limit(limit);
+        }
+        if (skip) {
+            it = it.skip(skip);
+        }
+        return it.toArray();
+    };
+
     assert.commandWorked(
         db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": true}));
     const actual =
-        runDbQuery({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
+        run({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
 
     assert.commandWorked(
         db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": false}));
     const expected =
-        runDbQuery({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
+        run({query: query, proj: proj, sort: sort, limit: limit, skip: skip, hint: hint});
 
     if (!sort) {
         assert(arrayEq(actual, expected), `actual=${tojson(actual)}, expected=${tojson(expected)}`);
@@ -100,17 +103,39 @@ function runQuery(
         // These queries produce stable deterministic results (i.e. no ties).
         runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, hint: hint});
         runQuery({query: {a: {$lte: 1}}, sort: {b: 1, a: 1}, hint: hint});
+        runQuery({query: {a: {$lt: 3}}, sort: {a: 1}, limit: 1, hint: hint});
+        runQuery({query: {a: {$lte: 3}}, sort: {b: 1, a: 1}, limit: 1, hint: hint});
 
-        // Limit queries.
+        // Limit and skip queries.
         // TODO: Same comment applies as previous TODO.
         if (!hint) {
             runQuery({limit: 1, hint: hint});
             runQuery({a: {$gt: 1}, limit: 1, hint: hint});
             runQuery({a: 1, limit: 2, hint: hint});
+
+            runQuery({skip: 1, hint: hint});
+            runQuery({a: {$gt: 1}, skip: 1, hint: hint});
+            runQuery({a: 1, skip: 2, hint: hint});
+
+            runQuery({skip: 1, limit: 2, hint: hint});
+            runQuery({a: {$gt: 1}, skip: 2, limit: 1, hint: hint});
+            runQuery({a: 1, skip: 1, limit: 1, hint: hint});
         }
 
         // Path traversal in match expressions.
         runQuery({query: {'z': 2}, hint: hint});
         runQuery({query: {'x.y': 2}, hint: hint});
+
+        // Simple projections.
+        // TODO: covered projections are not supported yet.
+        if (!hint) {
+            runQuery({proj: {_id: 1}, hint: hint});
+            runQuery({proj: {a: 1}, hint: hint});
+            runQuery({proj: {z: 1}, hint: hint});
+            runQuery({proj: {b: 1, a: 1}, hint: hint});
+            runQuery({proj: {a: 1, _id: 0}, hint: hint});
+            runQuery({query: {a: {$gt: 1}}, proj: {a: 1}, hint: hint});
+            runQuery({proj: {a: 1, nonexistent: 1}, hint: hint});
+        }
     });
 })();

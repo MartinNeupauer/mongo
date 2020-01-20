@@ -33,12 +33,16 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 
 namespace mongo::sbe {
-class LimitStage final : public PlanStage {
-    const int _limit;
-    int _current;
+class LimitSkipStage final : public PlanStage {
+    const boost::optional<long long> _limit;
+    const boost::optional<long long> _skip;
+    long long _current;
+    bool _isEOF;
 
 public:
-    LimitStage(std::unique_ptr<PlanStage> input, int limit);
+    LimitSkipStage(std::unique_ptr<PlanStage> input,
+                   boost::optional<long long> limit,
+                   boost::optional<long long> skip);
 
     std::unique_ptr<PlanStage> clone() final;
 

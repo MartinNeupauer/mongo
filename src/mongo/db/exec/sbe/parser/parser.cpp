@@ -35,7 +35,7 @@
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/hash_join.h"
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
-#include "mongo/db/exec/sbe/stages/limit.h"
+#include "mongo/db/exec/sbe/stages/limit_skip.h"
 #include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/makeobj.h"
 #include "mongo/db/exec/sbe/stages/project.h"
@@ -58,7 +58,7 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -105,6 +105,7 @@ static constexpr auto syntax = R"(
                                 'right' OPERATOR # inner side
 
                 LIMIT <- 'limit' NUMBER OPERATOR
+                SKIP <- 'skip' NUMBER NUMBER? OPERATOR
                 COSCAN <- 'coscan'
                 TRAVERSE <- 'traverse' IDENT # output of traverse
                                        IDENT # output of traverse as seen inside the 'in' branch
@@ -671,7 +672,21 @@ void Parser::walkNLJoin(AstQuery& ast) {
 void Parser::walkLimit(AstQuery& ast) {
     walkChildren(ast);
 
-    ast.stage = makeS<LimitStage>(std::move(ast.nodes[1]->stage), std::stoi(ast.nodes[0]->token));
+    ast.stage = makeS<LimitSkipStage>(
+        std::move(ast.nodes[1]->stage), std::stoi(ast.nodes[0]->token), boost::none);
+}
+
+void Parser::walkSkip(AstQuery& ast) {
+    walkChildren(ast);
+
+    if (ast.nodes.size() == 3) {
+        ast.stage = makeS<LimitSkipStage>(std::move(ast.nodes[2]->stage),
+                                          std::stoi(ast.nodes[1]->token),
+                                          std::stoi(ast.nodes[0]->token));
+    } else {
+        ast.stage = makeS<LimitSkipStage>(
+            std::move(ast.nodes[1]->stage), boost::none, std::stoi(ast.nodes[0]->token));
+    }
 }
 
 void Parser::walkCoScan(AstQuery& ast) {
@@ -780,6 +795,9 @@ void Parser::walk(AstQuery& ast) {
             break;
         case "LIMIT"_:
             walkLimit(ast);
+            break;
+        case "SKIP"_:
+            walkSkip(ast);
             break;
         case "COSCAN"_:
             walkCoScan(ast);

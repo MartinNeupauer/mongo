@@ -48,12 +48,15 @@ private:
     std::unique_ptr<sbe::PlanStage> buildIndexScan(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildFetch(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildLimit(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildSkip(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildSort(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
 
     std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
         sbe::value::makeDefaultSlotIdGenerator()};
     boost::optional<sbe::value::SlotId> _recordIdSlot;
     boost::optional<sbe::value::SlotId> _resultSlot;
+    boost::optional<long long> _limit;
 };
 }  // namespace mongo::stage_builder
