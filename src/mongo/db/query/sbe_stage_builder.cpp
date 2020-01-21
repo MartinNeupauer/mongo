@@ -96,7 +96,7 @@ struct MatchExpressionVisitorContext {
     std::unique_ptr<sbe::PlanStage> done() {
         if (!predicateVars.empty()) {
             invariant(predicateVars.size() == 1);
-            inputStage = sbe::makeS<sbe::FilterStage>(
+            inputStage = sbe::makeS<sbe::FilterStage<false>>(
                 std::move(inputStage), sbe::makeE<sbe::EVariable>(predicateVars.top()));
             predicateVars.pop();
         }
@@ -272,7 +272,7 @@ void generateTraverse(MatchExpressionVisitorContext* context,
     if (!context->nestedLogicalExprs.empty()) {
         if (context->nestedLogicalExprs.top().second > 1 &&
             context->nestedLogicalExprs.top().first->matchType() == MatchExpression::AND) {
-            context->inputStage = sbe::makeS<sbe::FilterStage>(
+            context->inputStage = sbe::makeS<sbe::FilterStage<false>>(
                 std::move(context->inputStage),
                 sbe::makeE<sbe::EVariable>(context->predicateVars.top()));
             context->predicateVars.pop();
@@ -305,7 +305,7 @@ void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpr
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
     } else {
         context->inputStage =
-            sbe::makeS<sbe::FilterStage>(std::move(context->inputStage), std::move(filter));
+            sbe::makeS<sbe::FilterStage<false>>(std::move(context->inputStage), std::move(filter));
     }
 }
 
@@ -332,7 +332,7 @@ void generateLogicalAnd(MatchExpressionVisitorContext* context, const AndMatchEx
     if (context->nestedLogicalExprs.empty() ||
         context->nestedLogicalExprs.top().first->matchType() == MatchExpression::AND) {
         context->inputStage =
-            sbe::makeS<sbe::FilterStage>(std::move(context->inputStage), std::move(filter));
+            sbe::makeS<sbe::FilterStage<false>>(std::move(context->inputStage), std::move(filter));
     } else {
         context->predicateVars.push(context->slotIdGenerartor->generate());
         context->inputStage = sbe::makeProjectStage(

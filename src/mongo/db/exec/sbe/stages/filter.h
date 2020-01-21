@@ -34,11 +34,14 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 
 namespace mongo::sbe {
+template <bool IsConst>
 class FilterStage final : public PlanStage {
     const std::unique_ptr<EExpression> _filter;
     std::unique_ptr<vm::CodeFragment> _filterCode;
 
     vm::ByteCode _bytecode;
+
+    bool _childOpened{false};
 
 public:
     FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter);
