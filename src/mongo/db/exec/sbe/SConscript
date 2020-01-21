@@ -17,6 +17,7 @@ env.Library(
         'stages/project.cpp',
         'stages/sort.cpp',
         'stages/traverse.cpp',
+        'stages/union.cpp',
         'stages/unwind.cpp',
         'util/debug_print.cpp',
         'values/bson.cpp',
