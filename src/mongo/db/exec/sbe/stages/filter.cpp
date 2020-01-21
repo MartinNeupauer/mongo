@@ -30,27 +30,57 @@
 #include "mongo/db/exec/sbe/stages/filter.h"
 
 namespace mongo::sbe {
-FilterStage::FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
+
+template class FilterStage<true>;
+template class FilterStage<false>;
+
+template <bool IsConst>
+FilterStage<IsConst>::FilterStage(std::unique_ptr<PlanStage> input,
+                                  std::unique_ptr<EExpression> filter)
     : _filter(std::move(filter)) {
     _children.emplace_back(std::move(input));
 }
-std::unique_ptr<PlanStage> FilterStage::clone() {
+template <bool IsConst>
+std::unique_ptr<PlanStage> FilterStage<IsConst>::clone() {
     return std::make_unique<FilterStage>(_children[0]->clone(), _filter->clone());
 }
-void FilterStage::prepare(CompileCtx& ctx) {
+template <bool IsConst>
+void FilterStage<IsConst>::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
     // compile filter
     ctx.root = this;
     _filterCode = _filter->compile(ctx);
 }
-value::SlotAccessor* FilterStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
+template <bool IsConst>
+value::SlotAccessor* FilterStage<IsConst>::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     return _children[0]->getAccessor(ctx, slot);
 }
-void FilterStage::open(bool reOpen) {
+template <bool IsConst>
+void FilterStage<IsConst>::open(bool reOpen) {
+    if constexpr (IsConst) {
+        // run the filter expressions here
+        auto [owned, tag, val] = _bytecode.run(_filterCode.get());
+        auto pass = (tag == value::TypeTags::Boolean) && (val != 0);
+        if (!pass) {
+            close();
+            return;
+        }
+    }
     _children[0]->open(reOpen);
+    _childOpened = true;
 }
-PlanState FilterStage::getNext() {
+template <bool IsConst>
+PlanState FilterStage<IsConst>::getNext() {
+    // The constant filter evaluates the predicate in the open method.
+    if constexpr (IsConst) {
+        if (!_childOpened) {
+            return PlanState::IS_EOF;
+        } else {
+            return _children[0]->getNext();
+        }
+    }
+
     auto state = PlanState::IS_EOF;
     bool pass = false;
 
@@ -66,12 +96,23 @@ PlanState FilterStage::getNext() {
 
     return state;
 }
-void FilterStage::close() {
-    _children[0]->close();
+template <bool IsConst>
+void FilterStage<IsConst>::close() {
+    if (_childOpened) {
+        _children[0]->close();
+
+        _childOpened = false;
+    }
 }
-std::vector<DebugPrinter::Block> FilterStage::debugPrint() {
+template <bool IsConst>
+std::vector<DebugPrinter::Block> FilterStage<IsConst>::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "filter");
+    if constexpr (IsConst) {
+        DebugPrinter::addKeyword(ret, "cfilter");
+
+    } else {
+        DebugPrinter::addKeyword(ret, "filter");
+    }
 
     ret.emplace_back("{`");
     DebugPrinter::addBlocks(ret, _filter->debugPrint());

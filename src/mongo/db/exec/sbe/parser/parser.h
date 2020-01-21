@@ -123,6 +123,7 @@ class Parser {
     void walkIndexSeek(AstQuery& ast);
     void walkProject(AstQuery& ast);
     void walkFilter(AstQuery& ast);
+    void walkCFilter(AstQuery& ast);
     void walkSort(AstQuery& ast);
     void walkUnion(AstQuery& ast);
     void walkUnwind(AstQuery& ast);

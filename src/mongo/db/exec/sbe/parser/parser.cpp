@@ -59,7 +59,7 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / CFILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -93,6 +93,7 @@ static constexpr auto syntax = R"(
 
                 PROJECT <- 'project' PROJECT_LIST OPERATOR
                 FILTER <- 'filter' '{' EXPR '}' OPERATOR
+                CFILTER <- 'cfilter' '{' EXPR '}' OPERATOR
                 MKOBJ <- 'mkobj' IDENT (IDENT IDENT_LIST)? IDENT_LIST_WITH_RENAMES OPERATOR
                 GROUP <- 'group' IDENT_LIST PROJECT_LIST OPERATOR
                 HJOIN <- 'hj' LEFT RIGHT
@@ -579,7 +580,15 @@ void Parser::walkProject(AstQuery& ast) {
 void Parser::walkFilter(AstQuery& ast) {
     walkChildren(ast);
 
-    ast.stage = makeS<FilterStage>(std::move(ast.nodes[1]->stage), std::move(ast.nodes[0]->expr));
+    ast.stage =
+        makeS<FilterStage<false>>(std::move(ast.nodes[1]->stage), std::move(ast.nodes[0]->expr));
+}
+
+void Parser::walkCFilter(AstQuery& ast) {
+    walkChildren(ast);
+
+    ast.stage =
+        makeS<FilterStage<true>>(std::move(ast.nodes[1]->stage), std::move(ast.nodes[0]->expr));
 }
 
 void Parser::walkSort(AstQuery& ast) {
@@ -808,6 +817,9 @@ void Parser::walk(AstQuery& ast) {
             break;
         case "FILTER"_:
             walkFilter(ast);
+            break;
+        case "CFILTER"_:
+            walkCFilter(ast);
             break;
         case "SORT"_:
             walkSort(ast);
