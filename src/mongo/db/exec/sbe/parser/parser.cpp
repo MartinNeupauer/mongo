@@ -42,6 +42,7 @@
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/exec/sbe/stages/union.h"
 #include "mongo/db/exec/sbe/stages/unwind.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
@@ -58,7 +59,7 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -117,6 +118,10 @@ static constexpr auto syntax = R"(
                 EXCHANGE <- 'exchange' IDENT_LIST NUMBER IDENT OPERATOR
                 SORT <- 'sort' IDENT_LIST IDENT_LIST OPERATOR
                 UNWIND <- 'unwind' IDENT IDENT IDENT OPERATOR
+                UNION <- 'union' IDENT_LIST UNION_BRANCH_LIST
+
+                UNION_BRANCH_LIST <- '[' (UNION_BRANCH (',' UNION_BRANCH)* )?']'
+                UNION_BRANCH <- IDENT_LIST OPERATOR
 
                 PROJECT_LIST <- '[' (ASSIGN (',' ASSIGN)* )?']'
                 ASSIGN <- IDENT '=' EXPR
@@ -591,6 +596,35 @@ void Parser::walkSort(AstQuery& ast) {
                                  std::numeric_limits<std::size_t>::max());
 }
 
+void Parser::walkUnion(AstQuery& ast) {
+    walkChildren(ast);
+
+    std::vector<std::unique_ptr<PlanStage>> inputStages;
+    std::vector<std::vector<value::SlotId>> inputVals;
+    std::vector<value::SlotId> outputVals{lookupSlots(ast.nodes[0]->identifiers)};
+
+    for (size_t idx = 0; idx < ast.nodes[1]->nodes.size(); idx++) {
+        inputVals.push_back(lookupSlots(ast.nodes[1]->nodes[idx]->identifiers));
+        inputStages.push_back(std::move(ast.nodes[1]->nodes[idx]->stage));
+    }
+
+    uassert(ErrorCodes::BadValue,
+            "Union output values and input values mismatch",
+            std::all_of(
+                inputVals.begin(), inputVals.end(), [size = outputVals.size()](const auto& slots) {
+                    return slots.size() == size;
+                }));
+
+    ast.stage = makeS<UnionStage>(std::move(inputStages), inputVals, outputVals);
+}
+
+void Parser::walkUnionBranch(AstQuery& ast) {
+    walkChildren(ast);
+
+    ast.identifiers = std::move(ast.nodes[0]->identifiers);
+    ast.stage = std::move(ast.nodes[1]->stage);
+}
+
 void Parser::walkUnwind(AstQuery& ast) {
     walkChildren(ast);
 
@@ -777,6 +811,15 @@ void Parser::walk(AstQuery& ast) {
             break;
         case "SORT"_:
             walkSort(ast);
+            break;
+        case "UNION"_:
+            walkUnion(ast);
+            break;
+        case "UNION_BRANCH_LIST"_:
+            walkChildren(ast);
+            break;
+        case "UNION_BRANCH"_:
+            walkUnionBranch(ast);
             break;
         case "UNWIND"_:
             walkUnwind(ast);

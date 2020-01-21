@@ -114,6 +114,7 @@ class Parser {
     void walkPrimaryExpr(AstQuery& ast);
     void walkIfExpr(AstQuery& ast);
     void walkFunCall(AstQuery& ast);
+    void walkUnionBranch(AstQuery& ast);
 
     void walkScan(AstQuery& ast);
     void walkParallelScan(AstQuery& ast);
@@ -123,6 +124,7 @@ class Parser {
     void walkProject(AstQuery& ast);
     void walkFilter(AstQuery& ast);
     void walkSort(AstQuery& ast);
+    void walkUnion(AstQuery& ast);
     void walkUnwind(AstQuery& ast);
     void walkMkObj(AstQuery& ast);
     void walkGroup(AstQuery& ast);
