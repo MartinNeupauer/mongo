@@ -666,8 +666,8 @@ void Parser::walkMkObj(AstQuery& ast) {
                                     lookupSlotStrict(newRootName),
                                     lookupSlot(oldRootName),
                                     std::move(restrictFields),
-                                    std::move(ast.nodes[projectListPos]->identifiers),
-                                    lookupSlots(std::move(ast.nodes[projectListPos]->renames)));
+                                    std::move(ast.nodes[projectListPos]->renames),
+                                    lookupSlots(std::move(ast.nodes[projectListPos]->identifiers)));
 }
 
 void Parser::walkGroup(AstQuery& ast) {

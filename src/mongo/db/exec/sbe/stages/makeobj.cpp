@@ -165,15 +165,7 @@ std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
         }
 
         DebugPrinter::addIdentifier(ret, _projectFields[idx]);
-    }
-    ret.emplace_back(DebugPrinter::Block("`]"));
-
-    ret.emplace_back(DebugPrinter::Block("[`"));
-    for (size_t idx = 0; idx < _projectVars.size(); ++idx) {
-        if (idx) {
-            ret.emplace_back(DebugPrinter::Block("`,"));
-        }
-
+        ret.emplace_back("=");
         DebugPrinter::addIdentifier(ret, _projectVars[idx]);
     }
     ret.emplace_back(DebugPrinter::Block("`]"));
