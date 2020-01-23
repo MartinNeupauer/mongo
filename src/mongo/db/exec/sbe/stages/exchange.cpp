@@ -230,6 +230,8 @@ void ExchangeConsumer::open(bool reOpen) {
                 if (idx == 0) {
                     _state->producerPlans().emplace_back(
                         std::make_unique<ExchangeProducer>(std::move(_children[0]), _state));
+                    // We have moved the child to the producer so clear the children vector.
+                    _children.clear();
                 } else {
                     _state->producerPlans().emplace_back(
                         std::make_unique<ExchangeProducer>(masterSubTree->clone(), _state));
