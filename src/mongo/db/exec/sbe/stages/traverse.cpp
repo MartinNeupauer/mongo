@@ -221,8 +221,8 @@ std::vector<DebugPrinter::Block> TraverseStage::debugPrint() {
     DebugPrinter::addKeyword(ret, "traverse");
 
     DebugPrinter::addIdentifier(ret, _outField);
-    DebugPrinter::addIdentifier(ret, _inField);
     DebugPrinter::addIdentifier(ret, _outFieldInner);
+    DebugPrinter::addIdentifier(ret, _inField);
 
     if (_fold) {
         ret.emplace_back("{`");

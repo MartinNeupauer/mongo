@@ -70,6 +70,25 @@ std::pair<value::TypeTags, value::Value> genericNumericCompare(value::TypeTags l
             default:
                 MONGO_UNREACHABLE;
         }
+    } else if (isString(lhsTag) && isString(rhsTag)) {
+        auto lhsStr = getStringView(lhsTag, lhsValue);
+        auto rhsStr = getStringView(rhsTag, rhsValue);
+        auto result = op(lhsStr.compare(rhsStr), 0);
+        return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+    } else if (lhsTag == value::TypeTags::Date && rhsTag == value::TypeTags::Date) {
+        auto result = op(value::bitcastTo<int64_t>(lhsValue), value::bitcastTo<int64_t>(rhsValue));
+        return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+    } else if (lhsTag == value::TypeTags::Timestamp && rhsTag == value::TypeTags::Timestamp) {
+        auto result =
+            op(value::bitcastTo<uint64_t>(lhsValue), value::bitcastTo<uint64_t>(rhsValue));
+        return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+    } else if (lhsTag == value::TypeTags::Boolean && rhsTag == value::TypeTags::Boolean) {
+        auto result = op(lhsValue != 0, rhsValue != 0);
+        return {value::TypeTags::Boolean, value::bitcastFrom(result)};
+    } else if (lhsTag == value::TypeTags::Null && rhsTag == value::TypeTags::Null) {
+        // This is where Mongo differs from SQL.
+        auto result = op(0, 0);
+        return {value::TypeTags::Boolean, value::bitcastFrom(result)};
     }
 
     return {value::TypeTags::Nothing, 0};
