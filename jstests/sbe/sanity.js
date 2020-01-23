@@ -13,11 +13,11 @@ assert.commandWorked(coll.insert([
     {_id: 3, a: 3, b: "z"},
     {_id: 5, x: {y: 1}},
     {_id: 6, x: {y: 2}},
-    {_id: 7, x: {y: [1, 2, 3]}},
-    {_id: 8, x: {y: 4}},
-    {_id: 9, x: [{y: 1}]},
-    {_id: 10, x: [{y: 1}, {y: 2}]},
-    {_id: 11, x: [{y: 1}, {y: [1, 2, 3]}]},
+    {_id: 7, x: {y: [1, 2, 3]}, v: {w: [4, 5, 6]}},
+    {_id: 8, x: {y: 4}, v: {w: 4}},
+    {_id: 9, x: [{y: 1}], v: [{w: 1}]},
+    {_id: 10, x: [{y: 1}, {y: 2}], v: [{w: 5}, {w: 6}]},
+    {_id: 11, x: [{y: 1}, {y: [1, 2, 3]}], v: [{w: 4}, {w: [4, 5, 6]}]},
     {_id: 12, z: 1},
     {_id: 13, z: 2},
     {_id: 14, z: [1, 2, 3]},
@@ -25,6 +25,7 @@ assert.commandWorked(coll.insert([
     {_id: 16, z: 4},
     {_id: 17, a: 10, x: 1},
     {_id: 18, a: 10, x: 10},
+    {_id: 19, x: {y: [{z: 1}, {z: 2}]}},
 ]));
 
 function runQuery(
@@ -129,6 +130,7 @@ function runQuery(
         // Simple projections.
         // TODO: covered projections are not supported yet.
         if (!hint) {
+            // Simple projection.
             runQuery({proj: {_id: 1}, hint: hint});
             runQuery({proj: {a: 1}, hint: hint});
             runQuery({proj: {z: 1}, hint: hint});
@@ -136,6 +138,16 @@ function runQuery(
             runQuery({proj: {a: 1, _id: 0}, hint: hint});
             runQuery({query: {a: {$gt: 1}}, proj: {a: 1}, hint: hint});
             runQuery({proj: {a: 1, nonexistent: 1}, hint: hint});
+
+            // Dotted path.
+            runQuery({proj: {_id: 1, 'x.y': 1}, hint: hint});
+            runQuery({proj: {_id: 0, 'x.y': 1}, hint: hint});
+            runQuery({proj: {'x.y': 1}, hint: hint});
+            runQuery({proj: {'x.y.z': 1}, hint: hint});
+            runQuery({proj: {'z.a': 1}, hint: hint});
+            runQuery({proj: {'x.y': 1, 'v.w': 1}, hint: hint});
+            runQuery({query: {'x.y': {$gt: 1}}, proj: {'v.w': 1}, hint: hint});
+            runQuery({proj: {'x.y.nonexistent': 1}, hint: hint});
         }
     });
 })();

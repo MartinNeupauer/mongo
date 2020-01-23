@@ -44,16 +44,92 @@ class FilterStage final : public PlanStage {
     bool _childOpened{false};
 
 public:
-    FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter);
+    FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
+        : _filter(std::move(filter)) {
+        _children.emplace_back(std::move(input));
+    }
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() final {
+        return std::make_unique<FilterStage>(_children[0]->clone(), _filter->clone());
+    }
 
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
+    void prepare(CompileCtx& ctx) final {
+        _children[0]->prepare(ctx);
 
-    std::vector<DebugPrinter::Block> debugPrint() final;
+        // compile filter
+        ctx.root = this;
+        _filterCode = _filter->compile(ctx);
+    }
+
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final {
+        return _children[0]->getAccessor(ctx, slot);
+    }
+
+    void open(bool reOpen) final {
+        if constexpr (IsConst) {
+            // run the filter expressions here
+            auto [owned, tag, val] = _bytecode.run(_filterCode.get());
+            auto pass = (tag == value::TypeTags::Boolean) && (val != 0);
+            if (!pass) {
+                close();
+                return;
+            }
+        }
+        _children[0]->open(reOpen);
+        _childOpened = true;
+    }
+
+    PlanState getNext() final {
+        // The constant filter evaluates the predicate in the open method.
+        if constexpr (IsConst) {
+            if (!_childOpened) {
+                return PlanState::IS_EOF;
+            } else {
+                return _children[0]->getNext();
+            }
+        }
+
+        auto state = PlanState::IS_EOF;
+        bool pass = false;
+
+        do {
+            state = _children[0]->getNext();
+
+            if (state == PlanState::ADVANCED) {
+                // run the filter expressions here
+                auto [owned, tag, val] = _bytecode.run(_filterCode.get());
+                pass = (tag == value::TypeTags::Boolean) && (val != 0);
+            }
+        } while (state == PlanState::ADVANCED && !pass);
+
+        return state;
+    }
+
+    void close() final {
+        if (_childOpened) {
+            _children[0]->close();
+            _childOpened = false;
+        }
+    }
+
+    std::vector<DebugPrinter::Block> debugPrint() final {
+        std::vector<DebugPrinter::Block> ret;
+        if constexpr (IsConst) {
+            DebugPrinter::addKeyword(ret, "cfilter");
+
+        } else {
+            DebugPrinter::addKeyword(ret, "filter");
+        }
+
+        ret.emplace_back("{`");
+        DebugPrinter::addBlocks(ret, _filter->debugPrint());
+        ret.emplace_back("`}");
+
+        DebugPrinter::addNewLine(ret);
+
+        DebugPrinter::addBlocks(ret, _children[0]->debugPrint());
+
+        return ret;
+    }
 };
 }  // namespace mongo::sbe

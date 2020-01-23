@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2019-present MongoDB, Inc.
+ *    Copyright (C) 2020-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -29,35 +29,18 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/stages/stages.h"
-#include "mongo/db/exec/sbe/values/slot_id_generator.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/matcher/expression.h"
+#include "mongo/db/query/sbe_stage_builder.h"
 
 namespace mongo::stage_builder {
 /**
- * A stage builder which builds an executable tree using slot-based PlanStages.
+ * Generates an SBE plan stage sub-tree implementing a filter expression represented by the 'root'
+ * expression. The 'stage' parameter defines an input stage to the generate SBE plan stage sub-tree.
+ * The 'inputVar' defines a variable to read the input document from.
  */
-class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage> {
-public:
-    using StageBuilder<sbe::PlanStage>::StageBuilder;
+std::unique_ptr<sbe::PlanStage> generateFilter(const MatchExpression* root,
+                                               std::unique_ptr<sbe::PlanStage> stage,
+                                               sbe::value::SlotIdGenerator* slotIdGenerator,
+                                               sbe::value::SlotId inputVar);
 
-    std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
-
-private:
-    std::unique_ptr<sbe::PlanStage> buildCollScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildIndexScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildFetch(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildLimit(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSkip(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSort(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
-
-    std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
-        sbe::value::makeDefaultSlotIdGenerator()};
-    boost::optional<sbe::value::SlotId> _recordIdSlot;
-    boost::optional<sbe::value::SlotId> _resultSlot;
-    boost::optional<long long> _limit;
-};
 }  // namespace mongo::stage_builder

@@ -8,7 +8,6 @@ env.Library(
         'expressions/expression.cpp',
         'stages/co_scan.cpp',
         'stages/exchange.cpp',
-        'stages/filter.cpp',
         'stages/hash_agg.cpp',
         'stages/hash_join.cpp',
         'stages/limit_skip.cpp',
