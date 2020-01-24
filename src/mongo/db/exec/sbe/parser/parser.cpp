@@ -131,7 +131,7 @@ static constexpr auto syntax = R"(
                 LOG_TOK <- <'&&'> / <'||'>
 
                 EQOP_EXPR <- RELOP_EXPR EQ_TOK EQOP_EXPR / RELOP_EXPR
-                EQ_TOK <- <'=='> / <'!='>
+                EQ_TOK <- <'=='> / <'!='> / <'<=>'>
 
                 RELOP_EXPR <- ADD_EXPR REL_TOK RELOP_EXPR / ADD_EXPR
                 REL_TOK <- <'<='> / <'<'> / <'>='> / <'>'>
@@ -264,6 +264,9 @@ void Parser::walkEqopExpr(AstQuery& ast) {
         }
         if (ast.nodes[1]->token == "!=") {
             op = EPrimBinary::neq;
+        }
+        if (ast.nodes[1]->token == "<=>") {
+            op = EPrimBinary::cmp3w;
         }
 
         ast.expr =

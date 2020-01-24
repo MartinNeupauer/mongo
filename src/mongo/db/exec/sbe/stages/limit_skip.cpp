@@ -73,9 +73,20 @@ void LimitSkipStage::close() {
 std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
 
-    DebugPrinter::addKeyword(ret, "limitskip");
-    ret.emplace_back(_limit ? std::to_string(*_limit) : "none");
-    ret.emplace_back(_skip ? std::to_string(*_skip) : "none");
+    if (!_skip) {
+        DebugPrinter::addKeyword(ret, "limit");
+
+    } else {
+        DebugPrinter::addKeyword(ret, "skip");
+    }
+
+    if (_skip) {
+        ret.emplace_back(std::to_string(*_skip));
+    }
+    if (_limit) {
+        ret.emplace_back(std::to_string(*_limit));
+    }
+
     DebugPrinter::addNewLine(ret);
 
     DebugPrinter::addBlocks(ret, _children[0]->debugPrint());
