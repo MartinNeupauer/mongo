@@ -35,9 +35,9 @@
 
 namespace mongo::stage_builder {
 /**
- * Generates an SBE plan stage sub-tree implementing a filter expression represented by the 'root'
- * expression. The 'stage' parameter defines an input stage to the generate SBE plan stage sub-tree.
- * The 'inputVar' defines a variable to read the input document from.
+ * Generates an SBE plan stage sub-tree implementing a query projection. The 'stage' parameter
+ * defines an input stage to the generate SBE plan stage sub-tree. The 'inputVar' defines a variable
+ * to read the input document from.
  */
 std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateProjection(
     const projection_ast::Projection* proj,

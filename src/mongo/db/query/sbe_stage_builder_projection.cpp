@@ -69,6 +69,7 @@ struct ProjectionTraversalVisitorContext {
     };
 
     sbe::value::SlotIdGenerator* slotIdGenerartor;
+    std::unique_ptr<sbe::PlanStage> inputStage;
     sbe::value::SlotId inputSlot;
     std::stack<NestedLevel> levels;
     std::stack<boost::optional<ProjectEval>> evals;
@@ -98,6 +99,21 @@ struct ProjectionTraversalVisitorContext {
 
     void pushLevel(std::list<std::string> fields) {
         levels.push({levels.empty() ? inputSlot : slotIdGenerartor->generate(), std::move(fields)});
+    }
+
+    std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> done() {
+        invariant(evals.size() == 1);
+        auto eval = std::move(evals.top());
+        invariant(eval);
+        invariant(std::holds_alternative<PlanStageType>(eval->expr));
+        return {eval->outputSlot,
+                sbe::makeS<sbe::TraverseStage>(std::move(inputStage),
+                                               std::move(std::get<PlanStageType>(eval->expr)),
+                                               eval->inputSlot,
+                                               eval->outputSlot,
+                                               eval->outputSlot,
+                                               nullptr,
+                                               nullptr)};
     }
 };
 
@@ -280,24 +296,11 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateProjectio
     std::unique_ptr<sbe::PlanStage> stage,
     sbe::value::SlotIdGenerator* slotIdGenerator,
     sbe::value::SlotId inputVar) {
-    ProjectionTraversalVisitorContext context{slotIdGenerator, inputVar};
+    ProjectionTraversalVisitorContext context{slotIdGenerator, std::move(stage), inputVar};
     ProjectionTraversalPreVisitor preVisitor{&context};
     ProjectionTraversalPostVisitor postVisitor{&context};
     ProjectionTraversalWalker walker{&preVisitor, &postVisitor};
-
     tree_walker::walk<true, projection_ast::ASTNode>(projection->root(), &walker);
-
-    invariant(context.evals.size() == 1);
-    auto eval = std::move(context.evals.top());
-    invariant(eval);
-    invariant(std::holds_alternative<PlanStageType>(eval->expr));
-    return {eval->outputSlot,
-            sbe::makeS<sbe::TraverseStage>(std::move(stage),
-                                           std::move(std::get<PlanStageType>(eval->expr)),
-                                           eval->inputSlot,
-                                           eval->outputSlot,
-                                           eval->outputSlot,
-                                           nullptr,
-                                           nullptr)};
+    return context.done();
 }
 }  // namespace mongo::stage_builder
