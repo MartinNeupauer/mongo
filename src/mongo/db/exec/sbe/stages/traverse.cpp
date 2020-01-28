@@ -132,6 +132,7 @@ PlanState TraverseStage::getNext() {
 
 bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                              value::OwnedValueAccessor* outFieldOutputAccessor) {
+    auto earlyExit = false;
     // get the value
     auto [tag, val] = inFieldAccessor->getViewOfValue();
 
@@ -160,7 +161,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                 // If the current array element is an array itself, traverse it recursively.
                 // TODO: for match expressions the traversal must be restricted to two levels.
                 value::OwnedValueAccessor outArrayAccessor;
-                auto earlyExit = traverse(&inArrayAccessor, &outArrayAccessor);
+                earlyExit = traverse(&inArrayAccessor, &outArrayAccessor);
                 auto [tag, val] = outArrayAccessor.copyOrMoveValue();
 
                 if (!_foldCode) {
@@ -204,7 +205,8 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                     if (_finalCode) {
                         auto [owned, tag, val] = _bytecode.run(_finalCode.get());
                         if (tag == value::TypeTags::Boolean && val != 0) {
-                            return true;
+                            earlyExit = true;
+                            break;
                         }
                     }
                 }
@@ -224,7 +226,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
         }
     }
 
-    return false;
+    return earlyExit;
 }
 
 void TraverseStage::close() {
