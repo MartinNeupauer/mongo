@@ -67,12 +67,7 @@ void TraverseStage::prepare(CompileCtx& ctx) {
     _inFieldAccessor = _children[0]->getAccessor(ctx, _inField);
 
     // prepare the accessor for the correlated parameter
-    _correlatedAccessor = std::make_unique<value::ViewOfValueAccessor>();
-    ctx.pushCorrelated(_inField, _correlatedAccessor.get());
-
-    // prepare the outField output accessor (this accumulates values from the inner side to an
-    // array)
-    _outFieldOutputAccessor = std::make_unique<value::OwnedValueAccessor>();
+    ctx.pushCorrelated(_inField, &_correlatedAccessor);
 
     // prepare the inner side
     _children[1]->prepare(ctx);
@@ -97,7 +92,7 @@ void TraverseStage::prepare(CompileCtx& ctx) {
 }
 value::SlotAccessor* TraverseStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_outField == slot) {
-        return _outFieldOutputAccessor.get();
+        return &_outFieldOutputAccessor;
     }
 
     if (_compiled) {
@@ -117,7 +112,7 @@ void TraverseStage::open(bool reOpen) {
 
 void TraverseStage::openInner(value::TypeTags tag, value::Value val) {
     // set the correlated value
-    _correlatedAccessor->reset(tag, val);
+    _correlatedAccessor.reset(tag, val);
 
     // and (re)open the inner side as it can see the correlated value now
     _children[1]->open(_reOpenInner);
@@ -130,12 +125,20 @@ PlanState TraverseStage::getNext() {
         return state;
     }
 
+    traverse(_inFieldAccessor, &_outFieldOutputAccessor);
+
+    return PlanState::ADVANCED;
+}
+
+bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
+                             value::OwnedValueAccessor* outFieldOutputAccessor) {
     // get the value
-    auto [tag, val] = _inFieldAccessor->getViewOfValue();
+    auto [tag, val] = inFieldAccessor->getViewOfValue();
 
     if (value::isArray(tag)) {
         // if it is an array then we have to traverse it
-        _inArrayAccessor.reset(tag, val);
+        value::ArrayAccessor inArrayAccessor;
+        inArrayAccessor.reset(tag, val);
         value::Array* arrOut{nullptr};
 
         if (!_foldCode) {
@@ -143,50 +146,66 @@ PlanState TraverseStage::getNext() {
             // TODO if _inField == _outField then we can do implace update of the input array
             auto [tag, val] = value::makeNewArray();
             arrOut = value::getArrayView(val);
-            _outFieldOutputAccessor->reset(true, tag, val);
+            outFieldOutputAccessor->reset(true, tag, val);
         } else {
-            _outFieldOutputAccessor->reset(false, value::TypeTags::Nothing, 0);
+            outFieldOutputAccessor->reset(false, value::TypeTags::Nothing, 0);
         }
 
         // loop over all elements of array
-        // TODO - implement a stack of nested arrays
         bool firstValue = true;
-        for (; !_inArrayAccessor.atEnd(); _inArrayAccessor.advance()) {
-            auto [tag, val] = _inArrayAccessor.getViewOfValue();
+        for (; !inArrayAccessor.atEnd(); inArrayAccessor.advance()) {
+            auto [tag, val] = inArrayAccessor.getViewOfValue();
 
-            // execute inner side once for every element of the array
-            openInner(tag, val);
-            auto state = _children[1]->getNext();
+            if (value::isArray(tag)) {
+                // If the current array element is an array itself, traverse it recursively.
+                // TODO: for match expressions the traversal must be restricted to two levels.
+                value::OwnedValueAccessor outArrayAccessor;
+                auto earlyExit = traverse(&inArrayAccessor, &outArrayAccessor);
+                auto [tag, val] = outArrayAccessor.copyOrMoveValue();
 
-            if (state == PlanState::ADVANCED) {
                 if (!_foldCode) {
-                    // we have to copy (or move optimization) the value to the array
-                    // as by definition all composite values (arrays, objects) own their
-                    // constituents
-                    auto [tag, val] = _outFieldInputAccessor->copyOrMoveValue();
                     arrOut->push_back(tag, val);
                 } else {
-                    if (firstValue) {
-                        auto [tag, val] = _outFieldInputAccessor->copyOrMoveValue();
-                        _outFieldOutputAccessor->reset(true, tag, val);
-                        firstValue = false;
-                    } else {
-                        // fold
-                        auto [owned, tag, val] = _bytecode.run(_foldCode.get());
-                        if (!owned) {
-                            auto [copyTag, copyVal] = value::copyValue(tag, val);
-                            tag = copyTag;
-                            val = copyVal;
-                        }
-                        _outFieldOutputAccessor->reset(true, tag, val);
+                    outFieldOutputAccessor->reset(true, tag, val);
+                    if (earlyExit) {
+                        break;
                     }
                 }
+            } else {
+                // Otherwise, execute inner side once for every element of the array.
+                openInner(tag, val);
+                auto state = _children[1]->getNext();
 
-                // check early out condition
-                if (_finalCode) {
-                    auto [owned, tag, val] = _bytecode.run(_finalCode.get());
-                    if (tag == value::TypeTags::Boolean && val != 0) {
-                        break;
+                if (state == PlanState::ADVANCED) {
+                    if (!_foldCode) {
+                        // we have to copy (or move optimization) the value to the array
+                        // as by definition all composite values (arrays, objects) own their
+                        // constituents
+                        auto [tag, val] = _outFieldInputAccessor->copyOrMoveValue();
+                        arrOut->push_back(tag, val);
+                    } else {
+                        if (firstValue) {
+                            auto [tag, val] = _outFieldInputAccessor->copyOrMoveValue();
+                            outFieldOutputAccessor->reset(true, tag, val);
+                            firstValue = false;
+                        } else {
+                            // fold
+                            auto [owned, tag, val] = _bytecode.run(_foldCode.get());
+                            if (!owned) {
+                                auto [copyTag, copyVal] = value::copyValue(tag, val);
+                                tag = copyTag;
+                                val = copyVal;
+                            }
+                            outFieldOutputAccessor->reset(true, tag, val);
+                        }
+                    }
+
+                    // check early out condition
+                    if (_finalCode) {
+                        auto [owned, tag, val] = _bytecode.run(_finalCode.get());
+                        if (tag == value::TypeTags::Boolean && val != 0) {
+                            return true;
+                        }
                     }
                 }
             }
@@ -197,16 +216,17 @@ PlanState TraverseStage::getNext() {
         auto state = _children[1]->getNext();
 
         if (state == PlanState::IS_EOF) {
-            _outFieldOutputAccessor->reset();
+            outFieldOutputAccessor->reset();
         } else {
             auto [tag, val] = _outFieldInputAccessor->getViewOfValue();
             // we don't have to copy the value
-            _outFieldOutputAccessor->reset(false, tag, val);
+            outFieldOutputAccessor->reset(false, tag, val);
         }
     }
 
-    return PlanState::ADVANCED;
+    return false;
 }
+
 void TraverseStage::close() {
     if (_reOpenInner) {
         _children[1]->close();

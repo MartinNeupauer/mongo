@@ -42,8 +42,8 @@ class TraverseStage final : public PlanStage {
     const std::unique_ptr<EExpression> _final;
 
     value::SlotAccessor* _inFieldAccessor{nullptr};
-    std::unique_ptr<value::ViewOfValueAccessor> _correlatedAccessor;
-    std::unique_ptr<value::OwnedValueAccessor> _outFieldOutputAccessor;
+    value::ViewOfValueAccessor _correlatedAccessor;
+    value::OwnedValueAccessor _outFieldOutputAccessor;
     value::SlotAccessor* _outFieldInputAccessor{nullptr};
 
     std::unique_ptr<vm::CodeFragment> _foldCode;
@@ -51,12 +51,12 @@ class TraverseStage final : public PlanStage {
 
     vm::ByteCode _bytecode;
 
-    value::ArrayAccessor _inArrayAccessor;
-
     bool _compiled{false};
     bool _reOpenInner{false};
 
     void openInner(value::TypeTags tag, value::Value val);
+    bool traverse(value::SlotAccessor* inFieldAccessor,
+                  value::OwnedValueAccessor* outFieldOutputAccessor);
 
 public:
     TraverseStage(std::unique_ptr<PlanStage> outer,
