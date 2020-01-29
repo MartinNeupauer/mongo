@@ -29,9 +29,8 @@
 
 #pragma once
 
-#include "mongo/db/matcher/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/query/projection.h"
-#include "mongo/db/query/sbe_stage_builder.h"
 
 namespace mongo::stage_builder {
 /**

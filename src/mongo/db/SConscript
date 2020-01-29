@@ -1114,6 +1114,7 @@ env.Library(
         'pipeline/document_source_geo_near_cursor.cpp',
         'pipeline/pipeline_d.cpp',
         'query/sbe_stage_builder.cpp',
+        'query/sbe_stage_builder_expression.cpp',
         'query/sbe_stage_builder_filter.cpp',
         'query/sbe_stage_builder_projection.cpp',
         'query/explain.cpp',

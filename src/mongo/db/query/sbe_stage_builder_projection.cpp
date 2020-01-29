@@ -40,6 +40,7 @@
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/query/sbe_stage_builder_expression.h"
 #include "mongo/db/query/tree_walker.h"
 #include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
@@ -146,10 +147,7 @@ public:
                   str::stream() << "ElemMatch projection is not supported in SBE");
     }
 
-    void visit(const projection_ast::ExpressionASTNode* node) final {
-        uasserted(ErrorCodes::InternalErrorNotSupported,
-                  str::stream() << "Expressions in projection are not supported in SBE");
-    }
+    void visit(const projection_ast::ExpressionASTNode* node) final {}
 
     void visit(const projection_ast::MatchExpressionASTNode* node) final {
         uasserted(ErrorCodes::InternalErrorNotSupported,
@@ -182,6 +180,15 @@ public:
         } else {
             _context->evals.push({});
         }
+        _context->popFrontField();
+    }
+
+    void visit(const projection_ast::ExpressionASTNode* node) final {
+        auto [outputSlot, expr, stage] = generateExpression(node->expressionRaw(),
+                                                            nullptr,
+                                                            _context->slotIdGenerartor,
+                                                            _context->topLevel().inputSlot);
+        _context->evals.push({{_context->topLevel().inputSlot, outputSlot, std::move(expr)}});
         _context->popFrontField();
     }
 
@@ -262,7 +269,6 @@ public:
     void visit(const projection_ast::ProjectionPositionalASTNode* node) final {}
     void visit(const projection_ast::ProjectionSliceASTNode* node) final {}
     void visit(const projection_ast::ProjectionElemMatchASTNode* node) final {}
-    void visit(const projection_ast::ExpressionASTNode* node) final {}
     void visit(const projection_ast::MatchExpressionASTNode* node) final {}
 
 private:
