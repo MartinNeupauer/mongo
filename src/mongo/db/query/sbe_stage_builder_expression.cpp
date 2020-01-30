@@ -33,10 +33,15 @@
 
 #include "mongo/db/query/sbe_stage_builder_expression.h"
 
+#include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/limit_skip.h"
+#include "mongo/db/exec/sbe/stages/project.h"
+#include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
+#include "mongo/db/query/projection_parser.h"
 #include "mongo/util/log.h"
 #include "mongo/util/str.h"
 
@@ -53,9 +58,10 @@ std::pair<sbe::value::TypeTags, sbe::value::Value> convertFrom(Value val) {
 }
 
 struct ExpressionVisitorContext {
+    std::unique_ptr<sbe::PlanStage> traverseStage;
     sbe::value::SlotIdGenerator* slotIdGenerator{nullptr};
+    sbe::value::SlotId rootSlot;
     std::stack<std::unique_ptr<sbe::EExpression>> exprs;
-    std::unique_ptr<sbe::PlanStage> stage;
 
     void ensureArity(size_t arity) {
         invariant(exprs.size() >= arity);
@@ -71,14 +77,88 @@ struct ExpressionVisitorContext {
         exprs.push(std::move(expr));
     }
 
+    void pushExpr(std::unique_ptr<sbe::EExpression> expr, std::unique_ptr<sbe::PlanStage> stage) {
+        exprs.push(std::move(expr));
+        traverseStage = std::move(stage);
+    }
+
     std::tuple<sbe::value::SlotId,
                std::unique_ptr<sbe::EExpression>,
                std::unique_ptr<sbe::PlanStage>>
     done() {
         invariant(exprs.size() == 1);
-        return {slotIdGenerator->generate(), popExpr(), nullptr};
+        return {slotIdGenerator->generate(), popExpr(), std::move(traverseStage)};
     }
 };
+
+std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverseHelper(
+    std::unique_ptr<sbe::PlanStage> inputStage,
+    sbe::value::SlotId inputSlot,
+    const FieldPath& fp,
+    size_t level,
+    sbe::value::SlotIdGenerator* slotIdGenerator) {
+    using namespace std::literals;
+
+    invariant(level < fp.getPathLength());
+
+    // The field we will be traversing at the current nested level.
+    auto fieldSlot{slotIdGenerator->generate()};
+    // The result coming from the 'in' branch of the traverse plan stage.
+    auto outputSlot{slotIdGenerator->generate()};
+
+    // Generate the projection stage to read a sub-field at the current nested level and bind it
+    // to 'fieldSlot'.
+    inputStage = sbe::makeProjectStage(
+        std::move(inputStage),
+        fieldSlot,
+        sbe::makeE<sbe::EFunction>(
+            "getField"sv,
+            sbe::makeEs(sbe::makeE<sbe::EVariable>(inputSlot), sbe::makeE<sbe::EConstant>([&]() {
+                            auto fieldName = fp.getFieldName(level);
+                            return std::string_view{fieldName.rawData(), fieldName.size()};
+                        }()))));
+
+    std::unique_ptr<sbe::PlanStage> innerBranch;
+    if (level == fp.getPathLength() - 1) {
+        innerBranch = sbe::makeProjectStage(
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+            outputSlot,
+            sbe::makeE<sbe::EVariable>(fieldSlot));
+    } else {
+        // Generate nested traversal.
+        auto [slot, stage] = generateTraverseHelper(
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+            fieldSlot,
+            fp,
+            level + 1,
+            slotIdGenerator);
+        innerBranch =
+            sbe::makeProjectStage(std::move(stage), outputSlot, sbe::makeE<sbe::EVariable>(slot));
+    }
+
+    // The final traverse stage for the current nested level.
+    return {outputSlot,
+            sbe::makeS<sbe::TraverseStage>(std::move(inputStage),
+                                           std::move(innerBranch),
+                                           fieldSlot,
+                                           outputSlot,
+                                           outputSlot,
+                                           nullptr,
+                                           nullptr,
+                                           1)};
+}
+
+/**
+ * For the given MatchExpression 'expr', generates a path traversal SBE plan stage sub-tree
+ * implementing the comparison expression.
+ */
+std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverse(
+    std::unique_ptr<sbe::PlanStage> inputStage,
+    sbe::value::SlotId inputSlot,
+    const FieldPath& fp,
+    sbe::value::SlotIdGenerator* slotIdGenerator) {
+    return generateTraverseHelper(std::move(inputStage), inputSlot, fp, 0, slotIdGenerator);
+}
 
 class ExpressionPostVisitor final : public ExpressionVisitor {
 public:
@@ -166,7 +246,11 @@ public:
         unsupportedExpression(expr->getOpName());
     }
     void visit(ExpressionFieldPath* expr) final {
-        unsupportedExpression("$");
+        auto [outputSlot, stage] = generateTraverse(std::move(_context->traverseStage),
+                                                    _context->rootSlot,
+                                                    expr->getFieldPathWithoutCurrentPrefix(),
+                                                    _context->slotIdGenerator);
+        _context->pushExpr(sbe::makeE<sbe::EVariable>(outputSlot), std::move(stage));
     }
     void visit(ExpressionFilter* expr) final {
         unsupportedExpression("$filter");
@@ -483,8 +567,8 @@ std::tuple<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>, std::unique_pt
 generateExpression(Expression* expr,
                    std::unique_ptr<sbe::PlanStage> stage,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
-                   sbe::value::SlotId inputVar) {
-    ExpressionVisitorContext context{slotIdGenerator};
+                   sbe::value::SlotId rootSlot) {
+    ExpressionVisitorContext context{std::move(stage), slotIdGenerator, rootSlot};
     ExpressionPostVisitor postVisitor{&context};
     ExpressionWalker walker{&postVisitor};
     expression_walker::walk(&walker, expr);

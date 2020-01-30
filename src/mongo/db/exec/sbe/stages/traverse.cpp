@@ -37,12 +37,14 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
                              value::SlotId outField,
                              value::SlotId outFieldInner,
                              std::unique_ptr<EExpression> foldExpr,
-                             std::unique_ptr<EExpression> finalExpr)
+                             std::unique_ptr<EExpression> finalExpr,
+                             boost::optional<size_t> nestedArraysDepth)
     : _inField(inField),
       _outField(outField),
       _outFieldInner(outFieldInner),
       _fold(std::move(foldExpr)),
-      _final(std::move(finalExpr)) {
+      _final(std::move(finalExpr)),
+      _nestedArraysDepth(nestedArraysDepth) {
     _children.emplace_back(std::move(outer));
     _children.emplace_back(std::move(inner));
 
@@ -125,13 +127,14 @@ PlanState TraverseStage::getNext() {
         return state;
     }
 
-    traverse(_inFieldAccessor, &_outFieldOutputAccessor);
+    traverse(_inFieldAccessor, &_outFieldOutputAccessor, 0);
 
     return PlanState::ADVANCED;
 }
 
 bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
-                             value::OwnedValueAccessor* outFieldOutputAccessor) {
+                             value::OwnedValueAccessor* outFieldOutputAccessor,
+                             size_t level) {
     auto earlyExit = false;
     // get the value
     auto [tag, val] = inFieldAccessor->getViewOfValue();
@@ -158,10 +161,13 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
             auto [tag, val] = inArrayAccessor.getViewOfValue();
 
             if (value::isArray(tag)) {
+                if (_nestedArraysDepth && level + 1 >= *_nestedArraysDepth) {
+                    continue;
+                }
+
                 // If the current array element is an array itself, traverse it recursively.
-                // TODO: for match expressions the traversal must be restricted to two levels.
                 value::OwnedValueAccessor outArrayAccessor;
-                earlyExit = traverse(&inArrayAccessor, &outArrayAccessor);
+                earlyExit = traverse(&inArrayAccessor, &outArrayAccessor, level + 1);
                 auto [tag, val] = outArrayAccessor.copyOrMoveValue();
 
                 if (!_foldCode) {

@@ -62,6 +62,8 @@ struct ProjectionTraversalVisitorContext {
         sbe::value::SlotId inputSlot;
         std::list<std::string> fields;
         std::stack<std::string> basePath;
+        PlanStageType fieldPathsTraverseStage{
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none)};
     };
     struct ProjectEval {
         sbe::value::SlotId inputSlot;
@@ -70,7 +72,7 @@ struct ProjectionTraversalVisitorContext {
     };
 
     sbe::value::SlotIdGenerator* slotIdGenerartor;
-    std::unique_ptr<sbe::PlanStage> inputStage;
+    PlanStageType inputStage;
     sbe::value::SlotId inputSlot;
     std::stack<NestedLevel> levels;
     std::stack<boost::optional<ProjectEval>> evals;
@@ -102,7 +104,7 @@ struct ProjectionTraversalVisitorContext {
         levels.push({levels.empty() ? inputSlot : slotIdGenerartor->generate(), std::move(fields)});
     }
 
-    std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> done() {
+    std::pair<sbe::value::SlotId, PlanStageType> done() {
         invariant(evals.size() == 1);
         auto eval = std::move(evals.top());
         invariant(eval);
@@ -184,11 +186,13 @@ public:
     }
 
     void visit(const projection_ast::ExpressionASTNode* node) final {
-        auto [outputSlot, expr, stage] = generateExpression(node->expressionRaw(),
-                                                            nullptr,
-                                                            _context->slotIdGenerartor,
-                                                            _context->topLevel().inputSlot);
+        auto [outputSlot, expr, stage] =
+            generateExpression(node->expressionRaw(),
+                               std::move(_context->topLevel().fieldPathsTraverseStage),
+                               _context->slotIdGenerartor,
+                               _context->inputSlot);
         _context->evals.push({{_context->topLevel().inputSlot, outputSlot, std::move(expr)}});
+        _context->topLevel().fieldPathsTraverseStage = std::move(stage);
         _context->popFrontField();
     }
 
@@ -198,8 +202,7 @@ public:
         std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projects;
         std::vector<sbe::value::SlotId> projectSlots;
         std::vector<std::string> projectFields;
-        auto inputStage{
-            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none)};
+        auto inputStage{std::move(_context->topLevel().fieldPathsTraverseStage)};
 
         invariant(_context->evals.size() >= node->fieldNames().size());
         for (auto it = node->fieldNames().rbegin(); it != node->fieldNames().rend(); ++it) {
@@ -297,9 +300,9 @@ private:
 };
 }  // namespace
 
-std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateProjection(
+std::pair<sbe::value::SlotId, PlanStageType> generateProjection(
     const projection_ast::Projection* projection,
-    std::unique_ptr<sbe::PlanStage> stage,
+    PlanStageType stage,
     sbe::value::SlotIdGenerator* slotIdGenerator,
     sbe::value::SlotId inputVar) {
     ProjectionTraversalVisitorContext context{slotIdGenerator, std::move(stage), inputVar};

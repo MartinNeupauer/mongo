@@ -40,6 +40,7 @@ class TraverseStage final : public PlanStage {
     const value::SlotId _outFieldInner;
     const std::unique_ptr<EExpression> _fold;
     const std::unique_ptr<EExpression> _final;
+    const boost::optional<size_t> _nestedArraysDepth;
 
     value::SlotAccessor* _inFieldAccessor{nullptr};
     value::ViewOfValueAccessor _correlatedAccessor;
@@ -56,7 +57,8 @@ class TraverseStage final : public PlanStage {
 
     void openInner(value::TypeTags tag, value::Value val);
     bool traverse(value::SlotAccessor* inFieldAccessor,
-                  value::OwnedValueAccessor* outFieldOutputAccessor);
+                  value::OwnedValueAccessor* outFieldOutputAccessor,
+                  size_t level);
 
 public:
     TraverseStage(std::unique_ptr<PlanStage> outer,
@@ -65,7 +67,8 @@ public:
                   value::SlotId outField,
                   value::SlotId outFieldInner,
                   std::unique_ptr<EExpression> foldExpr,
-                  std::unique_ptr<EExpression> finalExpr);
+                  std::unique_ptr<EExpression> finalExpr,
+                  boost::optional<size_t> nestedArraysDepth = boost::none);
 
     std::unique_ptr<PlanStage> clone() final;
 

@@ -78,12 +78,10 @@ namespace {
  * A struct for storing context across calls to visit() methods in MatchExpressionVisitor's.
  */
 struct MatchExpressionVisitorContext {
-    MatchExpressionVisitorContext(sbe::value::SlotIdGenerator* slotIdGenerartor,
+    MatchExpressionVisitorContext(sbe::value::SlotIdGenerator* slotIdGenerator,
                                   std::unique_ptr<sbe::PlanStage> inputStage,
                                   sbe::value::SlotId inputVar)
-        : slotIdGenerartor{slotIdGenerartor},
-          inputStage{std::move(inputStage)},
-          inputVar{inputVar} {}
+        : slotIdGenerator{slotIdGenerator}, inputStage{std::move(inputStage)}, inputVar{inputVar} {}
 
     std::unique_ptr<sbe::PlanStage> done() {
         if (!predicateVars.empty()) {
@@ -96,7 +94,7 @@ struct MatchExpressionVisitorContext {
     }
 
 
-    sbe::value::SlotIdGenerator* slotIdGenerartor;
+    sbe::value::SlotIdGenerator* slotIdGenerator;
     std::unique_ptr<sbe::PlanStage> inputStage;
     std::stack<sbe::value::SlotId> predicateVars;
     std::stack<std::pair<const MatchExpression*, size_t>> nestedLogicalExprs;
@@ -185,9 +183,9 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
     // The global traversal result.
     const auto& traversePredicateVar = context->predicateVars.top();
     // The field we will be traversing at the current nested level.
-    auto fieldVar{context->slotIdGenerartor->generate()};
+    auto fieldVar{context->slotIdGenerator->generate()};
     // The result coming from the 'in' branch of the traverse plan stage.
-    auto elemPredicateVar{context->slotIdGenerartor->generate()};
+    auto elemPredicateVar{context->slotIdGenerator->generate()};
 
     // Generate the projection stage to read a sub-field at the current nested level and bind it
     // to 'fieldVar'.
@@ -243,7 +241,8 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
         sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicOr,
                                      sbe::makeE<sbe::EVariable>(traversePredicateVar),
                                      sbe::makeE<sbe::EVariable>(elemPredicateVar)),
-        sbe::makeE<sbe::EVariable>(traversePredicateVar));
+        sbe::makeE<sbe::EVariable>(traversePredicateVar),
+        2);
 }
 
 /**
@@ -253,7 +252,7 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
 void generateTraverse(MatchExpressionVisitorContext* context,
                       sbe::EPrimBinary::Op op,
                       const ComparisonMatchExpression* expr) {
-    context->predicateVars.push(context->slotIdGenerartor->generate());
+    context->predicateVars.push(context->slotIdGenerator->generate());
     context->inputStage = generateTraverseHelper(
         context, std::move(context->inputStage), context->inputVar, op, expr, 0);
 
@@ -293,7 +292,7 @@ void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpr
     }
 
     if (!context->nestedLogicalExprs.empty()) {
-        context->predicateVars.push(context->slotIdGenerartor->generate());
+        context->predicateVars.push(context->slotIdGenerator->generate());
         context->inputStage = sbe::makeProjectStage(
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
     } else {
@@ -327,7 +326,7 @@ void generateLogicalAnd(MatchExpressionVisitorContext* context, const AndMatchEx
         context->inputStage =
             sbe::makeS<sbe::FilterStage<false>>(std::move(context->inputStage), std::move(filter));
     } else {
-        context->predicateVars.push(context->slotIdGenerartor->generate());
+        context->predicateVars.push(context->slotIdGenerator->generate());
         context->inputStage = sbe::makeProjectStage(
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
     }
