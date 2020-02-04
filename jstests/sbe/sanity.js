@@ -27,7 +27,9 @@ assert.commandWorked(coll.insert([
     {_id: 18, a: 10, x: 10},
     {_id: 19, x: {y: [{z: 1}, {z: 2}]}},
     {_id: 20, x: [[{y: 1}, {y: 2}], {y: 3}, {y: 4}, [[[{y: 5}]]], {y: 6}]},
-    {_id: 21, i: {j: 5}, k: {l: 10}}
+    {_id: 21, i: {j: 5}, k: {l: 10}},
+    {_id: 22, x: [[{y: 1}, {y: 2}], {y: 3}, {y: 4}, [[[{y: 5}]]], {y: 6}]},
+    {_id: 23, x: [[{y: {z: 1}}, {y: 2}], {y: 3}, {y: {z: 2}}, [[[{y: 5}, {y: {z: 3}}]]], {y: 6}]}
 ]));
 let results;
 let mongoResults;
@@ -137,6 +139,14 @@ function runQuery(
             runQuery({query: {a: {$gt: 1}}, proj: {a: 1}, hint: hint});
             runQuery({proj: {a: 1, nonexistent: 1}, hint: hint});
 
+            runQuery({proj: {_id: 0}, hint: hint});
+            runQuery({proj: {a: 0}, hint: hint});
+            runQuery({proj: {z: 0}, hint: hint});
+            runQuery({proj: {b: 0, a: 0}, hint: hint});
+            runQuery({proj: {a: 0, _id: 1}, hint: hint});
+            runQuery({query: {a: {$gt: 1}}, proj: {a: 0}, hint: hint});
+            runQuery({proj: {a: 0, nonexistent: 0}, hint: hint});
+
             // Dotted path.
             runQuery({proj: {_id: 1, 'x.y': 1}, hint: hint});
             runQuery({proj: {_id: 0, 'x.y': 1}, hint: hint});
@@ -146,6 +156,15 @@ function runQuery(
             runQuery({proj: {'x.y': 1, 'v.w': 1}, hint: hint});
             runQuery({query: {'x.y': {$gt: 1}}, proj: {'v.w': 1}, hint: hint});
             runQuery({proj: {'x.y.nonexistent': 1}, hint: hint});
+
+            runQuery({proj: {_id: 1, 'x.y': 0}, hint: hint});
+            runQuery({proj: {_id: 0, 'x.y': 0}, hint: hint});
+            runQuery({proj: {'x.y': 0}, hint: hint});
+            runQuery({proj: {'x.y.z': 0}, hint: hint});
+            runQuery({proj: {'z.a': 0}, hint: hint});
+            runQuery({proj: {'x.y': 0, 'v.w': 0}, hint: hint});
+            runQuery({query: {'x.y': {$gt: 1}}, proj: {'v.w': 0}, hint: hint});
+            runQuery({proj: {'x.y.nonexistent': 0}, hint: hint});
 
             // Expressions.
             runQuery({proj: {_id: 1, foo: '$a'}, hint: hint});

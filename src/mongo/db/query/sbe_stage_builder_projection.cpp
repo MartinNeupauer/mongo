@@ -62,7 +62,7 @@ struct ProjectionTraversalVisitorContext {
         sbe::value::SlotId inputSlot;
         std::list<std::string> fields;
         std::stack<std::string> basePath;
-        PlanStageType fieldPathsTraverseStage{
+        PlanStageType fieldPathExpressionsTraverseStage{
             sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none)};
     };
     struct ProjectEval {
@@ -71,6 +71,7 @@ struct ProjectionTraversalVisitorContext {
         std::variant<PlanStageType, ExpressionType> expr;
     };
 
+    projection_ast::ProjectType projectType;
     sbe::value::SlotIdGenerator* slotIdGenerartor;
     PlanStageType inputStage;
     sbe::value::SlotId inputSlot;
@@ -188,21 +189,23 @@ public:
     void visit(const projection_ast::ExpressionASTNode* node) final {
         auto [outputSlot, expr, stage] =
             generateExpression(node->expressionRaw(),
-                               std::move(_context->topLevel().fieldPathsTraverseStage),
+                               std::move(_context->topLevel().fieldPathExpressionsTraverseStage),
                                _context->slotIdGenerartor,
                                _context->inputSlot);
         _context->evals.push({{_context->topLevel().inputSlot, outputSlot, std::move(expr)}});
-        _context->topLevel().fieldPathsTraverseStage = std::move(stage);
+        _context->topLevel().fieldPathExpressionsTraverseStage = std::move(stage);
         _context->popFrontField();
     }
 
     void visit(const projection_ast::ProjectionPathASTNode* node) final {
         using namespace std::literals;
 
+        const auto isInclusion = _context->projectType == projection_ast::ProjectType::kInclusion;
         std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projects;
         std::vector<sbe::value::SlotId> projectSlots;
         std::vector<std::string> projectFields;
-        auto inputStage{std::move(_context->topLevel().fieldPathsTraverseStage)};
+        std::vector<std::string> restrictFields;
+        auto inputStage{std::move(_context->topLevel().fieldPathExpressionsTraverseStage)};
 
         invariant(_context->evals.size() >= node->fieldNames().size());
         for (auto it = node->fieldNames().rbegin(); it != node->fieldNames().rend(); ++it) {
@@ -210,6 +213,7 @@ public:
             _context->evals.pop();
 
             if (!eval) {
+                restrictFields.push_back(*it);
                 continue;
             }
 
@@ -256,16 +260,22 @@ public:
         _context->evals.push(
             {{_context->topLevel().inputSlot,
               outputSlot,
-              sbe::makeS<sbe::FilterStage<true>>(
-                  sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
-                                                outputSlot,
-                                                boost::none,
-                                                std::vector<std::string>{},
-                                                projectFields,
-                                                projectSlots),
-                  sbe::makeE<sbe::EFunction>(
-                      "isObject"sv,
-                      sbe::makeEs(sbe::makeE<sbe::EVariable>(_context->topLevel().inputSlot))))}});
+              isInclusion ? sbe::makeS<sbe::FilterStage<true>>(
+                                sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
+                                                              outputSlot,
+                                                              boost::none,
+                                                              std::vector<std::string>{},
+                                                              projectFields,
+                                                              projectSlots),
+                                sbe::makeE<sbe::EFunction>("isObject"sv,
+                                                           sbe::makeEs(sbe::makeE<sbe::EVariable>(
+                                                               _context->topLevel().inputSlot))))
+                          : sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
+                                                          outputSlot,
+                                                          _context->topLevel().inputSlot,
+                                                          restrictFields,
+                                                          projectFields,
+                                                          projectSlots)}});
         _context->popLevel();
     }
 
@@ -305,7 +315,8 @@ std::pair<sbe::value::SlotId, PlanStageType> generateProjection(
     PlanStageType stage,
     sbe::value::SlotIdGenerator* slotIdGenerator,
     sbe::value::SlotId inputVar) {
-    ProjectionTraversalVisitorContext context{slotIdGenerator, std::move(stage), inputVar};
+    ProjectionTraversalVisitorContext context{
+        projection->type(), slotIdGenerator, std::move(stage), inputVar};
     ProjectionTraversalPreVisitor preVisitor{&context};
     ProjectionTraversalPostVisitor postVisitor{&context};
     ProjectionTraversalWalker walker{&preVisitor, &postVisitor};
