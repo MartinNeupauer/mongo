@@ -1682,6 +1682,7 @@ struct Ope::Visitor
 
 struct AssignIDToDefinition : public Ope::Visitor
 {
+    using Ope::Visitor::visit;
     void visit(Sequence& ope) override {
         for (auto op: ope.opes_) {
             op->accept(*this);
@@ -1711,6 +1712,7 @@ struct AssignIDToDefinition : public Ope::Visitor
 
 struct IsLiteralToken : public Ope::Visitor
 {
+    using Ope::Visitor::visit;
     IsLiteralToken() : result_(false) {}
 
     void visit(PrioritizedChoice& ope) override {
@@ -1738,6 +1740,7 @@ private:
 
 struct TokenChecker : public Ope::Visitor
 {
+    using Ope::Visitor::visit;
     TokenChecker() : has_token_boundary_(false), has_rule_(false) {}
 
     void visit(Sequence& ope) override {
@@ -1829,6 +1832,7 @@ private:
 };
 
 struct ReferenceChecker : public Ope::Visitor {
+    using Ope::Visitor::visit;
     ReferenceChecker(
         const Grammar& grammar,
         const std::vector<std::string>& params)
@@ -1867,6 +1871,7 @@ private:
 };
 
 struct LinkReferences : public Ope::Visitor {
+    using Ope::Visitor::visit;
     LinkReferences(
         Grammar& grammar,
         const std::vector<std::string>& params)
@@ -1902,6 +1907,7 @@ private:
 };
 
 struct FindReference : public Ope::Visitor {
+    using Ope::Visitor::visit;
     FindReference(
         const std::vector<std::shared_ptr<Ope>>& args,
         const std::vector<std::string>& params)
@@ -1950,6 +1956,7 @@ private:
 
 struct IsPrioritizedChoice : public Ope::Visitor
 {
+    using Ope::Visitor::visit;
     IsPrioritizedChoice() : result_(false) {}
 
     void visit(PrioritizedChoice& /*ope*/) override {
