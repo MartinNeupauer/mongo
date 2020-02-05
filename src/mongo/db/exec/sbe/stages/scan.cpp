@@ -118,19 +118,14 @@ void ScanStage::doRestoreState() {
 }
 
 void ScanStage::doDetachFromOperationContext() {
-    invariant(_opCtx);
     if (_cursor) {
         _cursor->detachFromOperationContext();
     }
-    _opCtx = nullptr;
 }
 void ScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
-    invariant(opCtx);
-    invariant(!_opCtx);
     if (_cursor) {
         _cursor->reattachToOperationContext(opCtx);
     }
-    _opCtx = opCtx;
 }
 
 void ScanStage::open(bool reOpen) {
@@ -168,6 +163,8 @@ PlanState ScanStage::getNext() {
     if (!_cursor) {
         return PlanState::IS_EOF;
     }
+
+    checkForInterrupt();
 
     auto nextRecord =
         (_firstGetNext && _seekKeyAccessor) ? _cursor->seekExact(_key) : _cursor->next();
@@ -354,19 +351,14 @@ void ParallelScanStage::doRestoreState() {
 }
 
 void ParallelScanStage::doDetachFromOperationContext() {
-    invariant(_opCtx);
     if (_cursor) {
         _cursor->detachFromOperationContext();
     }
-    _opCtx = nullptr;
 }
 void ParallelScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
-    invariant(opCtx);
-    invariant(!_opCtx);
     if (_cursor) {
         _cursor->reattachToOperationContext(opCtx);
     }
-    _opCtx = opCtx;
 }
 
 void ParallelScanStage::open(bool reOpen) {
@@ -428,6 +420,8 @@ PlanState ParallelScanStage::getNext() {
     if (!_cursor) {
         return PlanState::IS_EOF;
     }
+
+    checkForInterrupt();
 
     boost::optional<Record> nextRecord;
 

@@ -44,14 +44,21 @@ struct CompileCtx;
 enum class PlanState { ADVANCED, IS_EOF };
 
 class PlanStage {
+    static const int kInterruptCheckPeriod = 128;
+    int _interruptCounter = kInterruptCheckPeriod;
+
 protected:
     std::vector<std::unique_ptr<PlanStage>> _children;
+
+    OperationContext* _opCtx{nullptr};
 
     // Derived classes can optionally override these methods.
     virtual void doSaveState() {}
     virtual void doRestoreState() {}
     virtual void doDetachFromOperationContext() {}
     virtual void doAttachFromOperationContext(OperationContext* opCtx) {}
+
+    void checkForInterrupt();
 
 public:
     virtual ~PlanStage() {}
@@ -82,17 +89,23 @@ public:
         doRestoreState();
     }
     void detachFromOperationContext() {
+        invariant(_opCtx);
         for (auto& child : _children) {
             child->detachFromOperationContext();
         }
 
         doDetachFromOperationContext();
+        _opCtx = nullptr;
     }
     void attachFromOperationContext(OperationContext* opCtx) {
+        invariant(opCtx);
+        invariant(!_opCtx);
+
         for (auto& child : _children) {
             child->attachFromOperationContext(opCtx);
         }
 
+        _opCtx = opCtx;
         doAttachFromOperationContext(opCtx);
     }
     virtual std::vector<DebugPrinter::Block> debugPrint() = 0;

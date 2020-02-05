@@ -69,7 +69,6 @@ private:
     const std::vector<value::SlotId> _vars;
     const boost::optional<value::SlotId> _seekKeySlot;
 
-    OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
@@ -140,8 +139,6 @@ private:
     const std::vector<value::SlotId> _vars;
 
     std::shared_ptr<ParallelState> _state;
-
-    OperationContext* _opCtx{nullptr};
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;

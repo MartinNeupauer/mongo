@@ -27,29 +27,19 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/stages/co_scan.h"
-#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/operation_context.h"
 
-namespace mongo::sbe {
-CoScanStage::CoScanStage() {}
-std::unique_ptr<PlanStage> CoScanStage::clone() {
-    return std::make_unique<CoScanStage>();
+namespace mongo {
+namespace sbe {
+void PlanStage::checkForInterrupt() {
+    if (!_opCtx) {
+        return;
+    }
+    if (--_interruptCounter == 0) {
+        _interruptCounter = kInterruptCheckPeriod;
+        _opCtx->checkForInterrupt();
+    }
 }
-void CoScanStage::prepare(CompileCtx& ctx) {}
-value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
-    return ctx.getAccessor(slot);
-}
-void CoScanStage::open(bool reOpen) {}
-PlanState CoScanStage::getNext() {
-    checkForInterrupt();
-
-    // run forever
-    return PlanState::ADVANCED;
-}
-void CoScanStage::close() {}
-std::vector<DebugPrinter::Block> CoScanStage::debugPrint() {
-    std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "coscan");
-    return ret;
-}
-}  // namespace mongo::sbe
+}  // namespace sbe
+}  // namespace mongo

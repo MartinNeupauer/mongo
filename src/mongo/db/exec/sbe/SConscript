@@ -15,6 +15,7 @@ env.Library(
         'stages/makeobj.cpp',
         'stages/project.cpp',
         'stages/sort.cpp',
+        'stages/stages.cpp',
         'stages/traverse.cpp',
         'stages/union.cpp',
         'stages/unwind.cpp',

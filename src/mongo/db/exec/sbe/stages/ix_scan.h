@@ -72,7 +72,6 @@ private:
     const boost::optional<value::SlotId> _seekKeySlotLow;
     const boost::optional<value::SlotId> _seekKeySlotHi;
 
-    OperationContext* _opCtx{nullptr};
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 

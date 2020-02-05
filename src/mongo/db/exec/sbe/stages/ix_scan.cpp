@@ -122,19 +122,14 @@ void IndexScanStage::doRestoreState() {
 }
 
 void IndexScanStage::doDetachFromOperationContext() {
-    invariant(_opCtx);
     if (_cursor) {
         _cursor->detachFromOperationContext();
     }
-    _opCtx = nullptr;
 }
 void IndexScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
-    invariant(opCtx);
-    invariant(!_opCtx);
     if (_cursor) {
         _cursor->reattachToOperationContext(opCtx);
     }
-    _opCtx = opCtx;
 }
 
 void IndexScanStage::open(bool reOpen) {
