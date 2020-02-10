@@ -219,6 +219,8 @@ void DocumentSourceGraphLookUp::doBreadthFirstSearch() {
             pipelineOpts.attachCursorSource = true;
             // By default, $graphLookup doesn't support a sharded 'from' collection.
             pipelineOpts.allowTargetingShards = internalQueryAllowShardedLookup.load();
+            // Save the variable ID generator.
+            auto generator = *_fromExpCtx->variables.useIdGenerator();
             auto pipeline = Pipeline::makePipeline(_fromPipeline, _fromExpCtx, pipelineOpts);
             while (auto next = pipeline->getNext()) {
                 uassert(40271,
@@ -232,6 +234,8 @@ void DocumentSourceGraphLookUp::doBreadthFirstSearch() {
                 addToCache(std::move(*next), queried);
             }
             checkMemoryUsage();
+            // Restore the generator to the state before executing the pipeline.
+            *_fromExpCtx->variables.useIdGenerator() = generator;
         }
 
         ++depth;
