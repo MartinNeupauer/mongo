@@ -291,13 +291,19 @@ void generateLogicalOr(MatchExpressionVisitorContext* context, const OrMatchExpr
         context->predicateVars.pop();
     }
 
-    if (!context->nestedLogicalExprs.empty()) {
+    // If this $or expression is a branch of another $and expression, or is a top-level logical
+    // expression we can just inject a filter stage without propagating the result of the predicate
+    // evaluation to the parent expression, to form a sub-tree of stage->FILTER->stage->FILTER plan
+    // stages to support early exit for the $and branches. Otherwise, just project out the result
+    // of the predicate evaluation and let the parent expression handle it.
+    if (context->nestedLogicalExprs.empty() ||
+        context->nestedLogicalExprs.top().first->matchType() == MatchExpression::AND) {
+        context->inputStage =
+            sbe::makeS<sbe::FilterStage<false>>(std::move(context->inputStage), std::move(filter));
+    } else {
         context->predicateVars.push(context->slotIdGenerator->generate());
         context->inputStage = sbe::makeProjectStage(
             std::move(context->inputStage), context->predicateVars.top(), std::move(filter));
-    } else {
-        context->inputStage =
-            sbe::makeS<sbe::FilterStage<false>>(std::move(context->inputStage), std::move(filter));
     }
 }
 
