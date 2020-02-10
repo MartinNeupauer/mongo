@@ -525,9 +525,6 @@ public:
     void visit(ExpressionInternalJsEmit* expr) final {
         unsupportedExpression("$internalJsEmit");
     }
-    void visit(ExpressionInternalJs* expr) final {
-        unsupportedExpression("$internalJs");
-    }
     void visit(ExpressionInternalFindSlice* expr) final {
         unsupportedExpression("$internalFindSlice");
     }
@@ -536,6 +533,9 @@ public:
     }
     void visit(ExpressionInternalFindElemMatch* expr) final {
         unsupportedExpression("$internalFindElemMatch");
+    }
+    void visit(ExpressionFunction* expr) final {
+        unsupportedExpression("$function");
     }
 
 private:
