@@ -139,7 +139,7 @@ static constexpr auto syntax = R"(
                 ADD_EXPR <- MUL_EXPR ADD_TOK ADD_EXPR / MUL_EXPR
                 ADD_TOK <- <'+'> / <'-'>
 
-                MUL_EXPR <- PRIMARY_EXPR  MUL_EXPR / PRIMARY_EXPR
+                MUL_EXPR <- PRIMARY_EXPR MUL_TOK MUL_EXPR / PRIMARY_EXPR
                 MUL_TOK <- <'*'> / <'/'>
 
                 PRIMARY_EXPR <- '(' EXPR ')' / CONST_TOK / IF_EXPR / FUN_CALL / IDENT / NUMBER / STRING

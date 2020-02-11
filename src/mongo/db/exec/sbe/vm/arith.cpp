@@ -70,6 +70,111 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericAdd(value::Type
     return {false, value::TypeTags::Nothing, 0};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericSub(value::TypeTags lhsTag,
+                                                                     value::Value lhsValue,
+                                                                     value::TypeTags rhsTag,
+                                                                     value::Value rhsValue) {
+    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
+        switch (getWidestNumericalType(lhsTag, rhsTag)) {
+            case value::TypeTags::NumberInt32: {
+                auto result =
+                    numericCast<int32_t>(lhsTag, lhsValue) - numericCast<int32_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt32, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberInt64: {
+                auto result =
+                    numericCast<int64_t>(lhsTag, lhsValue) - numericCast<int64_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt64, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDouble: {
+                auto result =
+                    numericCast<double>(lhsTag, lhsValue) - numericCast<double>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberDouble, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDecimal: {
+                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
+                                  .subtract(numericCast<Decimal128>(rhsTag, rhsValue));
+                auto [tag, val] = value::makeCopyDecimal(result);
+                return {true, tag, val};
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+
+    return {false, value::TypeTags::Nothing, 0};
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericMul(value::TypeTags lhsTag,
+                                                                     value::Value lhsValue,
+                                                                     value::TypeTags rhsTag,
+                                                                     value::Value rhsValue) {
+    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
+        switch (getWidestNumericalType(lhsTag, rhsTag)) {
+            case value::TypeTags::NumberInt32: {
+                auto result =
+                    numericCast<int32_t>(lhsTag, lhsValue) * numericCast<int32_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt32, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberInt64: {
+                auto result =
+                    numericCast<int64_t>(lhsTag, lhsValue) * numericCast<int64_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt64, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDouble: {
+                auto result =
+                    numericCast<double>(lhsTag, lhsValue) * numericCast<double>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberDouble, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDecimal: {
+                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
+                                  .multiply(numericCast<Decimal128>(rhsTag, rhsValue));
+                auto [tag, val] = value::makeCopyDecimal(result);
+                return {true, tag, val};
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+
+    return {false, value::TypeTags::Nothing, 0};
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericDiv(value::TypeTags lhsTag,
+                                                                     value::Value lhsValue,
+                                                                     value::TypeTags rhsTag,
+                                                                     value::Value rhsValue) {
+    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
+        switch (getWidestNumericalType(lhsTag, rhsTag)) {
+            case value::TypeTags::NumberInt32: {
+                auto result =
+                    numericCast<int32_t>(lhsTag, lhsValue) / numericCast<int32_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt32, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberInt64: {
+                auto result =
+                    numericCast<int64_t>(lhsTag, lhsValue) / numericCast<int64_t>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberInt64, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDouble: {
+                auto result =
+                    numericCast<double>(lhsTag, lhsValue) / numericCast<double>(rhsTag, rhsValue);
+                return {false, value::TypeTags::NumberDouble, value::bitcastFrom(result)};
+            }
+            case value::TypeTags::NumberDecimal: {
+                auto result = numericCast<Decimal128>(lhsTag, lhsValue)
+                                  .divide(numericCast<Decimal128>(rhsTag, rhsValue));
+                auto [tag, val] = value::makeCopyDecimal(result);
+                return {true, tag, val};
+            }
+            default:
+                MONGO_UNREACHABLE;
+        }
+    }
+
+    return {false, value::TypeTags::Nothing, 0};
+}
+
 std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeTags lhsTag,
                                                                     value::Value lhsValue,
                                                                     value::TypeTags rhsTag,

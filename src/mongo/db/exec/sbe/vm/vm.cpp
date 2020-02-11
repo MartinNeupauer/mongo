@@ -66,6 +66,15 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
 void CodeFragment::appendAdd() {
     appendSimpleInstruction(Instruction::add);
 }
+void CodeFragment::appendSub() {
+    appendSimpleInstruction(Instruction::sub);
+}
+void CodeFragment::appendMul() {
+    appendSimpleInstruction(Instruction::mul);
+}
+void CodeFragment::appendDiv() {
+    appendSimpleInstruction(Instruction::div);
+}
 void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
     i.owned = false;  // this is not used
@@ -436,6 +445,57 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
                     auto [owned, tag, val] = genericAdd(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::sub: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = genericSub(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::mul: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = genericMul(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::div: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = genericDiv(lhsTag, lhsVal, rhsTag, rhsVal);
 
                     topStack(owned, tag, val);
 

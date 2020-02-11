@@ -100,6 +100,9 @@ struct Instruction {
         pushAccessVal,
 
         add,
+        sub,
+        mul,
+        div,
 
         less,
         lessEq,
@@ -153,6 +156,9 @@ public:
     void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
     void appendAccessVal(value::SlotAccessor* accessor);
     void appendAdd();
+    void appendSub();
+    void appendMul();
+    void appendDiv();
     void appendLess() {
         appendSimpleInstruction(Instruction::less);
     }
@@ -190,6 +196,18 @@ class ByteCode {
     std::vector<value::Value> _argStackVals;
 
     std::tuple<bool, value::TypeTags, value::Value> genericAdd(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue);
+    std::tuple<bool, value::TypeTags, value::Value> genericSub(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue);
+    std::tuple<bool, value::TypeTags, value::Value> genericMul(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue);
+    std::tuple<bool, value::TypeTags, value::Value> genericDiv(value::TypeTags lhsTag,
                                                                value::Value lhsValue,
                                                                value::TypeTags rhsTag,
                                                                value::Value rhsValue);

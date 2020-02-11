@@ -105,6 +105,21 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code->append(std::move(rhs));
             code->appendAdd();
             break;
+        case EPrimBinary::sub:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendSub();
+            break;
+        case EPrimBinary::mul:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendMul();
+            break;
+        case EPrimBinary::div:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendDiv();
+            break;
         case EPrimBinary::less:
             code->append(std::move(lhs));
             code->append(std::move(rhs));
@@ -188,6 +203,15 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
     switch (_op) {
         case EPrimBinary::add:
             ret.emplace_back("+");
+            break;
+        case EPrimBinary::sub:
+            ret.emplace_back("-");
+            break;
+        case EPrimBinary::mul:
+            ret.emplace_back("*");
+            break;
+        case EPrimBinary::div:
+            ret.emplace_back("/");
             break;
         case EPrimBinary::less:
             ret.emplace_back("<");
