@@ -94,17 +94,16 @@ void HashAggStage::open(bool reOpen) {
     _children[0]->open(reOpen);
 
     value::MaterializedRow key;
-    value::MaterializedRow agg;
     while (_children[0]->getNext() == PlanState::ADVANCED) {
-        key._fields.reserve(_inKeyAccessors.size());
+        key._fields.resize(_inKeyAccessors.size());
         // copy keys in order to do the lookup
+        size_t idx = 0;
         for (auto& p : _inKeyAccessors) {
-            key._fields.push_back(value::OwnedValueAccessor{});
             auto [tag, val] = p.second->getViewOfValue();
-            key._fields.back().reset(false, tag, val);
+            key._fields[idx++].reset(false, tag, val);
         }
 
-        auto [it, inserted] = _ht.emplace(std::move(key), std::move(agg));
+        auto [it, inserted] = _ht.emplace(std::move(key), value::MaterializedRow{});
         if (inserted) {
             // copy keys
             const_cast<value::MaterializedRow&>(it->first).makeOwned();
@@ -117,8 +116,6 @@ void HashAggStage::open(bool reOpen) {
             auto [owned, tag, val] = _bytecode.run(_aggCodes[idx].get());
             _outAggAccessors[idx]->reset(owned, tag, val);
         }
-
-        key._fields.clear();
     }
 
     _children[0]->close();

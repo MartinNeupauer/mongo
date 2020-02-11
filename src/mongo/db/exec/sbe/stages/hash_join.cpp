@@ -89,6 +89,8 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
         _outOuterAccessors[p] = _outOuterProjectAccessors.back().get();
     }
 
+    _probeKey._fields.resize(_inInnerKeyAccessors.size());
+
     _compiled = true;
 }
 
@@ -149,16 +151,15 @@ PlanState HashJoinStage::getNext() {
                 // LEFT and OUTER joins should enumerate "non-returned" rows here
                 return state;
             }
-            value::MaterializedRow key;
-            key._fields.reserve(_inInnerKeyAccessors.size());
+
             // copy keys in order to do the lookup
+            size_t idx = 0;
             for (auto& p : _inInnerKeyAccessors) {
-                key._fields.push_back(value::OwnedValueAccessor{});
                 auto [tag, val] = p.second->getViewOfValue();
-                key._fields.back().reset(false, tag, val);
+                _probeKey._fields[idx++].reset(false, tag, val);
             }
 
-            auto [low, hi] = _ht.equal_range(key);
+            auto [low, hi] = _ht.equal_range(_probeKey);
             _htIt = low;
             _htItEnd = hi;
             // if _htIt == _htItEnd (i.e. no match) then RIGHT and OUTER joins

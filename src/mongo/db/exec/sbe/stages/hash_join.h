@@ -66,6 +66,9 @@ class HashJoinStage final : public PlanStage {
     // accessors of input codition values (keys) that are being inserted into the hash table
     std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inInnerKeyAccessors;
 
+    // key used to probe inside the hash table
+    value::MaterializedRow _probeKey;
+
     TableType _ht;
     TableType::iterator _htIt;
     TableType::iterator _htItEnd;
