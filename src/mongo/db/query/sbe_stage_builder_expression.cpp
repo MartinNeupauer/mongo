@@ -27,7 +27,7 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
+#define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
 #include "mongo/platform/basic.h"
 
@@ -42,7 +42,7 @@
 #include "mongo/db/pipeline/expression_visitor.h"
 #include "mongo/db/pipeline/expression_walker.h"
 #include "mongo/db/query/projection_parser.h"
-#include "mongo/util/log.h"
+#include "mongo/logv2/log.h"
 #include "mongo/util/str.h"
 
 namespace mongo::stage_builder {
@@ -536,6 +536,9 @@ public:
     }
     void visit(ExpressionFunction* expr) final {
         unsupportedExpression("$function");
+    }
+    void visit(ExpressionInternalRemoveFieldTombstones* expr) final {
+        unsupportedExpression("$internalRemoveFieldTombstones");
     }
 
 private:
