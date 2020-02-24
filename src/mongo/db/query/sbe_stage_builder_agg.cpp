@@ -27,33 +27,15 @@
  *    it in the license file.
  */
 
-#pragma once
+#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
 
-#include "mongo/db/query/sbe_stage_builder_common.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/platform/basic.h"
+
+#include "mongo/db/query/sbe_stage_builder_agg.h"
 
 namespace mongo::stage_builder {
-/**
- * A stage builder which builds an executable tree using slot-based PlanStages.
- */
-class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage>,
-                              public BaseSlotBasedStageBuilder {
-public:
-    using StageBuilder<sbe::PlanStage>::StageBuilder;
-
-    std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
-
-private:
-    std::unique_ptr<sbe::PlanStage> buildCollScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildIndexScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildFetch(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildLimit(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSkip(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSort(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
-
-    boost::optional<long long> _limit;
-};
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::build(
+    const DocumentSource* root) {
+    return nullptr;
+}
 }  // namespace mongo::stage_builder

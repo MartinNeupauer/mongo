@@ -29,31 +29,19 @@
 
 #pragma once
 
-#include "mongo/db/query/sbe_stage_builder_common.h"
-#include "mongo/db/query/stage_builder.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/values/slot_id_generator.h"
 
 namespace mongo::stage_builder {
 /**
- * A stage builder which builds an executable tree using slot-based PlanStages.
+ * A base stage builder which builds an executable tree using slot-based PlanStages.
+ * There are two derived classes - one for query solution based plans and other for pipeline plans.
  */
-class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage>,
-                              public BaseSlotBasedStageBuilder {
-public:
-    using StageBuilder<sbe::PlanStage>::StageBuilder;
-
-    std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
-
-private:
-    std::unique_ptr<sbe::PlanStage> buildCollScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildIndexScan(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildFetch(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildLimit(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSkip(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSort(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
-    std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
-
-    boost::optional<long long> _limit;
+class BaseSlotBasedStageBuilder {
+protected:
+    std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
+        sbe::value::makeDefaultSlotIdGenerator()};
+    boost::optional<sbe::value::SlotId> _recordIdSlot;
+    boost::optional<sbe::value::SlotId> _resultSlot;
 };
 }  // namespace mongo::stage_builder
