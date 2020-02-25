@@ -31,11 +31,64 @@
 
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/exchange.h"
+#include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/hash_agg.h"
+#include "mongo/db/exec/sbe/stages/ix_scan.h"
+#include "mongo/db/exec/sbe/stages/limit_skip.h"
+#include "mongo/db/exec/sbe/stages/loop_join.h"
+#include "mongo/db/exec/sbe/stages/makeobj.h"
+#include "mongo/db/exec/sbe/stages/project.h"
+#include "mongo/db/exec/sbe/stages/scan.h"
+#include "mongo/db/exec/sbe/stages/sort.h"
+#include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/query/sbe_stage_builder_agg.h"
 
 namespace mongo::stage_builder {
+std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
+    DocumentSourceSlotBasedStageBuilder::kStageBuilders;
+
+MONGO_INITIALIZER(RegisterDocumentSourceBuilders)(InitializerContext*) {
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceGroup>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildGroup));
+
+    return Status::OK();
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
+    const DocumentSource* root) {
+    const auto gb = static_cast<const DocumentSourceGroup*>(root);
+    auto inputStage = build(gb->getSource());
+
+    return inputStage;
+}
+
 std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::build(
     const DocumentSource* root) {
-    return nullptr;
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            str::stream() << "Can't build exec tree for node: " << root->getSourceName(),
+            kStageBuilders.find(typeid(*root)) != kStageBuilders.end());
+
+    auto stage = std::invoke(kStageBuilders.at(typeid(*root)), *this, root);
+    return stage;
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::build(
+    const Pipeline* pipeline) {
+    auto stage = build(pipeline->getSources().back().get());
+
+    uassert(ErrorCodes::InternalError, "Result slot is not defined in SBE plan", _resultSlot);
+
+    stage = _recordIdSlot ? sbe::makeProjectStage(std::move(stage),
+                                                  sbe::value::SystemSlots::kResultSlot,
+                                                  sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                                  sbe::value::SystemSlots::kRecordIdSlot,
+                                                  sbe::makeE<sbe::EVariable>(*_recordIdSlot))
+                          : sbe::makeProjectStage(std::move(stage),
+                                                  sbe::value::SystemSlots::kResultSlot,
+                                                  sbe::makeE<sbe::EVariable>(*_resultSlot));
+    return stage;
 }
 }  // namespace mongo::stage_builder

@@ -318,6 +318,13 @@ public:
     }
 
     /**
+     * Get the source stage.
+     */
+    auto getSource() const {
+        return pSource;
+    }
+
+    /**
      * In the default case, serializes the DocumentSource and adds it to the std::vector<Value>.
      *
      * A subclass may choose to overwrite this, rather than serialize, if it should output multiple

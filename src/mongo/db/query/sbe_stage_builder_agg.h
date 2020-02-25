@@ -34,7 +34,21 @@
 
 namespace mongo::stage_builder {
 class DocumentSourceSlotBasedStageBuilder : public BaseSlotBasedStageBuilder {
+    using BuilderFnType = std::function<std::unique_ptr<sbe::PlanStage>(
+        DocumentSourceSlotBasedStageBuilder&, const DocumentSource* root)>;
+    static std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
+        kStageBuilders;
+
 public:
     std::unique_ptr<sbe::PlanStage> build(const DocumentSource* root);
+    std::unique_ptr<sbe::PlanStage> build(const Pipeline* pipeline);
+
+    std::unique_ptr<sbe::PlanStage> buildGroup(const DocumentSource* root);
+    std::unique_ptr<sbe::PlanStage> buildBSONScan(const DocumentSource* root);
+
+    template <typename T>
+    static void registerBuilder(BuilderFnType f) {
+        kStageBuilders[typeid(T)] = f;
+    }
 };
 }  // namespace mongo::stage_builder
