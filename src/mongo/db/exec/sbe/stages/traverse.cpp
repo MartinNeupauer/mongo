@@ -39,7 +39,8 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<EExpression> foldExpr,
                              std::unique_ptr<EExpression> finalExpr,
                              boost::optional<size_t> nestedArraysDepth)
-    : _inField(inField),
+    : PlanStage("traverse"_sd),
+      _inField(inField),
       _outField(outField),
       _outFieldInner(outFieldInner),
       _fold(std::move(foldExpr)),
@@ -244,6 +245,18 @@ void TraverseStage::close() {
 
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> TraverseStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    ret->children.emplace_back(_children[1]->getStats());
+    return ret;
+}
+
+const SpecificStats* TraverseStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> TraverseStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "traverse");

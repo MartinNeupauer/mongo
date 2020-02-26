@@ -35,7 +35,7 @@ namespace sbe {
 HashAggStage::HashAggStage(std::unique_ptr<PlanStage> input,
                            const std::vector<value::SlotId>& gbs,
                            std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs)
-    : _gbs(gbs), _aggs(std::move(aggs)) {
+    : PlanStage("group"_sd), _gbs(gbs), _aggs(std::move(aggs)) {
     _children.emplace_back(std::move(input));
 }
 std::unique_ptr<PlanStage> HashAggStage::clone() {
@@ -134,6 +134,16 @@ PlanState HashAggStage::getNext() {
     }
 
     return PlanState::ADVANCED;
+}
+
+std::unique_ptr<PlanStageStats> HashAggStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* HashAggStage::getSpecificStats() const {
+    return nullptr;
 }
 
 void HashAggStage::close() {}

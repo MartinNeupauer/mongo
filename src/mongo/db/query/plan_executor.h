@@ -33,6 +33,7 @@
 
 #include "mongo/base/status.h"
 #include "mongo/db/catalog/util/partitioned.h"
+#include "mongo/db/exec/plan_stats.h"
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/stdx/unordered_set.h"
@@ -47,7 +48,6 @@ class PlanExecutor;
 class PlanStage;
 class PlanYieldPolicy;
 class RecordId;
-struct PlanStageStats;
 class WorkingSet;
 
 namespace sbe {

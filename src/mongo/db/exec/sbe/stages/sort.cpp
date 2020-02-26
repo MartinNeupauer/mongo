@@ -40,7 +40,8 @@ SortStage::SortStage(std::unique_ptr<PlanStage> input,
                      const std::vector<value::SortDirection>& dirs,
                      const std::vector<value::SlotId>& vals,
                      size_t limit)
-    : _obs(obs),
+    : PlanStage("sort"_sd),
+      _obs(obs),
       _dirs(dirs),
       _vals(vals),
       _limit(limit),
@@ -129,6 +130,17 @@ PlanState SortStage::getNext() {
     return PlanState::ADVANCED;
 }
 void SortStage::close() {}
+
+std::unique_ptr<PlanStageStats> SortStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* SortStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> SortStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "sort");

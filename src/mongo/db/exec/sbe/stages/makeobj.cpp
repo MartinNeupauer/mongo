@@ -38,7 +38,8 @@ MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
                            const std::vector<std::string>& restrictFields,
                            const std::vector<std::string>& projectFields,
                            const std::vector<value::SlotId>& projectVars)
-    : _objSlot(objSlot),
+    : PlanStage("mkobj"_sd),
+      _objSlot(objSlot),
       _rootSlot(rootSlot),
       _restrictFields(restrictFields),
       _projectFields(projectFields),
@@ -138,6 +139,17 @@ PlanState MakeObjStage::getNext() {
 void MakeObjStage::close() {
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> MakeObjStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* MakeObjStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "mkobj");

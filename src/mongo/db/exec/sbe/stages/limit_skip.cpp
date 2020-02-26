@@ -33,7 +33,11 @@ namespace mongo::sbe {
 LimitSkipStage::LimitSkipStage(std::unique_ptr<PlanStage> input,
                                boost::optional<long long> limit,
                                boost::optional<long long> skip)
-    : _limit(limit), _skip(skip), _current(0), _isEOF(false) {
+    : PlanStage(!skip ? "limit"_sd : "limitskip"_sd),
+      _limit(limit),
+      _skip(skip),
+      _current(0),
+      _isEOF(false) {
     invariant(_limit || _skip);
     _children.emplace_back(std::move(input));
 }
@@ -70,6 +74,17 @@ PlanState LimitSkipStage::getNext() {
 void LimitSkipStage::close() {
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> LimitSkipStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* LimitSkipStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
 

@@ -39,7 +39,8 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
                      const std::vector<std::string>& fields,
                      const std::vector<value::SlotId>& vars,
                      boost::optional<value::SlotId> seekKeySlot)
-    : _name(name),
+    : PlanStage(seekKeySlot ? "seek"_sd : "scan"_sd),
+      _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
       _fields(fields),
@@ -161,20 +162,23 @@ void ScanStage::open(bool reOpen) {
 
 PlanState ScanStage::getNext() {
     if (!_cursor) {
+        _commonStats.isEOF = true;
         return PlanState::IS_EOF;
     }
 
-    checkForInterrupt();
+    checkForInterrupt(_opCtx);
 
     auto nextRecord =
         (_firstGetNext && _seekKeyAccessor) ? _cursor->seekExact(_key) : _cursor->next();
     _firstGetNext = false;
 
     if (!nextRecord) {
+        _commonStats.isEOF = true;
         return PlanState::IS_EOF;
     }
 
     if (_seekKeyAccessor && nextRecord->id != _key) {
+        _commonStats.isEOF = true;
         return PlanState::IS_EOF;
     }
 
@@ -216,12 +220,23 @@ PlanState ScanStage::getNext() {
         }
     }
 
+    _specificStats.numReads++;
     return PlanState::ADVANCED;
 }
 
 void ScanStage::close() {
     _cursor.reset();
     _coll.reset();
+}
+
+std::unique_ptr<PlanStageStats> ScanStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->specific = std::make_unique<ScanStats>(_specificStats);
+    return ret;
+}
+
+const SpecificStats* ScanStage::getSpecificStats() const {
+    return &_specificStats;
 }
 
 std::vector<DebugPrinter::Block> ScanStage::debugPrint() {
@@ -268,7 +283,8 @@ ParallelScanStage::ParallelScanStage(const NamespaceStringOrUUID& name,
                                      boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
                                      const std::vector<value::SlotId>& vars)
-    : _name(name),
+    : PlanStage("pscan"_sd),
+      _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
       _fields(fields),
@@ -284,7 +300,8 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
                                      boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
                                      const std::vector<value::SlotId>& vars)
-    : _name(name),
+    : PlanStage("pscan"_sd),
+      _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
       _fields(fields),
@@ -418,16 +435,18 @@ boost::optional<Record> ParallelScanStage::nextRange() {
 
 PlanState ParallelScanStage::getNext() {
     if (!_cursor) {
+        _commonStats.isEOF = true;
         return PlanState::IS_EOF;
     }
 
-    checkForInterrupt();
+    checkForInterrupt(_opCtx);
 
     boost::optional<Record> nextRecord;
 
     do {
         nextRecord = needsRange() ? nextRange() : _cursor->next();
         if (!nextRecord) {
+            _commonStats.isEOF = true;
             return PlanState::IS_EOF;
         }
 
@@ -481,6 +500,15 @@ PlanState ParallelScanStage::getNext() {
 void ParallelScanStage::close() {
     _cursor.reset();
     _coll.reset();
+}
+
+std::unique_ptr<PlanStageStats> ParallelScanStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    return ret;
+}
+
+const SpecificStats* ParallelScanStage::getSpecificStats() const {
+    return nullptr;
 }
 
 std::vector<DebugPrinter::Block> ParallelScanStage::debugPrint() {

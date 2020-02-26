@@ -75,6 +75,8 @@ public:
     PlanState getNext() final;
     void close() final;
 
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
 };
 }  // namespace mongo::sbe

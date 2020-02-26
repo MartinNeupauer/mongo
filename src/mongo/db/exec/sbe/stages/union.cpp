@@ -37,7 +37,7 @@ namespace mongo::sbe {
 UnionStage::UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
                        const std::vector<std::vector<value::SlotId>>& inputVals,
                        const std::vector<value::SlotId>& outputVals)
-    : _inputVals{inputVals}, _outputVals{outputVals} {
+    : PlanStage("union"_sd), _inputVals{inputVals}, _outputVals{outputVals} {
     _children = std::move(inputStages);
 
     invariant(_children.size() > 0);
@@ -132,6 +132,19 @@ void UnionStage::close() {
         _remainingBranchesToDrain.pop();
     }
 }
+
+std::unique_ptr<PlanStageStats> UnionStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    for (auto&& child : _children) {
+        ret->children.emplace_back(child->getStats());
+    }
+    return ret;
+}
+
+const SpecificStats* UnionStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> UnionStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "union");

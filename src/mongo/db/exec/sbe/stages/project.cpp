@@ -33,7 +33,7 @@ namespace mongo {
 namespace sbe {
 ProjectStage::ProjectStage(std::unique_ptr<PlanStage> input,
                            std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects)
-    : _projects(std::move(projects)) {
+    : PlanStage("project"_sd), _projects(std::move(projects)) {
     _children.emplace_back(std::move(input));
 }
 
@@ -85,6 +85,17 @@ PlanState ProjectStage::getNext() {
 void ProjectStage::close() {
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> ProjectStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* ProjectStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> ProjectStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "project");

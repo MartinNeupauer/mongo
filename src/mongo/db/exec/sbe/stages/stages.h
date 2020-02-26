@@ -29,38 +29,110 @@
 
 #pragma once
 
+#include "mongo/db/exec/sbe/stages/plan_stats.h"
 #include "mongo/db/exec/sbe/util/debug_print.h"
 #include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/db/operation_context.h"
 
 #include <memory>
 #include <vector>
 
 namespace mongo {
-class OperationContext;
 namespace sbe {
 
 struct CompileCtx;
-
+class PlanStage;
 enum class PlanState { ADVANCED, IS_EOF };
 
-class PlanStage {
-    static const int kInterruptCheckPeriod = 128;
-    int _interruptCounter = kInterruptCheckPeriod;
+class CanSwitchOperationContext {
+public:
+    CanSwitchOperationContext(PlanStage* stage) : _stage(stage) {
+        invariant(_stage);
+    }
+
+    void detachFromOperationContext();
+    void attachFromOperationContext(OperationContext* opCtx);
 
 protected:
-    std::vector<std::unique_ptr<PlanStage>> _children;
-
-    OperationContext* _opCtx{nullptr};
-
     // Derived classes can optionally override these methods.
-    virtual void doSaveState() {}
-    virtual void doRestoreState() {}
     virtual void doDetachFromOperationContext() {}
     virtual void doAttachFromOperationContext(OperationContext* opCtx) {}
 
-    void checkForInterrupt();
+    OperationContext* _opCtx{nullptr};
+
+private:
+    PlanStage* const _stage;
+};
+
+class CanChangeState {
+public:
+    CanChangeState(PlanStage* stage) : _stage(stage) {
+        invariant(_stage);
+    }
+
+    void saveState();
+    void restoreState();
+
+protected:
+    // Derived classes can optionally override these methods.
+    virtual void doSaveState() {}
+    virtual void doRestoreState() {}
+
+private:
+    PlanStage* const _stage;
+};
+
+class CanTrackStats {
+public:
+    CanTrackStats(StringData stageType) : _commonStats(stageType) {}
+
+    /**
+     * Returns a tree of stats. If the stage has any children it must propagate the request for
+     * stats to them.
+     */
+    virtual std::unique_ptr<PlanStageStats> getStats() const = 0;
+
+    /**
+     * Get stats specific to this stage. Some stages may not have specific stats, in which
+     * case they return nullptr. The pointer is *not* owned by the caller.
+     *
+     * The returned pointer is only valid when the corresponding stage is also valid.
+     * It must not exist past the stage. If you need the stats to outlive the stage,
+     * use the getStats(...) method above.
+     */
+    virtual const SpecificStats* getSpecificStats() const = 0;
+
+protected:
+    CommonStats _commonStats;
+};
+
+class CanInterrupt {
+public:
+    void checkForInterrupt(OperationContext* opCtx) {
+        if (!opCtx) {
+            return;
+        }
+        if (--_interruptCounter == 0) {
+            _interruptCounter = kInterruptCheckPeriod;
+            opCtx->checkForInterrupt();
+        }
+    }
+
+private:
+    static const int kInterruptCheckPeriod = 128;
+    int _interruptCounter = kInterruptCheckPeriod;
+};
+
+class PlanStage : public CanSwitchOperationContext,
+                  public CanChangeState,
+                  public CanTrackStats,
+                  public CanInterrupt {
+protected:
+    std::vector<std::unique_ptr<PlanStage>> _children;
 
 public:
+    PlanStage(StringData stageType)
+        : CanSwitchOperationContext{this}, CanChangeState{this}, CanTrackStats{stageType} {}
     virtual ~PlanStage() {}
 
     // This is unspeakably ugly
@@ -72,49 +144,15 @@ public:
     virtual PlanState getNext() = 0;
     virtual void close() = 0;
 
-    // Old PlanStage state machinery
-    // TODO should these be noexcept?
-    void saveState() {
-        for (auto& child : _children) {
-            child->saveState();
-        }
-
-        doSaveState();
-    }
-    void restoreState() {
-        for (auto& child : _children) {
-            child->restoreState();
-        }
-
-        doRestoreState();
-    }
-    void detachFromOperationContext() {
-        invariant(_opCtx);
-        for (auto& child : _children) {
-            child->detachFromOperationContext();
-        }
-
-        doDetachFromOperationContext();
-        _opCtx = nullptr;
-    }
-    void attachFromOperationContext(OperationContext* opCtx) {
-        invariant(opCtx);
-        invariant(!_opCtx);
-
-        for (auto& child : _children) {
-            child->attachFromOperationContext(opCtx);
-        }
-
-        _opCtx = opCtx;
-        doAttachFromOperationContext(opCtx);
-    }
     virtual std::vector<DebugPrinter::Block> debugPrint() = 0;
+
+    friend class CanSwitchOperationContext;
+    friend class CanChangeState;
 };
 
 template <typename T, typename... Args>
 inline std::unique_ptr<PlanStage> makeS(Args&&... args) {
     return std::make_unique<T>(std::forward<Args>(args)...);
 }
-
 }  // namespace sbe
 }  // namespace mongo

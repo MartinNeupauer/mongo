@@ -36,7 +36,8 @@ LoopJoinStage::LoopJoinStage(std::unique_ptr<PlanStage> outer,
                              const std::vector<value::SlotId>& outerProjects,
                              const std::vector<value::SlotId>& outerCorrelated,
                              std::unique_ptr<EExpression> predicate)
-    : _outerProjects(outerProjects),
+    : PlanStage("nlj"_sd),
+      _outerProjects(outerProjects),
       _outerCorrelated(outerCorrelated),
       _predicate(std::move(predicate)) {
     _children.emplace_back(std::move(outer));
@@ -138,6 +139,18 @@ void LoopJoinStage::close() {
 
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> LoopJoinStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    ret->children.emplace_back(_children[1]->getStats());
+    return ret;
+}
+
+const SpecificStats* LoopJoinStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> LoopJoinStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "nlj");

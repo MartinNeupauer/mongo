@@ -35,7 +35,7 @@ UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
                          value::SlotId inField,
                          value::SlotId outField,
                          value::SlotId outIndex)
-    : _inField(inField), _outField(outField), _outIndex(outIndex) {
+    : PlanStage("unwind"_sd), _inField(inField), _outField(outField), _outIndex(outIndex) {
     _children.emplace_back(std::move(input));
 
     if (_outField == _outIndex) {
@@ -122,6 +122,17 @@ PlanState UnwindStage::getNext() {
 void UnwindStage::close() {
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> UnwindStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* UnwindStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> UnwindStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "unwind");

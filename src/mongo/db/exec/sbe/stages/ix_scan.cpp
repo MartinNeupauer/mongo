@@ -41,7 +41,8 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
                                const std::vector<value::SlotId>& vars,
                                boost::optional<value::SlotId> seekKeySlotLow,
                                boost::optional<value::SlotId> seekKeySlotHi)
-    : _name(name),
+    : PlanStage(seekKeySlotLow ? "ixseek"_sd : "ixscan"_sd),
+      _name(name),
       _indexName(indexName),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
@@ -229,6 +230,16 @@ PlanState IndexScanStage::getNext() {
 void IndexScanStage::close() {
     _cursor.reset();
     _coll.reset();
+}
+
+std::unique_ptr<PlanStageStats> IndexScanStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* IndexScanStage::getSpecificStats() const {
+    return nullptr;
 }
 
 std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {

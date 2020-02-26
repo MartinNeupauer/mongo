@@ -59,6 +59,8 @@ public:
     PlanState getNext() final;
     void close() final;
 
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
 
 private:
@@ -80,6 +82,8 @@ private:
     boost::optional<AutoGetCollectionForRead> _coll;
     RecordId _key;
     bool _firstGetNext{false};
+
+    ScanStats _specificStats;
 };
 
 class ParallelScanStage final : public PlanStage {
@@ -129,6 +133,8 @@ public:
     PlanState getNext() final;
     void close() final;
 
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
 
 private:

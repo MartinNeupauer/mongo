@@ -45,7 +45,7 @@ class FilterStage final : public PlanStage {
 
 public:
     FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
-        : _filter(std::move(filter)) {
+        : PlanStage(IsConst ? "cfilter"_sd : "filter"_sd), _filter(std::move(filter)) {
         _children.emplace_back(std::move(input));
     }
 
@@ -110,6 +110,16 @@ public:
             _children[0]->close();
             _childOpened = false;
         }
+    }
+
+    std::unique_ptr<PlanStageStats> getStats() const {
+        auto ret = std::make_unique<PlanStageStats>(_commonStats);
+        ret->children.emplace_back(_children[0]->getStats());
+        return ret;
+    }
+
+    const SpecificStats* getSpecificStats() const final {
+        return nullptr;
     }
 
     std::vector<DebugPrinter::Block> debugPrint() final {

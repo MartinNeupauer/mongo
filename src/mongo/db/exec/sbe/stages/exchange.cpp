@@ -157,7 +157,8 @@ ExchangeConsumer::ExchangeConsumer(std::unique_ptr<PlanStage> input,
                                    const std::vector<value::SlotId>& fields,
                                    ExchangePolicy policy,
                                    std::unique_ptr<EExpression> partition,
-                                   std::unique_ptr<EExpression> orderLess) {
+                                   std::unique_ptr<EExpression> orderLess)
+    : PlanStage("exchange"_sd) {
     _children.emplace_back(std::move(input));
     _state = std::make_shared<ExchangeState>(
         numOfProducers, fields, policy, std::move(partition), std::move(orderLess));
@@ -165,7 +166,8 @@ ExchangeConsumer::ExchangeConsumer(std::unique_ptr<PlanStage> input,
     _tid = _state->addConsumer(this);
     _orderPreserving = _state->isOrderPreserving();
 }
-ExchangeConsumer::ExchangeConsumer(std::shared_ptr<ExchangeState> state) : _state(state) {
+ExchangeConsumer::ExchangeConsumer(std::shared_ptr<ExchangeState> state)
+    : PlanStage("exchange"_sd), _state(state) {
     _tid = _state->addConsumer(this);
     _orderPreserving = _state->isOrderPreserving();
 }
@@ -347,6 +349,17 @@ void ExchangeConsumer::close() {
 
     // std::cout << "rows processed = " << _rowProcessed << "\n";
 }
+
+std::unique_ptr<PlanStageStats> ExchangeConsumer::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* ExchangeConsumer::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> ExchangeConsumer::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "exchange");
@@ -417,7 +430,7 @@ void ExchangeProducer::closePipes() {
 
 ExchangeProducer::ExchangeProducer(std::unique_ptr<PlanStage> input,
                                    std::shared_ptr<ExchangeState> state)
-    : _state(state) {
+    : PlanStage("exchangep"_sd), _state(state) {
     _children.emplace_back(std::move(input));
 
     _tid = _state->addProducer(this);
@@ -530,6 +543,17 @@ PlanState ExchangeProducer::getNext() {
 void ExchangeProducer::close() {
     _children[0]->close();
 }
+
+std::unique_ptr<PlanStageStats> ExchangeProducer::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* ExchangeProducer::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> ExchangeProducer::debugPrint() {
     return std::vector<DebugPrinter::Block>();
 }

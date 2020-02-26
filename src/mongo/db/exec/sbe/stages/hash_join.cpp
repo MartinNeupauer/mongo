@@ -39,7 +39,8 @@ HashJoinStage::HashJoinStage(std::unique_ptr<PlanStage> outer,
                              const std::vector<value::SlotId>& outerProjects,
                              const std::vector<value::SlotId>& innerCond,
                              const std::vector<value::SlotId>& innerProjects)
-    : _outerCond(outerCond),
+    : PlanStage("hj"_sd),
+      _outerCond(outerCond),
       _outerProjects(outerProjects),
       _innerCond(innerCond),
       _innerProjects(innerProjects)  // DEAD CODE !!!!
@@ -172,6 +173,18 @@ PlanState HashJoinStage::getNext() {
 void HashJoinStage::close() {
     _children[1]->close();
 }
+
+std::unique_ptr<PlanStageStats> HashJoinStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    ret->children.emplace_back(_children[1]->getStats());
+    return ret;
+}
+
+const SpecificStats* HashJoinStage::getSpecificStats() const {
+    return nullptr;
+}
+
 std::vector<DebugPrinter::Block> HashJoinStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "hj");

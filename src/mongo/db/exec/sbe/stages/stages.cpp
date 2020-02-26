@@ -32,14 +32,46 @@
 
 namespace mongo {
 namespace sbe {
-void PlanStage::checkForInterrupt() {
-    if (!_opCtx) {
-        return;
+void CanSwitchOperationContext::detachFromOperationContext() {
+    invariant(_opCtx);
+
+    for (auto&& child : _stage->_children) {
+        child->detachFromOperationContext();
     }
-    if (--_interruptCounter == 0) {
-        _interruptCounter = kInterruptCheckPeriod;
-        _opCtx->checkForInterrupt();
-    }
+
+    doDetachFromOperationContext();
+    _opCtx = nullptr;
 }
+
+void CanSwitchOperationContext::attachFromOperationContext(OperationContext* opCtx) {
+    invariant(opCtx);
+    invariant(!_opCtx);
+
+    for (auto&& child : _stage->_children) {
+        child->attachFromOperationContext(opCtx);
+    }
+
+    _opCtx = opCtx;
+    doAttachFromOperationContext(opCtx);
+}
+
+void CanChangeState::saveState() {
+    _stage->_commonStats.yields++;
+    for (auto&& child : _stage->_children) {
+        child->saveState();
+    }
+
+    doSaveState();
+}
+
+void CanChangeState::restoreState() {
+    _stage->_commonStats.unyields++;
+    for (auto&& child : _stage->_children) {
+        child->restoreState();
+    }
+
+    doRestoreState();
+}
+
 }  // namespace sbe
 }  // namespace mongo

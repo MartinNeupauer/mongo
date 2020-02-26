@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2019-present MongoDB, Inc.
+ *    Copyright (C) 2020-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -29,23 +29,34 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/plan_stats.h"
 
 namespace mongo::sbe {
-class CoScanStage final : public PlanStage {
-public:
-    CoScanStage();
+struct CommonStats {
+    CommonStats() = delete;
+    CommonStats(StringData stageType) : stageType{stageType} {}
 
-    std::unique_ptr<PlanStage> clone() final;
+    uint64_t estimateObjectSizeInBytes() const {
+        return sizeof(*this);
+    }
 
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
+    StringData stageType;
+    size_t yields;
+    size_t unyields;
+    long long executionTimeMillis{0};
+    bool isEOF{false};
+};
+using PlanStageStats = BasePlanStageStats<CommonStats>;
 
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+struct ScanStats : public SpecificStats {
+    SpecificStats* clone() const final {
+        return new ScanStats(*this);
+    }
+
+    uint64_t estimateObjectSizeInBytes() const {
+        return sizeof(*this);
+    }
+
+    size_t numReads{0};
 };
 }  // namespace mongo::sbe

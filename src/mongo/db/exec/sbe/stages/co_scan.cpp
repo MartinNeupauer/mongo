@@ -31,7 +31,7 @@
 #include "mongo/db/exec/sbe/expressions/expression.h"
 
 namespace mongo::sbe {
-CoScanStage::CoScanStage() {}
+CoScanStage::CoScanStage() : PlanStage("coscan"_sd) {}
 std::unique_ptr<PlanStage> CoScanStage::clone() {
     return std::make_unique<CoScanStage>();
 }
@@ -41,11 +41,22 @@ value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, value::SlotId slo
 }
 void CoScanStage::open(bool reOpen) {}
 PlanState CoScanStage::getNext() {
-    checkForInterrupt();
+    checkForInterrupt(_opCtx);
 
     // run forever
     return PlanState::ADVANCED;
 }
+
+std::unique_ptr<PlanStageStats> CoScanStage::getStats() const {
+    auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->children.emplace_back(_children[0]->getStats());
+    return ret;
+}
+
+const SpecificStats* CoScanStage::getSpecificStats() const {
+    return nullptr;
+}
+
 void CoScanStage::close() {}
 std::vector<DebugPrinter::Block> CoScanStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
