@@ -29,33 +29,47 @@
 
 #pragma once
 
-#include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/query/sbe_stage_builder_common.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/values/bson.h"
 
-namespace mongo::stage_builder {
-class DocumentSourceSlotBasedStageBuilder : public BaseSlotBasedStageBuilder {
-    using BuilderFnType = std::function<std::unique_ptr<sbe::PlanStage>(
-        DocumentSourceSlotBasedStageBuilder&, const DocumentSource* root)>;
-    static std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
-        kStageBuilders;
+namespace mongo {
+namespace sbe {
+class BSONScanStage final : public PlanStage {
+    const char* const _bsonBegin;
+    const char* const _bsonEnd;
+
+    const boost::optional<value::SlotId> _recordSlot;
+    const std::vector<std::string> _fields;
+    const std::vector<value::SlotId> _vars;
+
+    std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
+
+    std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
+    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
+
+    const char* _bsonCurrent;
+
+    ScanStats _specificStats;
 
 public:
-    std::unique_ptr<sbe::PlanStage> build(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> build(const Pipeline* pipeline);
+    BSONScanStage(const char* bsonBegin,
+                  const char* bsonEnd,
+                  boost::optional<value::SlotId> recordSlot,
+                  const std::vector<std::string>& fields,
+                  const std::vector<value::SlotId>& vars);
 
-    std::unique_ptr<sbe::PlanStage> buildGroup(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> buildLimit(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> buildTransform(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> buildMatch(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> buildSort(const DocumentSource* root);
-    std::unique_ptr<sbe::PlanStage> buildUnwind(const DocumentSource* root);
+    std::unique_ptr<PlanStage> clone() final;
 
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
 
-    std::unique_ptr<sbe::PlanStage> buildBSONScan(const DocumentSource* root);
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
 
-    template <typename T>
-    static void registerBuilder(BuilderFnType f) {
-        kStageBuilders[typeid(T)] = f;
-    }
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
-}  // namespace mongo::stage_builder
+}  // namespace sbe
+}  // namespace mongo

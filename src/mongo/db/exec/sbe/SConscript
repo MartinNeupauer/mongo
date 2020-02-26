@@ -6,6 +6,7 @@ env.Library(
     target='query_sbe',
     source=[
         'expressions/expression.cpp',
+        'stages/bson_scan.cpp',
         'stages/co_scan.cpp',
         'stages/exchange.cpp',
         'stages/hash_agg.cpp',

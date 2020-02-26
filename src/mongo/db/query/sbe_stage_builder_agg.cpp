@@ -44,6 +44,12 @@
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/pipeline/document_source_group.h"
+#include "mongo/db/pipeline/document_source_limit.h"
+#include "mongo/db/pipeline/document_source_match.h"
+#include "mongo/db/pipeline/document_source_project.h"
+#include "mongo/db/pipeline/document_source_single_document_transformation.h"
+#include "mongo/db/pipeline/document_source_sort.h"
+#include "mongo/db/pipeline/document_source_unwind.h"
 #include "mongo/db/query/sbe_stage_builder_agg.h"
 
 namespace mongo::stage_builder {
@@ -54,6 +60,22 @@ MONGO_INITIALIZER(RegisterDocumentSourceBuilders)(InitializerContext*) {
     DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceGroup>(
         std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildGroup));
 
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceLimit>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildLimit));
+
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<
+        DocumentSourceSingleDocumentTransformation>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildTransform));
+
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceMatch>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildMatch));
+
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceSort>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildSort));
+
+    DocumentSourceSlotBasedStageBuilder::registerBuilder<DocumentSourceUnwind>(
+        std::mem_fn(&DocumentSourceSlotBasedStageBuilder::buildUnwind));
+
     return Status::OK();
 }
 
@@ -61,6 +83,47 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     const DocumentSource* root) {
     const auto gb = static_cast<const DocumentSourceGroup*>(root);
     auto inputStage = build(gb->getSource());
+
+    return inputStage;
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildLimit(
+    const DocumentSource* root) {
+    const auto ln = static_cast<const DocumentSourceLimit*>(root);
+    auto inputStage = build(ln->getSource());
+
+    return std::make_unique<sbe::LimitSkipStage>(
+        std::move(inputStage), ln->getLimit(), boost::none);
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildTransform(
+    const DocumentSource* root) {
+    const auto prj = static_cast<const DocumentSourceSingleDocumentTransformation*>(root);
+    auto inputStage = build(prj->getSource());
+
+    return inputStage;
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildMatch(
+    const DocumentSource* root) {
+    const auto fn = static_cast<const DocumentSourceMatch*>(root);
+    auto inputStage = build(fn->getSource());
+
+    return inputStage;
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildSort(
+    const DocumentSource* root) {
+    const auto sn = static_cast<const DocumentSourceSort*>(root);
+    auto inputStage = build(sn->getSource());
+
+    return inputStage;
+}
+
+std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind(
+    const DocumentSource* root) {
+    const auto un = static_cast<const DocumentSourceUnwind*>(root);
+    auto inputStage = build(un->getSource());
 
     return inputStage;
 }
