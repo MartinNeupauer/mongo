@@ -50,7 +50,10 @@
 #include "mongo/db/pipeline/document_source_single_document_transformation.h"
 #include "mongo/db/pipeline/document_source_sort.h"
 #include "mongo/db/pipeline/document_source_unwind.h"
+#include "mongo/db/query/projection_parser.h"
 #include "mongo/db/query/sbe_stage_builder_agg.h"
+#include "mongo/db/query/sbe_stage_builder_filter.h"
+#include "mongo/db/query/sbe_stage_builder_projection.h"
 
 namespace mongo::stage_builder {
 std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
@@ -101,7 +104,16 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildTransf
     const auto prj = static_cast<const DocumentSourceSingleDocumentTransformation*>(root);
     auto inputStage = build(prj->getSource());
 
-    return inputStage;
+    auto trn = prj->getTransformer().serializeTransformation(boost::none);
+
+    auto policies = ProjectionPolicies::aggregateProjectionPolicies();
+    auto projection = projection_ast::parse(prj->getContext(), trn.toBson(), policies);
+
+    auto [slot, stage] = generateProjection(
+        &projection, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+    _resultSlot = slot;
+
+    return std::move(stage);
 }
 
 std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildMatch(
@@ -109,7 +121,10 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildMatch(
     const auto fn = static_cast<const DocumentSourceMatch*>(root);
     auto inputStage = build(fn->getSource());
 
-    return inputStage;
+    auto stage = generateFilter(
+        fn->getMatchExpression(), std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+
+    return stage;
 }
 
 std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildSort(
