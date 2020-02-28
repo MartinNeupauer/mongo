@@ -43,6 +43,7 @@
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/exec/sbe/stages/unwind.h"
 #include "mongo/db/pipeline/document_source_group.h"
 #include "mongo/db/pipeline/document_source_limit.h"
 #include "mongo/db/pipeline/document_source_match.h"
@@ -85,6 +86,7 @@ MONGO_INITIALIZER(RegisterDocumentSourceBuilders)(InitializerContext*) {
 
 std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     const DocumentSource* root) {
+    using namespace std::literals;
     const auto gb = static_cast<const DocumentSourceGroup*>(root);
     auto inputStage = build(gb->getSource());
 
@@ -115,7 +117,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
             auto slotOut = _slotIdGenerator->generate();
             aggOut.push_back(slotOut);
             aggs[slotOut] =
-                sbe::makeE<sbe::EFunction>("sum", sbe::makeEs(sbe::makeE<sbe::EVariable>(slot)));
+                sbe::makeE<sbe::EFunction>("sum"sv, sbe::makeEs(sbe::makeE<sbe::EVariable>(slot)));
         } else {
             uasserted(ErrorCodes::InternalErrorNotSupported,
                       str::stream() << "unsupported accumulator: " << acc->getOpName());
@@ -206,9 +208,44 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildSort(
 
 std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind(
     const DocumentSource* root) {
+    using namespace std::literals;
     const auto un = static_cast<const DocumentSourceUnwind*>(root);
     auto inputStage = build(un->getSource());
 
+    // Project out the unwind field
+    auto& path = un->unwindPath();
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            str::stream() << "Dotted paths in unwind not supported: " << path.fullPath(),
+            path.getPathLength() == 1);
+
+    auto slot = _slotIdGenerator->generate();
+    auto getFieldFn =
+        sbe::makeE<sbe::EFunction>("getField"sv,
+                                   sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                               sbe::makeE<sbe::EConstant>(path.fullPath())));
+
+    inputStage = sbe::makeProjectStage(std::move(inputStage), slot, std::move(getFieldFn));
+
+    // Create the unwind
+    auto indexSlot = _slotIdGenerator->generate();
+    auto outSlot = _slotIdGenerator->generate();
+    inputStage = sbe::makeS<sbe::UnwindStage>(std::move(inputStage), slot, outSlot, indexSlot);
+
+    // Construct the result
+    auto oldResult = _resultSlot;
+    _resultSlot = _slotIdGenerator->generate();
+    std::vector<std::string> fieldsOut;
+    std::vector<sbe::value::SlotId> slotsOut;
+    fieldsOut.push_back(path.fullPath());
+    slotsOut.push_back(outSlot);
+
+
+    inputStage = sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
+                                               *_resultSlot,
+                                               oldResult,
+                                               std::vector<std::string>{},
+                                               fieldsOut,
+                                               slotsOut);
     return inputStage;
 }
 
