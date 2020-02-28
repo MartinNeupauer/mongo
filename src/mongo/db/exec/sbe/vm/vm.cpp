@@ -180,24 +180,9 @@ std::pair<value::TypeTags, value::Value> ByteCode::aggSum(value::TypeTags accTag
         accValue = 0;
     }
 
-    if (accTag == value::TypeTags::NumberInt64 && fieldTag == value::TypeTags::NumberInt64) {
-        int64_t integer =
-            value::bitcastTo<int64_t>(accValue) + value::bitcastTo<int64_t>(fieldValue);
-        return {value::TypeTags::NumberInt64, value::bitcastFrom(integer)};
-    } else if (accTag == value::TypeTags::NumberInt64 &&
-               fieldTag == value::TypeTags::NumberDouble) {
-        double dbl = value::bitcastTo<int64_t>(accValue) + value::bitcastTo<double>(fieldValue);
-        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
-    } else if (accTag == value::TypeTags::NumberDouble &&
-               fieldTag == value::TypeTags::NumberInt64) {
-        double dbl = value::bitcastTo<double>(accValue) + value::bitcastTo<int64_t>(fieldValue);
-        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
-    } else {
-        double dbl = value::bitcastTo<double>(accValue) + value::bitcastTo<double>(fieldValue);
-        return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
-    }
+    auto [owned, tag, val] = genericAdd(accTag, accValue, fieldTag, fieldValue);
 
-    return {value::TypeTags::Nothing, 0};
+    return {tag, val};
 }
 
 bool hasSeparatorAt(size_t idx, std::string_view input, std::string_view separator) {

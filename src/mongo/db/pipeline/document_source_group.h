@@ -177,6 +177,13 @@ public:
     std::unique_ptr<GroupFromFirstDocumentTransformation> rewriteGroupAsTransformOnFirstDocument()
         const;
 
+    auto& getIdFieldNames() const {
+        return _idFieldNames;
+    }
+    auto& getIdExpressions() const {
+        return _idExpressions;
+    }
+
 protected:
     GetNextResult doGetNext() final;
     void doDispose() final;

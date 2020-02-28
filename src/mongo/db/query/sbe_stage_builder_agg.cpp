@@ -52,6 +52,7 @@
 #include "mongo/db/pipeline/document_source_unwind.h"
 #include "mongo/db/query/projection_parser.h"
 #include "mongo/db/query/sbe_stage_builder_agg.h"
+#include "mongo/db/query/sbe_stage_builder_expression.h"
 #include "mongo/db/query/sbe_stage_builder_filter.h"
 #include "mongo/db/query/sbe_stage_builder_projection.h"
 
@@ -87,6 +88,73 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     const auto gb = static_cast<const DocumentSourceGroup*>(root);
     auto inputStage = build(gb->getSource());
 
+    std::vector<sbe::value::SlotId> gbs;
+    std::vector<sbe::value::SlotId> aggOut;
+    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> aggs;
+
+    // Project out group by fields/columns.
+    for (size_t idx = 0; idx < gb->getIdExpressions().size(); ++idx) {
+        auto fieldExpr = gb->getIdExpressions()[idx].get();
+        auto [slot, expr, stage] = generateExpression(
+            fieldExpr, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+
+        inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
+        gbs.push_back(slot);
+    }
+
+    // Create agg expressions
+    for (size_t idx = 0; idx < gb->getAccumulatedFields().size(); ++idx) {
+        auto acc = gb->getAccumulatedFields()[idx].makeAccumulator();
+        if (acc->getOpName() == "$sum") {
+            auto fieldExpr = gb->getAccumulatedFields()[idx].expression.get();
+            auto [slot, expr, stage] = generateExpression(
+                fieldExpr, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+
+            inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
+
+            auto slotOut = _slotIdGenerator->generate();
+            aggOut.push_back(slotOut);
+            aggs[slotOut] =
+                sbe::makeE<sbe::EFunction>("sum", sbe::makeEs(sbe::makeE<sbe::EVariable>(slot)));
+        } else {
+            uasserted(ErrorCodes::InternalErrorNotSupported,
+                      str::stream() << "unsupported accumulator: " << acc->getOpName());
+        }
+    }
+    // Create the group by stage.
+    inputStage = sbe::makeS<sbe::HashAggStage>(std::move(inputStage), gbs, std::move(aggs));
+
+    sbe::value::SlotId resultIdSlot;
+    // Construct _id.
+    if (gb->getIdFieldNames().empty()) {
+        invariant(gbs.size() == 1);
+        resultIdSlot = gbs[0];
+    } else {
+        resultIdSlot = _slotIdGenerator->generate();
+        inputStage = sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
+                                                   resultIdSlot,
+                                                   boost::none,
+                                                   std::vector<std::string>{},
+                                                   gb->getIdFieldNames(),
+                                                   gbs);
+    }
+    // Construct the result.
+    _resultSlot = _slotIdGenerator->generate();
+    std::vector<std::string> fieldsOut;
+    std::vector<sbe::value::SlotId> slotsOut;
+    fieldsOut.push_back("_id");
+    slotsOut.push_back(resultIdSlot);
+    for (size_t idx = 0; idx < aggOut.size(); ++idx) {
+        fieldsOut.push_back(gb->getAccumulatedFields()[idx].fieldName);
+        slotsOut.push_back(aggOut[idx]);
+    }
+    inputStage = sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
+                                               *_resultSlot,
+                                               boost::none,
+                                               std::vector<std::string>{},
+                                               fieldsOut,
+                                               slotsOut);
+
     return inputStage;
 }
 
@@ -104,6 +172,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildTransf
     const auto prj = static_cast<const DocumentSourceSingleDocumentTransformation*>(root);
     auto inputStage = build(prj->getSource());
 
+    // We have to come up with more sane way to create projections.
     auto trn = prj->getTransformer().serializeTransformation(boost::none);
 
     auto policies = ProjectionPolicies::aggregateProjectionPolicies();
