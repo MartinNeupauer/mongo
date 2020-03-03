@@ -185,6 +185,13 @@ public:
 
         return {_typeTags[idx], _values[idx]};
     }
+    void reserve(size_t s) {
+        // normalize to at least 1
+        s = s ? s : 1;
+        _typeTags.reserve(s);
+        _values.reserve(s);
+        _names.reserve(s);
+    }
 };
 
 /**
@@ -230,6 +237,11 @@ public:
         }
 
         return {_typeTags[idx], _values[idx]};
+    }
+    void reserve(size_t s) {
+        // normalize to at least 1
+        _typeTags.reserve(s);
+        _values.reserve(s);
     }
 };
 

@@ -94,15 +94,19 @@ PlanState MakeObjStage::getNext() {
 
             if (tag == value::TypeTags::bsonObject) {
                 auto be = value::bitcastTo<const char*>(val);
-                auto end = be + value::readFromMemory<uint32_t>(be);
+                auto size = value::readFromMemory<uint32_t>(be);
+                auto end = be + size;
+                // simple heuristic
+                obj->reserve(size / 16);
                 // skip document length
                 be += 4;
                 while (*be != 0) {
                     auto sv = bson::fieldNameView(be);
 
                     if (_restrictFieldsSet.count(sv) == 0 && _projectFieldsSet.count(sv) == 0) {
-                        auto [tag, val] = bson::convertFrom(false, be, end, sv.size());
-                        obj->push_back(sv, tag, val);
+                        auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
+                        auto [copyTag, copyVal] = value::copyValue(tag, val);
+                        obj->push_back(sv, copyTag, copyVal);
                     }
 
                     // advance
@@ -110,6 +114,7 @@ PlanState MakeObjStage::getNext() {
                 }
             } else if (tag == value::TypeTags::Object) {
                 auto objRoot = value::getObjectView(val);
+                obj->reserve(objRoot->size());
                 for (size_t idx = 0; idx < objRoot->size(); ++idx) {
                     std::string_view sv(objRoot->field(idx));
 
