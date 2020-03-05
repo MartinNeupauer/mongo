@@ -175,6 +175,16 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericDiv(value::Type
     return {false, value::TypeTags::Nothing, 0};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericNot(value::TypeTags tag,
+                                                                     value::Value value) {
+    if (tag == value::TypeTags::Boolean) {
+        return {
+            false, value::TypeTags::Boolean, value::bitcastFrom(!value::bitcastTo<bool>(value))};
+    } else {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+}
+
 std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeTags lhsTag,
                                                                     value::Value lhsValue,
                                                                     value::TypeTags rhsTag,
@@ -196,6 +206,18 @@ std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeT
                 (*value::getObjectIdView(lhsValue)) == (*value::getObjectIdView(rhsValue))};
     } else {
         return {value::TypeTags::Nothing, 0};
+    }
+}
+
+std::pair<value::TypeTags, value::Value> ByteCode::genericCompareNeq(value::TypeTags lhsTag,
+                                                                     value::Value lhsValue,
+                                                                     value::TypeTags rhsTag,
+                                                                     value::Value rhsValue) {
+    auto [tag, val] = genericCompareEq(lhsTag, lhsValue, rhsTag, rhsValue);
+    if (tag == value::TypeTags::Boolean) {
+        return {tag, value::bitcastFrom(!value::bitcastTo<bool>(val))};
+    } else {
+        return {tag, val};
     }
 }
 

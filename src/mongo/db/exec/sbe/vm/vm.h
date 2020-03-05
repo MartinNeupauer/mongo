@@ -103,15 +103,21 @@ struct Instruction {
         sub,
         mul,
         div,
+        negate,
+
+        logicNot,
 
         less,
         lessEq,
         greater,
         greaterEq,
         eq,
+        neq,
 
         // 3 way comparison (spaceship) with bson woCompare semantics.
         cmp3w,
+
+        fillEmpty,
 
         getField,
 
@@ -159,6 +165,8 @@ public:
     void appendSub();
     void appendMul();
     void appendDiv();
+    void appendNegate();
+    void appendNot();
     void appendLess() {
         appendSimpleInstruction(Instruction::less);
     }
@@ -174,8 +182,14 @@ public:
     void appendEq() {
         appendSimpleInstruction(Instruction::eq);
     }
+    void appendNeq() {
+        appendSimpleInstruction(Instruction::neq);
+    }
     void appendCmp3w() {
         appendSimpleInstruction(Instruction::cmp3w);
+    }
+    void appendFillEmpty() {
+        appendSimpleInstruction(Instruction::fillEmpty);
     }
     void appendGetField();
     void appendSum();
@@ -211,6 +225,8 @@ class ByteCode {
                                                                value::Value lhsValue,
                                                                value::TypeTags rhsTag,
                                                                value::Value rhsValue);
+    std::tuple<bool, value::TypeTags, value::Value> genericNot(value::TypeTags tag,
+                                                               value::Value value);
     template <typename Op>
     std::pair<value::TypeTags, value::Value> genericCompare(value::TypeTags lhsTag,
                                                             value::Value lhsValue,
@@ -224,6 +240,11 @@ class ByteCode {
                                                               value::Value lhsValue,
                                                               value::TypeTags rhsTag,
                                                               value::Value rhsValue);
+
+    std::pair<value::TypeTags, value::Value> genericCompareNeq(value::TypeTags lhsTag,
+                                                               value::Value lhsValue,
+                                                               value::TypeTags rhsTag,
+                                                               value::Value rhsValue);
 
     std::pair<value::TypeTags, value::Value> compare3way(value::TypeTags lhsTag,
                                                          value::Value lhsValue,

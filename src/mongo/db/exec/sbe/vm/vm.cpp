@@ -75,6 +75,12 @@ void CodeFragment::appendMul() {
 void CodeFragment::appendDiv() {
     appendSimpleInstruction(Instruction::div);
 }
+void CodeFragment::appendNegate() {
+    appendSimpleInstruction(Instruction::negate);
+}
+void CodeFragment::appendNot() {
+    appendSimpleInstruction(Instruction::logicNot);
+}
 void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
     i.owned = false;  // this is not used
@@ -376,6 +382,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewKeyString(ui
     return {true, value::TypeTags::ksValue, value::bitcastFrom(new KeyString::Value(kb.release()))};
 }
 
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
     switch (f) {
@@ -492,6 +499,32 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     }
                     break;
                 }
+                case Instruction::negate: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    auto [resultOwned, resultTag, resultVal] =
+                        genericSub(value::TypeTags::NumberInt32, 0, tag, val);
+
+                    topStack(resultOwned, resultTag, resultVal);
+
+                    if (owned) {
+                        value::releaseValue(resultTag, resultVal);
+                    }
+
+                    break;
+                }
+                case Instruction::logicNot: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    auto [resultOwned, resultTag, resultVal] = genericNot(tag, val);
+
+                    topStack(resultOwned, resultTag, resultVal);
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
                 case Instruction::less: {
                     auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
                     popStack();
@@ -570,6 +603,23 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = genericCompareEq(lhsTag, lhsVal, rhsTag, rhsVal);
 
+                    topStack(i.owned, tag, !val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::neq: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [tag, val] = genericCompareNeq(lhsTag, lhsVal, rhsTag, rhsVal);
+
                     topStack(i.owned, tag, val);
 
                     if (rhsOwned) {
@@ -594,6 +644,24 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     }
                     if (lhsOwned) {
                         value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::fillEmpty: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    if (lhsTag == value::TypeTags::Nothing) {
+                        topStack(rhsOwned, rhsTag, rhsVal);
+
+                        if (lhsOwned) {
+                            value::releaseValue(lhsTag, lhsVal);
+                        }
+                    } else {
+                        if (rhsOwned) {
+                            value::releaseValue(rhsTag, rhsVal);
+                        }
                     }
                     break;
                 }

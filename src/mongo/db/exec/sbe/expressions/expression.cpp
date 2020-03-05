@@ -145,6 +145,11 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code->append(std::move(rhs));
             code->appendEq();
             break;
+        case EPrimBinary::neq:
+            code->append(std::move(lhs));
+            code->append(std::move(rhs));
+            code->appendNeq();
+            break;
         case EPrimBinary::cmp3w:
             code->append(std::move(lhs));
             code->append(std::move(rhs));
@@ -228,6 +233,9 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
         case EPrimBinary::eq:
             ret.emplace_back("==");
             break;
+        case EPrimBinary::neq:
+            ret.emplace_back("!=");
+            break;
         case EPrimBinary::cmp3w:
             ret.emplace_back("<=>");
             break;
@@ -242,6 +250,48 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
             break;
     }
     DebugPrinter::addBlocks(ret, _nodes[1]->debugPrint());
+
+    return ret;
+}
+std::unique_ptr<EExpression> EPrimUnary::clone() {
+    return std::make_unique<EPrimUnary>(_op, _nodes[0]->clone());
+}
+std::unique_ptr<vm::CodeFragment> EPrimUnary::compile(CompileCtx& ctx) {
+    auto code = std::make_unique<vm::CodeFragment>();
+
+    auto operand = _nodes[0]->compile(ctx);
+
+    switch (_op) {
+        case negate:
+            code->append(std::move(operand));
+            code->appendNegate();
+            break;
+        case EPrimUnary::logicNot:
+            code->append(std::move(operand));
+            code->appendNot();
+            break;
+        default:
+            invariant(Status(ErrorCodes::InternalError, "not yet implemented"));
+            break;
+    }
+    return code;
+}
+std::vector<DebugPrinter::Block> EPrimUnary::debugPrint() {
+    std::vector<DebugPrinter::Block> ret;
+
+    switch (_op) {
+        case EPrimUnary::negate:
+            ret.emplace_back("-");
+            break;
+        case EPrimUnary::logicNot:
+            ret.emplace_back("!");
+            break;
+        default:
+            invariant(Status(ErrorCodes::InternalError, "not yet implemented"));
+            break;
+    }
+
+    DebugPrinter::addBlocks(ret, _nodes[0]->debugPrint());
 
     return ret;
 }
@@ -274,6 +324,14 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
 
         code->append(_nodes[0]->compile(ctx));
         code->appendExists();
+
+        return code;
+    } else if (_name == "fillEmpty" && _nodes.size() == 2) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->append(_nodes[1]->compile(ctx));
+        code->appendFillEmpty();
 
         return code;
     } else if (_name == "isObject" && _nodes.size() == 1) {

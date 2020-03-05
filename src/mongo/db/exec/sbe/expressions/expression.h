@@ -189,6 +189,28 @@ public:
     std::vector<DebugPrinter::Block> debugPrint() override;
 };
 
+class EPrimUnary final : public EExpression {
+public:
+    enum Op {
+        negate,
+        logicNot,
+    };
+
+private:
+    Op _op;
+
+public:
+    EPrimUnary(Op op, std::unique_ptr<EExpression> operand) : _op(op) {
+        _nodes.emplace_back(std::move(operand));
+    }
+
+    std::unique_ptr<EExpression> clone() override;
+
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+
+    std::vector<DebugPrinter::Block> debugPrint() override;
+};
+
 class EFunction final : public EExpression {
     std::string _name;
 

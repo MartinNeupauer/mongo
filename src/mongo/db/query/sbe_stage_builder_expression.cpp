@@ -91,6 +91,26 @@ struct ExpressionVisitorContext {
     }
 };
 
+std::pair<std::vector<sbe::value::SlotId>, std::unique_ptr<sbe::PlanStage>>
+generateProjectForLogicalOperator(std::unique_ptr<sbe::PlanStage> inputStage,
+                                  std::vector<std::unique_ptr<sbe::EExpression>> branchExpressions,
+                                  sbe::value::SlotIdGenerator* slotIdGenerator) {
+    std::pair<std::vector<sbe::value::SlotId>, std::unique_ptr<sbe::PlanStage>> result;
+
+    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projections;
+    for (std::unique_ptr<sbe::EExpression>& expr : branchExpressions) {
+        auto slot = slotIdGenerator->generate();
+        result.first.push_back(slot);
+
+        projections.insert(std::make_pair(slot, std::move(expr)));
+    }
+
+    result.second =
+        std::make_unique<sbe::ProjectStage>(std::move(inputStage), std::move(projections));
+
+    return result;
+}
+
 std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverseHelper(
     std::unique_ptr<sbe::PlanStage> inputStage,
     sbe::value::SlotId inputSlot,
@@ -183,7 +203,77 @@ public:
         unsupportedExpression(expr->getOpName());
     }
     void visit(ExpressionAnd* expr) final {
-        unsupportedExpression(expr->getOpName());
+        auto arity = expr->getChildren().size();
+        _context->ensureArity(arity);
+
+        if (arity == 0) {
+            _context->pushExpr(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, true));
+            return;
+        }
+
+        // Pop arguments and store them in the 'branches' list, going through the list in reverse
+        // order so that the branches end up in the order that they were pushed on the stack.
+        std::vector<std::unique_ptr<sbe::EExpression>> branches(arity);
+        for (auto branchIt = branches.rbegin(); branchIt != branches.rend(); ++branchIt) {
+            *branchIt = _context->popExpr();
+        }
+
+        // Use a Project stage that will evaluate each branch and bind the result to a slot.
+        // TODO: Use a modified Project stage that will allow short-circuit semantics.
+        auto [slotList, projectStage] = generateProjectForLogicalOperator(
+            std::move(_context->traverseStage), std::move(branches), _context->slotIdGenerator);
+
+        // This std::transform creates an EExpression for each branch that evaluates to a Boolean
+        // value that indicates whether it should be considered true for the purposes of the $and.
+        // The MQL $and expression considers a branch to evaluate to true iff 1) it is not equal to
+        // Boolean false, 2) it is not equal to numeric 0, _and_ 3) it is not null.
+        std::vector<std::unique_ptr<sbe::EExpression>> coercedBranches;
+        coercedBranches.reserve(arity);
+        std::transform(
+            slotList.begin(),
+            slotList.end(),
+            std::back_inserter(coercedBranches),
+            [](sbe::value::SlotId branchSlot) {
+                auto makeNeqCheck = [branchSlot](std::unique_ptr<sbe::EExpression> valExpr) {
+                    return sbe::makeE<sbe::EPrimBinary>(
+                        sbe::EPrimBinary::neq,
+                        sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w,
+                                                     sbe::makeE<sbe::EVariable>(branchSlot),
+                                                     std::move(valExpr)),
+                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0));
+                };
+
+                return sbe::makeE<sbe::EPrimBinary>(
+                    sbe::EPrimBinary::logicAnd,
+                    makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, false)),
+                    sbe::makeE<sbe::EPrimBinary>(
+                        sbe::EPrimBinary::logicAnd,
+                        makeNeqCheck(
+                            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0)),
+                        makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Null, 0))));
+            });
+
+        // Fold the branches into a binary tree of EPrimBinary::logicAnd EExpressions.
+        auto andExpr =
+            std::accumulate(std::next(std::make_move_iterator(coercedBranches.begin())),
+                            std::make_move_iterator(coercedBranches.end()),
+                            std::move(*coercedBranches.begin()),
+                            [](std::unique_ptr<sbe::EExpression>& andAccum,
+                               std::unique_ptr<sbe::EExpression> branch) {
+                                return sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicAnd,
+                                                                    std::move(andAccum),
+                                                                    std::move(branch));
+                            });
+
+        // The MQL $and treats any "Nothing" branch as false, so if the expression evaluated to
+        // "Nothing" because one of the if branches evaluated to "Nothing," we convert that result
+        // back to false.
+        auto andExprWithFillEmpty = sbe::makeE<sbe::EFunction>(
+            "fillEmpty",
+            sbe::makeEs(std::move(andExpr),
+                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, false)));
+
+        _context->pushExpr(std::move(andExprWithFillEmpty), std::move(projectStage));
     }
     void visit(ExpressionAnyElementTrue* expr) final {
         unsupportedExpression(expr->getOpName());
@@ -548,7 +638,7 @@ private:
     }
 
     ExpressionVisitorContext* _context;
-};
+};  // namespace
 
 class ExpressionWalker final {
 public:
