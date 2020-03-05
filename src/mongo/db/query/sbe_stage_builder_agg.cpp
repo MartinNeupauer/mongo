@@ -107,7 +107,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     // Create agg expressions
     for (size_t idx = 0; idx < gb->getAccumulatedFields().size(); ++idx) {
         auto acc = gb->getAccumulatedFields()[idx].makeAccumulator();
-        if (acc->getOpName() == "$sum") {
+        if (acc->getOpName() == "$sum"_sd) {
             auto fieldExpr = gb->getAccumulatedFields()[idx].expr.argument.get();
             auto [slot, expr, stage] = generateExpression(
                 fieldExpr, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);

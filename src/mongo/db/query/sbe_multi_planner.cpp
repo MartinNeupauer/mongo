@@ -139,7 +139,7 @@ std::vector<std::unique_ptr<sbe::PlanStageStats>> collectExecutionStats(
     auto done{false};
     auto numResults{MultiPlanStage::getTrialPeriodNumToReturn(canonicalQuery)};
     auto numReads{MultiPlanStage::getTrialPeriodWorks(opCtx, collection)};
-    auto numFailures{0ul};
+    size_t numFailures{0};
     for (size_t it = 0; it < numReads && !done; ++it) {
         for (size_t ix = 0; ix < candidates.size() && !done; ++ix) {
             if (!candidates[ix].failed) {
