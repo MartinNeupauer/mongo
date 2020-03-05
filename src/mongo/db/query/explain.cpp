@@ -627,6 +627,13 @@ BSONObj Explain::statsToBSON(const PlanStageStats& stats, ExplainOptions::Verbos
     return bob.obj();
 }
 
+BSONObj Explain::statsToBSON(const sbe::PlanStageStats& stats,
+                             ExplainOptions::Verbosity verbosity) {
+    BSONObjBuilder bob;
+    return bob.obj();
+}
+
+
 // static
 void Explain::statsToBSON(const PlanStageStats& stats,
                           BSONObjBuilder* bob,
@@ -951,6 +958,11 @@ std::string Explain::getPlanSummary(const PlanStage* root) {
     }
 
     return sb.str();
+}
+
+// static
+std::string Explain::getPlanSummary(const sbe::PlanStage* root) {
+    return "SBE plan summary is unsupported";
 }
 
 // static

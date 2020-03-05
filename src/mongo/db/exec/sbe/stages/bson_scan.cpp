@@ -81,10 +81,14 @@ value::SlotAccessor* BSONScanStage::getAccessor(CompileCtx& ctx, value::SlotId s
 }
 
 void BSONScanStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _bsonCurrent = _bsonBegin;
 }
 
 PlanState BSONScanStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     if (_bsonCurrent < _bsonEnd) {
         if (_recordAccessor) {
             _recordAccessor->reset(value::TypeTags::bsonObject,
@@ -120,14 +124,17 @@ PlanState BSONScanStage::getNext() {
         _bsonCurrent += value::readFromMemory<uint32_t>(_bsonCurrent);
 
         _specificStats.numReads++;
-        return PlanState::ADVANCED;
+        return trackPlanState(PlanState::ADVANCED);
     }
 
     _commonStats.isEOF = true;
-    return PlanState::IS_EOF;
+    return trackPlanState(PlanState::IS_EOF);
 }
 
-void BSONScanStage::close() {}
+void BSONScanStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
+}
 
 std::unique_ptr<PlanStageStats> BSONScanStage::getStats() const {
     auto ret = std::make_unique<PlanStageStats>(_commonStats);

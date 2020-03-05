@@ -93,5 +93,6 @@ private:
     boost::optional<KeyStringEntry> _nextRecord;
 
     bool _firstGetNext{true};
+    IndexScanStats _specificStats;
 };
 }  // namespace mongo::sbe

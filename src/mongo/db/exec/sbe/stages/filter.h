@@ -42,6 +42,7 @@ class FilterStage final : public PlanStage {
     vm::ByteCode _bytecode;
 
     bool _childOpened{false};
+    FilterStats _specificStats;
 
 public:
     FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
@@ -66,7 +67,12 @@ public:
     }
 
     void open(bool reOpen) final {
+        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+        _commonStats.opens++;
+
         if constexpr (IsConst) {
+            _specificStats.numTested++;
+
             // run the filter expressions here
             auto [owned, tag, val] = _bytecode.run(_filterCode.get());
             auto pass = (tag == value::TypeTags::Boolean) && (val != 0);
@@ -80,12 +86,15 @@ public:
     }
 
     PlanState getNext() final {
+        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
         // The constant filter evaluates the predicate in the open method.
         if constexpr (IsConst) {
             if (!_childOpened) {
+                _commonStats.isEOF = true;
                 return PlanState::IS_EOF;
             } else {
-                return _children[0]->getNext();
+                return trackPlanState(_children[0]->getNext());
             }
         }
 
@@ -96,16 +105,21 @@ public:
             state = _children[0]->getNext();
 
             if (state == PlanState::ADVANCED) {
+                _specificStats.numTested++;
+
                 // run the filter expressions here
                 auto [owned, tag, val] = _bytecode.run(_filterCode.get());
                 pass = (tag == value::TypeTags::Boolean) && (val != 0);
             }
         } while (state == PlanState::ADVANCED && !pass);
 
-        return state;
+        return trackPlanState(state);
     }
 
     void close() final {
+        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+        _commonStats.closes++;
+
         if (_childOpened) {
             _children[0]->close();
             _childOpened = false;
@@ -114,12 +128,13 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const {
         auto ret = std::make_unique<PlanStageStats>(_commonStats);
+        ret->specific = std::make_unique<FilterStats>(_specificStats);
         ret->children.emplace_back(_children[0]->getStats());
         return ret;
     }
 
     const SpecificStats* getSpecificStats() const final {
-        return nullptr;
+        return &_specificStats;
     }
 
     std::vector<DebugPrinter::Block> debugPrint() final {

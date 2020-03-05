@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2019-present MongoDB, Inc.
+ *    Copyright (C) 2020-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -27,51 +27,26 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/stages/co_scan.h"
-#include "mongo/db/exec/sbe/expressions/expression.h"
+#pragma once
 
-namespace mongo::sbe {
-CoScanStage::CoScanStage() : PlanStage("coscan"_sd) {}
-std::unique_ptr<PlanStage> CoScanStage::clone() {
-    return std::make_unique<CoScanStage>();
-}
-void CoScanStage::prepare(CompileCtx& ctx) {}
-value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
-    return ctx.getAccessor(slot);
-}
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/plan_executor.h"
+#include "mongo/db/query/plan_ranker.h"
 
-void CoScanStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-    _commonStats.opens++;
-}
-
-PlanState CoScanStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
-    checkForInterrupt(_opCtx);
-
-    // run forever
-    _commonStats.advances++;
-    return PlanState::ADVANCED;
-}
-
-std::unique_ptr<PlanStageStats> CoScanStage::getStats() const {
-    auto ret = std::make_unique<PlanStageStats>(_commonStats);
-    return ret;
-}
-
-const SpecificStats* CoScanStage::getSpecificStats() const {
-    return nullptr;
-}
-
-void CoScanStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-    _commonStats.closes++;
-}
-
-std::vector<DebugPrinter::Block> CoScanStage::debugPrint() {
-    std::vector<DebugPrinter::Block> ret;
-    DebugPrinter::addKeyword(ret, "coscan");
-    return ret;
-}
-}  // namespace mongo::sbe
+namespace mongo::sbe::multi_planner {
+/**
+ * Runs all SBE plans specified in the 'planRoots' vector, ranks them, and picks the best.
+ * Returns a plan stage tree of the best plan, slot accessors for the result and recordId slots,
+ * as well as a queue containing documents and recordId's obtained during the trial run by
+ * the returned plan stage tree.
+ */
+std::tuple<std::unique_ptr<sbe::PlanStage>,
+           sbe::value::SlotAccessor*,
+           sbe::value::SlotAccessor*,
+           std::queue<std::pair<BSONObj, boost::optional<RecordId>>>>
+pickBestPlan(OperationContext* opCtx,
+             const CanonicalQuery& canonicalQuery,
+             Collection* collection,
+             std::vector<std::unique_ptr<QuerySolution>> querySolutions,
+             std::vector<std::unique_ptr<sbe::PlanStage>> planRoots);
+}  // namespace mongo::sbe::multi_planner

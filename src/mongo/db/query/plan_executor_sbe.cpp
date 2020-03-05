@@ -56,21 +56,46 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
         uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
     }
 
-    auto execImpl =
-        new PlanExecutorSBE(opCtx, std::move(cq), std::move(root), resultSlot, resultRecordId, nss);
+    auto execImpl = new PlanExecutorSBE(
+        opCtx, std::move(cq), std::move(root), resultSlot, resultRecordId, nss, false, boost::none);
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
     return std::move(exec);
 }
 
-PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
-                                 std::unique_ptr<CanonicalQuery> cq,
-                                 std::unique_ptr<sbe::PlanStage> root,
-                                 sbe::value::SlotAccessor* result,
-                                 sbe::value::SlotAccessor* resultRecordId,
-                                 NamespaceString nss)
-    : _opCtx(opCtx),
+
+StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
+    OperationContext* opCtx,
+    std::unique_ptr<CanonicalQuery> cq,
+    std::unique_ptr<sbe::PlanStage> root,
+    NamespaceString nss,
+    sbe::value::SlotAccessor* resultSlot,
+    sbe::value::SlotAccessor* recordIdSlot,
+    std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash) {
+
+    LOGV2_DEBUG(
+        47429004, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
+
+    auto execImpl = new PlanExecutorSBE(
+        opCtx, std::move(cq), std::move(root), resultSlot, recordIdSlot, nss, true, stash);
+    PlanExecutor::Deleter planDeleter(opCtx);
+
+    std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
+    return std::move(exec);
+}
+
+PlanExecutorSBE::PlanExecutorSBE(
+    OperationContext* opCtx,
+    std::unique_ptr<CanonicalQuery> cq,
+    std::unique_ptr<sbe::PlanStage> root,
+    sbe::value::SlotAccessor* result,
+    sbe::value::SlotAccessor* resultRecordId,
+    NamespaceString nss,
+    bool isOpen,
+    boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash)
+    : _state{isOpen ? State::opened : State::beforeOpen},
+      _opCtx(opCtx),
       _nss(nss),
       _root(std::move(root)),
       _result(result),
@@ -79,7 +104,13 @@ PlanExecutorSBE::PlanExecutorSBE(OperationContext* opCtx,
     invariant(_root);
     invariant(_result);
 
-    _root->attachFromOperationContext(_opCtx);
+    if (!isOpen) {
+        _root->attachFromOperationContext(_opCtx);
+    }
+
+    if (stash) {
+        _stash = std::move(*stash);
+    }
 }
 
 void PlanExecutorSBE::saveState() {
@@ -129,8 +160,7 @@ void PlanExecutorSBE::enqueue(const Document& obj) {
 
 void PlanExecutorSBE::enqueue(const BSONObj& obj) {
     invariant(_state == State::opened);
-    _stash = obj.getOwned();
-    _state = State::stashed;
+    _stash.push({obj.getOwned(), boost::none});
 }
 
 PlanExecutor::ExecState PlanExecutorSBE::getNext(Document* objOut, RecordId* dlOut) {
@@ -147,31 +177,52 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(Document* objOut, RecordId* dlO
 PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) {
     invariant(_root);
 
+    if (!_stash.empty()) {
+        auto&& [doc, recordId] = _stash.front();
+        _stash.pop();
+        *out = std::move(doc);
+        if (dlOut && recordId) {
+            *dlOut = *recordId;
+        }
+        return PlanExecutor::ExecState::ADVANCED;
+    } else if (_root->getCommonStats()->isEOF) {
+        _root->close();
+        _state = State::beforeOpen;
+        return PlanExecutor::ExecState::IS_EOF;
+    }
+
     if (_state == State::beforeOpen) {
         _state = State::opened;
         _root->open(false);
     }
 
-    if (_state == State::stashed) {
-        *out = std::move(_stash);
-        _state = State::opened;
-        return PlanExecutor::ExecState::ADVANCED;
-    }
-
     invariant(_state == State::opened);
 
-    auto result = _root->getNext();
-
+    auto result = fetchNext(_root.get(), _result, _resultRecordId, out, dlOut);
     if (result == sbe::PlanState::IS_EOF) {
         _root->close();
         _state = State::beforeOpen;
         return PlanExecutor::ExecState::IS_EOF;
     }
     invariant(result == sbe::PlanState::ADVANCED);
+    return PlanExecutor::ExecState::ADVANCED;
+}
+
+sbe::PlanState fetchNext(sbe::PlanStage* root,
+                         sbe::value::SlotAccessor* resultSlot,
+                         sbe::value::SlotAccessor* recordIdSlot,
+                         BSONObj* out,
+                         RecordId* dlOut) {
+    invariant(out);
+
+    auto result = root->getNext();
+    if (result == sbe::PlanState::IS_EOF) {
+        return result;
+    }
+    invariant(result == sbe::PlanState::ADVANCED);
 
     // copy the result
-    auto [tag, val] = _result->getViewOfValue();
-
+    auto [tag, val] = resultSlot->getViewOfValue();
     if (tag == sbe::value::TypeTags::Object) {
         BSONObjBuilder bb;
         sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
@@ -180,15 +231,17 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) 
         *out = BSONObj(sbe::value::bitcastTo<const char*>(val));
     } else {
         // The query is supposed to return an object.
+        MONGO_UNREACHABLE;
     }
 
     if (dlOut) {
-        invariant(_resultRecordId);
-        auto [tag, val] = _resultRecordId->getViewOfValue();
+        invariant(recordIdSlot);
+        auto [tag, val] = recordIdSlot->getViewOfValue();
         if (tag == sbe::value::TypeTags::NumberInt64) {
             *dlOut = RecordId{sbe::value::bitcastTo<int64_t>(val)};
         }
     }
-    return PlanExecutor::ExecState::ADVANCED;
+    return result;
 }
+
 }  // namespace mongo

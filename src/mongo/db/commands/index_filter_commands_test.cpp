@@ -105,8 +105,9 @@ vector<BSONObj> getFilters(const QuerySettings& querySettings) {
 /**
  * Utility function to create a PlanRankingDecision
  */
-std::unique_ptr<PlanRankingDecision> createDecision(size_t numPlans) {
-    unique_ptr<PlanRankingDecision> why(new PlanRankingDecision());
+std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> createDecision(size_t numPlans) {
+    unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> why(
+        new plan_ranker::PlanRankingDecision<PlanStageStats>());
     for (size_t i = 0; i < numPlans; ++i) {
         CommonStats common("COLLSCAN");
         auto stats = std::make_unique<PlanStageStats>(common, STAGE_COLLSCAN);

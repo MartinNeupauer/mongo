@@ -70,16 +70,19 @@ value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, value::SlotId slo
     return _children[0]->getAccessor(ctx, slot);
 }
 void UnwindStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _children[0]->open(reOpen);
 
     _index = 0;
     _inArray = false;
 }
 PlanState UnwindStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (!_inArray) {
         auto state = _children[0]->getNext();
         if (state != PlanState::ADVANCED) {
-            return state;
+            return trackPlanState(state);
         }
 
         // get the value
@@ -88,7 +91,7 @@ PlanState UnwindStage::getNext() {
         if (!value::isArray(tag)) {
             _outFieldOutputAccessor->reset(tag, val);
             _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
-            return PlanState::ADVANCED;
+            return trackPlanState(PlanState::ADVANCED);
         }
 
         _inArrayAccessor.reset(tag, val);
@@ -100,7 +103,7 @@ PlanState UnwindStage::getNext() {
             _inArray = false;
             _outFieldOutputAccessor->reset(value::TypeTags::Nothing, 0);
             _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
-            return PlanState::ADVANCED;
+            return trackPlanState(PlanState::ADVANCED);
         }
     }
 
@@ -117,9 +120,11 @@ PlanState UnwindStage::getNext() {
         _inArray = false;
     }
 
-    return PlanState::ADVANCED;
+    return trackPlanState(PlanState::ADVANCED);
 }
 void UnwindStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _children[0]->close();
 }
 

@@ -316,7 +316,8 @@ const SpecificStats* CachedPlanStage::getSpecificStats() const {
 }
 
 void CachedPlanStage::updatePlanCache() {
-    const double score = PlanRanker::scoreTree(getStats()->children[0].get());
+    auto ranker = plan_ranker::makePlanRanker<PlanStageStats>(nullptr);
+    const double score = ranker->calculateRank(getStats()->children[0].get());
 
     PlanCache* cache = CollectionQueryInfo::get(collection()).getPlanCache();
     Status fbs = cache->feedback(*_canonicalQuery, score);

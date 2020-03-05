@@ -198,7 +198,7 @@ CachedSolution::~CachedSolution() {
 
 std::unique_ptr<PlanCacheEntry> PlanCacheEntry::create(
     const std::vector<QuerySolution*>& solutions,
-    std::unique_ptr<const PlanRankingDecision> decision,
+    std::unique_ptr<const plan_ranker::PlanRankingDecision<PlanStageStats>> decision,
     const CanonicalQuery& query,
     uint32_t queryHash,
     uint32_t planCacheKey,
@@ -245,18 +245,19 @@ std::unique_ptr<PlanCacheEntry> PlanCacheEntry::create(
         works));
 }
 
-PlanCacheEntry::PlanCacheEntry(std::vector<std::unique_ptr<const SolutionCacheData>> plannerData,
-                               const BSONObj& query,
-                               const BSONObj& sort,
-                               const BSONObj& projection,
-                               const BSONObj& collation,
-                               const Date_t timeOfCreation,
-                               const uint32_t queryHash,
-                               const uint32_t planCacheKey,
-                               std::unique_ptr<const PlanRankingDecision> decision,
-                               std::vector<double> feedback,
-                               const bool isActive,
-                               const size_t works)
+PlanCacheEntry::PlanCacheEntry(
+    std::vector<std::unique_ptr<const SolutionCacheData>> plannerData,
+    const BSONObj& query,
+    const BSONObj& sort,
+    const BSONObj& projection,
+    const BSONObj& collation,
+    const Date_t timeOfCreation,
+    const uint32_t queryHash,
+    const uint32_t planCacheKey,
+    std::unique_ptr<const plan_ranker::PlanRankingDecision<PlanStageStats>> decision,
+    std::vector<double> feedback,
+    const bool isActive,
+    const size_t works)
     : plannerData(std::move(plannerData)),
       query(query),
       sort(sort),
@@ -286,7 +287,8 @@ std::unique_ptr<PlanCacheEntry> PlanCacheEntry::clone() const {
         solutionCacheData[i] = std::unique_ptr<const SolutionCacheData>(plannerData[i]->clone());
     }
 
-    auto decisionPtr = std::unique_ptr<PlanRankingDecision>(decision->clone());
+    auto decisionPtr =
+        std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>>(decision->clone());
     return std::unique_ptr<PlanCacheEntry>(new PlanCacheEntry(std::move(solutionCacheData),
                                                               query,
                                                               sort,
@@ -556,7 +558,7 @@ PlanCache::NewEntryState PlanCache::getNewEntryState(const CanonicalQuery& query
 
 Status PlanCache::set(const CanonicalQuery& query,
                       const std::vector<QuerySolution*>& solns,
-                      std::unique_ptr<PlanRankingDecision> why,
+                      std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> why,
                       Date_t now,
                       boost::optional<double> worksGrowthCoefficient) {
     invariant(why);

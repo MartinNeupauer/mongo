@@ -87,6 +87,8 @@ value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot
     return ctx.getAccessor(slot);
 }
 void UnionStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     if (reOpen) {
         invariant(_remainingBranchesToDrain.empty());
     }
@@ -99,6 +101,7 @@ void UnionStage::open(bool reOpen) {
     _currentStage = _remainingBranchesToDrain.front().stage;
 }
 PlanState UnionStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     auto state = PlanState::IS_EOF;
 
     while (!_remainingBranchesToDrain.empty() && state != PlanState::ADVANCED) {
@@ -123,9 +126,11 @@ PlanState UnionStage::getNext() {
         }
     }
 
-    return state;
+    return trackPlanState(state);
 }
 void UnionStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _currentStage = nullptr;
     while (!_remainingBranchesToDrain.empty()) {
         _remainingBranchesToDrain.front().close();

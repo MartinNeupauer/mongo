@@ -79,6 +79,8 @@ value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
     return _children[1]->getAccessor(ctx, slot);
 }
 void LoopJoinStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _children[0]->open(reOpen);
     _outerGetNext = true;
     // do not open the inner child as we do not have values of correlated parameters yet.
@@ -90,10 +92,11 @@ void LoopJoinStage::openInner() {
     _reOpenInner = true;
 }
 PlanState LoopJoinStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (_outerGetNext) {
         auto state = _children[0]->getNext();
         if (state != PlanState::ADVANCED) {
-            return state;
+            return trackPlanState(state);
         }
 
         openInner();
@@ -118,19 +121,22 @@ PlanState LoopJoinStage::getNext() {
         } while (state == PlanState::ADVANCED && !pass);
 
         if (state == PlanState::ADVANCED) {
-            return PlanState::ADVANCED;
+            return trackPlanState(PlanState::ADVANCED);
         }
         invariant(state == PlanState::IS_EOF);
 
         state = _children[0]->getNext();
         if (state != PlanState::ADVANCED) {
-            return state;
+            return trackPlanState(state);
         }
 
         openInner();
     }
 }
 void LoopJoinStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
+
     if (_reOpenInner) {
         _children[1]->close();
 

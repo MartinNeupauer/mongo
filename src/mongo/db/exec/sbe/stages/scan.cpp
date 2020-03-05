@@ -130,6 +130,8 @@ void ScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
 }
 
 void ScanStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     invariant(_opCtx);
     if (!reOpen) {
         invariant(!_cursor);
@@ -161,9 +163,10 @@ void ScanStage::open(bool reOpen) {
 }
 
 PlanState ScanStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     if (!_cursor) {
-        _commonStats.isEOF = true;
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
     checkForInterrupt(_opCtx);
@@ -173,13 +176,11 @@ PlanState ScanStage::getNext() {
     _firstGetNext = false;
 
     if (!nextRecord) {
-        _commonStats.isEOF = true;
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
     if (_seekKeyAccessor && nextRecord->id != _key) {
-        _commonStats.isEOF = true;
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
     if (_recordAccessor) {
@@ -221,10 +222,12 @@ PlanState ScanStage::getNext() {
     }
 
     _specificStats.numReads++;
-    return PlanState::ADVANCED;
+    return trackPlanState(PlanState::ADVANCED);
 }
 
 void ScanStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _cursor.reset();
     _coll.reset();
 }
@@ -356,8 +359,15 @@ void ParallelScanStage::doSaveState() {
     if (_cursor) {
         _cursor->save();
     }
+
+    _coll.reset();
 }
 void ParallelScanStage::doRestoreState() {
+    invariant(_opCtx);
+    invariant(!_coll);
+
+    _coll.emplace(_opCtx, _name);
+
     if (_cursor) {
         const bool couldRestore = _cursor->restore();
         uassert(ErrorCodes::CappedPositionLost,

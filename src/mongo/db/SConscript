@@ -1128,6 +1128,7 @@ env.Library(
         'query/plan_ranker.cpp',
         'query/plan_yield_policy.cpp',
         'query/classic_stage_builder.cpp',
+        "query/sbe_multi_planner.cpp",
         'run_op_kill_cursors.cpp',
     ],
     LIBDEPS=[

@@ -296,8 +296,10 @@ struct GenerateQuerySolution {
 /**
  * Utility function to create a PlanRankingDecision
  */
-std::unique_ptr<PlanRankingDecision> createDecision(size_t numPlans, size_t works = 0) {
-    unique_ptr<PlanRankingDecision> why(new PlanRankingDecision());
+std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> createDecision(size_t numPlans,
+                                                                                 size_t works = 0) {
+    unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> why(
+        new plan_ranker::PlanRankingDecision<PlanStageStats>());
     for (size_t i = 0; i < numPlans; ++i) {
         CommonStats common("COLLSCAN");
         auto stats = std::make_unique<PlanStageStats>(common, STAGE_COLLSCAN);
@@ -492,7 +494,7 @@ TEST(PlanCacheTest, AddEmptySolutions) {
     PlanCache planCache;
     unique_ptr<CanonicalQuery> cq(canonicalize("{a: 1}"));
     std::vector<QuerySolution*> solns;
-    unique_ptr<PlanRankingDecision> decision(createDecision(1U));
+    unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> decision(createDecision(1U));
     QueryTestServiceContext serviceContext;
     ASSERT_NOT_OK(planCache.set(*cq, solns, std::move(decision), Date_t{}));
 }

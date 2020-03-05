@@ -40,6 +40,8 @@ LimitSkipStage::LimitSkipStage(std::unique_ptr<PlanStage> input,
       _isEOF(false) {
     invariant(_limit || _skip);
     _children.emplace_back(std::move(input));
+    _specificStats.limit = limit;
+    _specificStats.skip = skip;
 }
 
 std::unique_ptr<PlanStage> LimitSkipStage::clone() {
@@ -54,6 +56,8 @@ value::SlotAccessor* LimitSkipStage::getAccessor(CompileCtx& ctx, value::SlotId 
     return _children[0]->getAccessor(ctx, slot);
 }
 void LimitSkipStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _isEOF = false;
     _children[0]->open(reOpen);
 
@@ -65,24 +69,28 @@ void LimitSkipStage::open(bool reOpen) {
     _current = 0;
 }
 PlanState LimitSkipStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (_isEOF || (_limit && _current++ == *_limit)) {
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
-    return _children[0]->getNext();
+    return trackPlanState(_children[0]->getNext());
 }
 void LimitSkipStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _children[0]->close();
 }
 
 std::unique_ptr<PlanStageStats> LimitSkipStage::getStats() const {
     auto ret = std::make_unique<PlanStageStats>(_commonStats);
+    ret->specific = std::make_unique<LimitSkipStats>(_specificStats);
     ret->children.emplace_back(_children[0]->getStats());
     return ret;
 }
 
 const SpecificStats* LimitSkipStage::getSpecificStats() const {
-    return nullptr;
+    return &_specificStats;
 }
 
 std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() {

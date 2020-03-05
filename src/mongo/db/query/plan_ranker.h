@@ -35,60 +35,42 @@
 
 #include "mongo/base/owned_pointer_vector.h"
 #include "mongo/db/exec/plan_stage.h"
-#include "mongo/db/exec/plan_stats.h"
+#include "mongo/db/exec/sbe/stages/plan_stats.h"
 #include "mongo/db/exec/working_set.h"
 #include "mongo/db/query/query_solution.h"
 #include "mongo/util/container_size_helper.h"
 
-namespace mongo {
-
-struct CandidatePlan;
-struct PlanRankingDecision;
-
+namespace mongo::plan_ranker {
 /**
- * Ranks 2 or more plans.
+ * Assigns the stats tree a 'goodness' score. The higher the score, the better
+ * the plan. The exact value isn't meaningful except for imposing a ranking.
  */
+template <typename PlanStageStatsType>
 class PlanRanker {
 public:
-    /**
-     * Returns a PlanRankingDecision which has the ranking and the information about the ranking
-     * process with status OK if everything worked. 'candidateOrder' within the PlanRankingDecision
-     * holds indices into candidates ordered by score (winner in first element).
-     *
-     * Returns an error if there was an issue with plan ranking (e.g. there was no viable plan).
-     */
-    static StatusWith<std::unique_ptr<PlanRankingDecision>> pickBestPlan(
-        const std::vector<CandidatePlan>& candidates);
-
-    /**
-     * Assign the stats tree a 'goodness' score. The higher the score, the better
-     * the plan. The exact value isn't meaningful except for imposing a ranking.
-     */
-    static double scoreTree(const PlanStageStats* stats);
+    virtual ~PlanRanker() {}
+    virtual double calculateRank(const PlanStageStatsType* stats) const = 0;
 };
 
 /**
  * A container holding one to-be-ranked plan and its associated/relevant data.
  * Does not own any of its pointers.
  */
+template <typename PlanStageType, typename ResultType>
 struct CandidatePlan {
-    CandidatePlan(std::unique_ptr<QuerySolution> solution, PlanStage* r, WorkingSet* w)
-        : solution(std::move(solution)), root(r), ws(w), failed(false) {}
-
     std::unique_ptr<QuerySolution> solution;
-    PlanStage* root;  // Not owned here.
-    WorkingSet* ws;   // Not owned here.
-
+    PlanStageType* root{nullptr};  // Not owned here.
+    WorkingSet* ws{nullptr};       // Not owned here.
     // Any results produced during the plan's execution prior to ranking are retained here.
-    std::queue<WorkingSetID> results;
-
-    bool failed;
+    std::queue<ResultType> results;
+    bool failed{false};
 };
 
 /**
  * Information about why a plan was picked to be the best.  Data here is placed into the cache
  * and used to compare expected performance with actual.
  */
+template <typename PlanStageStatsType>
 struct PlanRankingDecision {
     PlanRankingDecision() {}
 
@@ -98,9 +80,9 @@ struct PlanRankingDecision {
     PlanRankingDecision* clone() const {
         PlanRankingDecision* decision = new PlanRankingDecision();
         for (size_t i = 0; i < stats.size(); ++i) {
-            PlanStageStats* s = stats[i].get();
+            PlanStageStatsType* s = stats[i].get();
             invariant(s);
-            decision->stats.push_back(std::unique_ptr<PlanStageStats>{s->clone()});
+            decision->stats.push_back(std::unique_ptr<PlanStageStatsType>{s->clone()});
         }
         decision->scores = scores;
         decision->candidateOrder = candidateOrder;
@@ -124,7 +106,7 @@ struct PlanRankingDecision {
 
     // Stats of all plans sorted in descending order by score.
     // Owned by us.
-    std::vector<std::unique_ptr<PlanStageStats>> stats;
+    std::vector<std::unique_ptr<PlanStageStatsType>> stats;
 
     // The "goodness" score corresponding to 'stats'.
     // Sorted in descending order.
@@ -152,4 +134,37 @@ struct PlanRankingDecision {
     bool tieForBest = false;
 };
 
-}  // namespace mongo
+namespace detail {
+std::unique_ptr<PlanRanker<PlanStageStats>> makeClassicPlanRanker();
+std::unique_ptr<PlanRanker<sbe::PlanStageStats>> makeSBEPlanRanker(const QuerySolution* solution);
+}  // namespace detail
+
+/**
+ * A factory method to create a plan ranker for plan stage stat trees of the specified type
+ * 'PlanStageStatsType'.
+ */
+template <typename PlanStageStatsType>
+std::unique_ptr<PlanRanker<PlanStageStatsType>> makePlanRanker(const QuerySolution* solution) {
+    if constexpr (std::is_same_v<PlanStageStatsType, PlanStageStats>) {
+        return detail::makeClassicPlanRanker();
+    } else {
+        static_assert(std::is_same_v<PlanStageStatsType, sbe::PlanStageStats>);
+        return detail::makeSBEPlanRanker(solution);
+    }
+}
+
+/**
+ * Returns a PlanRankingDecision which has the ranking and the information about the ranking
+ * process with status OK if everything worked. 'candidateOrder' within the PlanRankingDecision
+ * holds indices into candidates ordered by score (winner in first element).
+ *
+ * Returns an error if there was an issue with plan ranking (e.g. there was no viable plan).
+ */
+StatusWith<std::unique_ptr<PlanRankingDecision<PlanStageStats>>> pickBestPlan(
+    std::vector<std::unique_ptr<PlanStageStats>> statTrees,
+    const std::vector<CandidatePlan<PlanStage, WorkingSetID>>& candidates);
+StatusWith<std::unique_ptr<PlanRankingDecision<sbe::PlanStageStats>>> pickBestPlan(
+    std::vector<std::unique_ptr<sbe::PlanStageStats>> statTrees,
+    const std::vector<CandidatePlan<sbe::PlanStage, std::pair<BSONObj, boost::optional<RecordId>>>>&
+        candidates);
+}  // namespace mongo::plan_ranker

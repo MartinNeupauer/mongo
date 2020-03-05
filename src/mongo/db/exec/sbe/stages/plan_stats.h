@@ -41,8 +41,11 @@ struct CommonStats {
     }
 
     StringData stageType;
-    size_t yields;
-    size_t unyields;
+    size_t advances{0};
+    size_t opens{0};
+    size_t closes{0};
+    size_t yields{0};
+    size_t unyields{0};
     long long executionTimeMillis{0};
     bool isEOF{false};
 };
@@ -59,4 +62,42 @@ struct ScanStats : public SpecificStats {
 
     size_t numReads{0};
 };
+
+struct IndexScanStats : public SpecificStats {
+    SpecificStats* clone() const final {
+        return new IndexScanStats(*this);
+    }
+
+    uint64_t estimateObjectSizeInBytes() const {
+        return sizeof(*this);
+    }
+
+    size_t numReads{0};
+};
+
+struct FilterStats : public SpecificStats {
+    SpecificStats* clone() const final {
+        return new FilterStats(*this);
+    }
+
+    uint64_t estimateObjectSizeInBytes() const {
+        return sizeof(*this);
+    }
+
+    size_t numTested{0};
+};
+
+struct LimitSkipStats : public SpecificStats {
+    SpecificStats* clone() const final {
+        return new LimitSkipStats(*this);
+    }
+
+    uint64_t estimateObjectSizeInBytes() const {
+        return sizeof(*this);
+    }
+
+    boost::optional<long long> limit;
+    boost::optional<long long> skip;
+};
+
 }  // namespace mongo::sbe

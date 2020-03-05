@@ -32,6 +32,7 @@
 #include "mongo/db/exec/sbe/stages/plan_stats.h"
 #include "mongo/db/exec/sbe/util/debug_print.h"
 #include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/operation_context.h"
 
 #include <memory>
@@ -44,13 +45,35 @@ struct CompileCtx;
 class PlanStage;
 enum class PlanState { ADVANCED, IS_EOF };
 
+/**
+ * Provides methods to detach and re-attach to an operation context, which derived classes may
+ * override to perform additional actions when these events occur.
+ */
 class CanSwitchOperationContext {
 public:
     CanSwitchOperationContext(PlanStage* stage) : _stage(stage) {
         invariant(_stage);
     }
 
+    /**
+     * Detaches from the OperationContext and releases any storage-engine state.
+     *
+     * It is only legal to call this when in a "saved" state. While in the "detached" state, it is
+     * only legal to call reattachToOperationContext or the destructor. It is not legal to call
+     * detachFromOperationContext() while already in the detached state.
+     *
+     * Propagates to all children, then calls doDetachFromOperationContext().
+     */
     void detachFromOperationContext();
+
+    /**
+     * Reattaches to the OperationContext and reacquires any storage-engine state.
+     *
+     * It is only legal to call this in the "detached" state. On return, the cursor is left in a
+     * "saved" state, so callers must still call restoreState to use this object.
+     *
+     * Propagates to all children, then calls doReattachToOperationContext().
+     */
     void attachFromOperationContext(OperationContext* opCtx);
 
 protected:
@@ -64,13 +87,37 @@ private:
     PlanStage* const _stage;
 };
 
+/**
+ * Provides methods to save and restore the state of the object which derives from this class
+ * when corresponding events are generated as a response to a change in the underlying data source.
+ * Derived classes may override these methods to perform additional actions when these events occur.
+ */
 class CanChangeState {
 public:
     CanChangeState(PlanStage* stage) : _stage(stage) {
         invariant(_stage);
     }
 
+    /**
+     * Notifies the stage that the underlying data source may change.
+     *
+     * It is illegal to call work() or isEOF() when a stage is in the "saved" state.
+     *
+     * Propagates to all children, then calls doSaveState().
+     */
     void saveState();
+
+    /**
+     * Notifies the stage that underlying data is stable again and prepares for calls to work().
+     *
+     * Can only be called while the stage in is the "saved" state.
+     *
+     * Propagates to all children, then calls doRestoreState().
+     *
+     * Throws a UserException on failure to restore due to a conflicting event such as a
+     * collection drop. May throw a WriteConflictException, in which case the caller may choose to
+     * retry.
+     */
     void restoreState();
 
 protected:
@@ -82,6 +129,9 @@ private:
     PlanStage* const _stage;
 };
 
+/**
+ * Provides methods to obtain execution statistics specific to a plan stage.
+ */
 class CanTrackStats {
 public:
     CanTrackStats(StringData stageType) : _commonStats(stageType) {}
@@ -102,10 +152,39 @@ public:
      */
     virtual const SpecificStats* getSpecificStats() const = 0;
 
+    /**
+     * Get the CommonStats for this stage. The pointer is *not* owned by the caller.
+     *
+     * The returned pointer is only valid when the corresponding stage is also valid.
+     * It must not exist past the stage. If you need the stats to outlive the stage,
+     * use the getStats(...) method above.
+     */
+    const CommonStats* getCommonStats() const {
+        return &_commonStats;
+    }
+
 protected:
+    ClockSource* getClock(OperationContext* opCtx) const {
+        return opCtx->getServiceContext()->getFastClockSource();
+    }
+
+    PlanState trackPlanState(PlanState state) {
+        if (state == PlanState::IS_EOF) {
+            _commonStats.isEOF = true;
+        } else {
+            invariant(state == PlanState::ADVANCED);
+            _commonStats.advances++;
+        }
+        return state;
+    }
+
     CommonStats _commonStats;
 };
 
+/**
+ * Provides a methods which can be used to check if the current operation has been interrupted.
+ * Maintains an internal state to maintain the interrupt check period.
+ */
 class CanInterrupt {
 public:
     void checkForInterrupt(OperationContext* opCtx) {

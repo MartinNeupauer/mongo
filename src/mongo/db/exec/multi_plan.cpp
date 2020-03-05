@@ -87,7 +87,7 @@ void MultiPlanStage::addPlan(std::unique_ptr<QuerySolution> solution,
                              std::unique_ptr<PlanStage> root,
                              WorkingSet* ws) {
     _children.emplace_back(std::move(root));
-    _candidates.push_back(CandidatePlan(std::move(solution), _children.back().get(), ws));
+    _candidates.push_back({std::move(solution), _children.back().get(), ws});
 
     // Tell the new candidate plan that it must collect timing info. This timing info will
     // later be stored in the plan cache, and may be used for explain output.
@@ -107,7 +107,7 @@ bool MultiPlanStage::isEOF() {
 
     // We must have returned all our cached results
     // and there must be no more results from the best plan.
-    CandidatePlan& bestPlan = _candidates[_bestPlanIdx];
+    auto& bestPlan = _candidates[_bestPlanIdx];
     return bestPlan.results.empty() && bestPlan.root->isEOF();
 }
 
@@ -117,7 +117,7 @@ PlanStage::StageState MultiPlanStage::doWork(WorkingSetID* out) {
         return PlanStage::FAILURE;
     }
 
-    CandidatePlan& bestPlan = _candidates[_bestPlanIdx];
+    auto& bestPlan = _candidates[_bestPlanIdx];
 
     // Look for an already produced result that provides the data the caller wants.
     if (!bestPlan.results.empty()) {
@@ -240,9 +240,20 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
             "multiplanner encountered a failure while selecting best plan");
     }
 
+    // Each plan will have a stat tree.
+    std::vector<std::unique_ptr<PlanStageStats>> statTrees;
+
+    // Get stat trees from each plan.
+    // Copy stats trees instead of transferring ownership
+    // because multi plan runner will need its own stats
+    // trees for explain.
+    for (size_t i = 0; i < _candidates.size(); ++i) {
+        statTrees.push_back(_candidates[i].root->getStats());
+    }
+
     // After picking best plan, ranking will own plan stats from
     // candidate solutions (winner and losers).
-    auto statusWithRanking = PlanRanker::pickBestPlan(_candidates);
+    auto statusWithRanking = plan_ranker::pickBestPlan(std::move(statTrees), _candidates);
     if (!statusWithRanking.isOK()) {
         return statusWithRanking.getStatus();
     }
@@ -260,7 +271,7 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     std::vector<size_t> candidateOrder = ranking->candidateOrder;
     std::vector<size_t> failedCandidates = ranking->failedCandidates;
 
-    CandidatePlan& bestCandidate = _candidates[_bestPlanIdx];
+    auto& bestCandidate = _candidates[_bestPlanIdx];
     const auto& alreadyProduced = bestCandidate.results;
     const auto& bestSolution = bestCandidate.solution;
 
@@ -391,7 +402,7 @@ bool MultiPlanStage::workAllPlans(size_t numResults, PlanYieldPolicy* yieldPolic
     bool doneWorking = false;
 
     for (size_t ix = 0; ix < _candidates.size(); ++ix) {
-        CandidatePlan& candidate = _candidates[ix];
+        auto& candidate = _candidates[ix];
         if (candidate.failed) {
             continue;
         }

@@ -107,6 +107,8 @@ value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
     return ctx.getAccessor(slot);
 }
 void HashJoinStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _children[0]->open(reOpen);
     // insert the outer side into the hash table
     value::MaterializedRow key;
@@ -141,6 +143,8 @@ void HashJoinStage::open(bool reOpen) {
     _htItEnd = _ht.end();
 }
 PlanState HashJoinStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     if (_htIt != _htItEnd) {
         ++_htIt;
     }
@@ -150,7 +154,7 @@ PlanState HashJoinStage::getNext() {
             auto state = _children[1]->getNext();
             if (state == PlanState::IS_EOF) {
                 // LEFT and OUTER joins should enumerate "non-returned" rows here
-                return state;
+                return trackPlanState(state);
             }
 
             // copy keys in order to do the lookup
@@ -168,9 +172,11 @@ PlanState HashJoinStage::getNext() {
         }
     }
 
-    return PlanState::ADVANCED;
+    return trackPlanState(PlanState::ADVANCED);
 }
 void HashJoinStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _children[1]->close();
 }
 

@@ -107,8 +107,10 @@ public:
     }
 };
 
-
+namespace plan_ranker {
+template <typename PlanStageStatsType>
 struct PlanRankingDecision;
+};
 struct QuerySolution;
 struct QuerySolutionNode;
 
@@ -313,7 +315,7 @@ public:
      */
     static std::unique_ptr<PlanCacheEntry> create(
         const std::vector<QuerySolution*>& solutions,
-        std::unique_ptr<const PlanRankingDecision> decision,
+        std::unique_ptr<const plan_ranker::PlanRankingDecision<PlanStageStats>> decision,
         const CanonicalQuery& query,
         uint32_t queryHash,
         uint32_t planCacheKey,
@@ -363,7 +365,7 @@ public:
     //
 
     // Information that went into picking the winning plan and also why the other plans lost.
-    const std::unique_ptr<const PlanRankingDecision> decision;
+    const std::unique_ptr<const plan_ranker::PlanRankingDecision<PlanStageStats>> decision;
 
     // Scores from uses of this cache entry.
     std::vector<double> feedback;
@@ -395,7 +397,7 @@ private:
                    Date_t timeOfCreation,
                    uint32_t queryHash,
                    uint32_t planCacheKey,
-                   std::unique_ptr<const PlanRankingDecision> decision,
+                   std::unique_ptr<const plan_ranker::PlanRankingDecision<PlanStageStats>> decision,
                    std::vector<double> feedback,
                    bool isActive,
                    size_t works);
@@ -481,7 +483,7 @@ public:
      */
     Status set(const CanonicalQuery& query,
                const std::vector<QuerySolution*>& solns,
-               std::unique_ptr<PlanRankingDecision> why,
+               std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> why,
                Date_t now,
                boost::optional<double> worksGrowthCoefficient = boost::none);
 

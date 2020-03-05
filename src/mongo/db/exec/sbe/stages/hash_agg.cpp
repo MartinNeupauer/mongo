@@ -91,6 +91,8 @@ value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, value::SlotId sl
     return ctx.getAccessor(slot);
 }
 void HashAggStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _children[0]->open(reOpen);
 
     value::MaterializedRow key;
@@ -123,6 +125,8 @@ void HashAggStage::open(bool reOpen) {
     _htIt = _ht.end();
 }
 PlanState HashAggStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     if (_htIt == _ht.end()) {
         _htIt = _ht.begin();
     } else {
@@ -130,10 +134,10 @@ PlanState HashAggStage::getNext() {
     }
 
     if (_htIt == _ht.end()) {
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
-    return PlanState::ADVANCED;
+    return trackPlanState(PlanState::ADVANCED);
 }
 
 std::unique_ptr<PlanStageStats> HashAggStage::getStats() const {
@@ -146,7 +150,11 @@ const SpecificStats* HashAggStage::getSpecificStats() const {
     return nullptr;
 }
 
-void HashAggStage::close() {}
+void HashAggStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
+}
+
 std::vector<DebugPrinter::Block> HashAggStage::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "group");

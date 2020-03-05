@@ -115,8 +115,15 @@ void IndexScanStage::doSaveState() {
     if (_cursor) {
         _cursor->save();
     }
+
+    _coll.reset();
 }
 void IndexScanStage::doRestoreState() {
+    invariant(_opCtx);
+    invariant(!_coll);
+
+    _coll.emplace(_opCtx, _name);
+
     if (_cursor) {
         _cursor->restore();
     }
@@ -134,6 +141,9 @@ void IndexScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
 }
 
 void IndexScanStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
+
     invariant(_opCtx);
     if (!reOpen) {
         invariant(!_cursor);
@@ -190,10 +200,11 @@ void IndexScanStage::open(bool reOpen) {
 }
 
 PlanState IndexScanStage::getNext() {
-    if (!_cursor) {
-        return PlanState::IS_EOF;
-    }
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
 
+    if (!_cursor) {
+        return trackPlanState(PlanState::IS_EOF);
+    }
 
     if (_firstGetNext) {
         _firstGetNext = false;
@@ -203,14 +214,14 @@ PlanState IndexScanStage::getNext() {
     }
 
     if (!_nextRecord) {
-        return PlanState::IS_EOF;
+        return trackPlanState(PlanState::IS_EOF);
     }
 
     if (_seekKeyHi) {
         auto cmp = _nextRecord->keyString.compare(*_seekKeyHi);
 
         if (cmp > 0) {
-            return PlanState::IS_EOF;
+            return trackPlanState(PlanState::IS_EOF);
         }
     }
 
@@ -224,22 +235,26 @@ PlanState IndexScanStage::getNext() {
                                  value::bitcastFrom<int64_t>(_nextRecord->loc.repr()));
     }
 
-    return PlanState::ADVANCED;
+    _specificStats.numReads++;
+    return trackPlanState(PlanState::ADVANCED);
 }
 
 void IndexScanStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
+
     _cursor.reset();
     _coll.reset();
 }
 
 std::unique_ptr<PlanStageStats> IndexScanStage::getStats() const {
     auto ret = std::make_unique<PlanStageStats>(_commonStats);
-    ret->children.emplace_back(_children[0]->getStats());
+    ret->specific = std::make_unique<IndexScanStats>(_specificStats);
     return ret;
 }
 
 const SpecificStats* IndexScanStage::getSpecificStats() const {
-    return nullptr;
+    return &_specificStats;
 }
 
 std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {

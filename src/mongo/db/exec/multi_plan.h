@@ -195,7 +195,7 @@ private:
     // of all QuerySolutions is retained here, and will *not* be tranferred to the PlanExecutor that
     // wraps this stage. Ownership of the PlanStages will be in PlanStage::_children which maps
     // one-to-one with _candidates.
-    std::vector<CandidatePlan> _candidates;
+    std::vector<plan_ranker::CandidatePlan<PlanStage, WorkingSetID>> _candidates;
 
     // index into _candidates, of the winner of the plan competition
     // uses -1 / kNoSuchPlan when best plan is not (yet) known

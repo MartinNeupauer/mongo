@@ -78,9 +78,12 @@ value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId sl
     }
 }
 void MakeObjStage::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     _children[0]->open(reOpen);
 }
 PlanState MakeObjStage::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     auto state = _children[0]->getNext();
 
     if (state == PlanState::ADVANCED) {
@@ -128,7 +131,7 @@ PlanState MakeObjStage::getNext() {
             } else {
                 // _root is not an object return it unmodified
                 _obj.reset(false, tag, val);
-                return state;
+                return trackPlanState(state);
             }
         }
         for (auto p : _projects) {
@@ -139,9 +142,11 @@ PlanState MakeObjStage::getNext() {
             }
         }
     }
-    return state;
+    return trackPlanState(state);
 }
 void MakeObjStage::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _children[0]->close();
 }
 

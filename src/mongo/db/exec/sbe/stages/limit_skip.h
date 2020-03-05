@@ -38,6 +38,7 @@ class LimitSkipStage final : public PlanStage {
     const boost::optional<long long> _skip;
     long long _current;
     bool _isEOF;
+    LimitSkipStats _specificStats;
 
 public:
     LimitSkipStage(std::unique_ptr<PlanStage> input,

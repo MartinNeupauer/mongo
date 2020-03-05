@@ -30,6 +30,7 @@
 #pragma once
 
 #include <boost/optional.hpp>
+#include <queue>
 
 #include "mongo/base/status.h"
 #include "mongo/db/catalog/util/partitioned.h"
@@ -314,6 +315,14 @@ public:
         std::unique_ptr<CanonicalQuery> cq,
         std::unique_ptr<sbe::PlanStage> root,
         NamespaceString nss);
+    static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
+        OperationContext* opCtx,
+        std::unique_ptr<CanonicalQuery> cq,
+        std::unique_ptr<sbe::PlanStage> root,
+        NamespaceString nss,
+        sbe::value::SlotAccessor* resultSlot,
+        sbe::value::SlotAccessor* recordIdSlot,
+        std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash);
 
     /**
      * A PlanExecutor must be disposed before destruction. In most cases, this will happen
@@ -333,6 +342,7 @@ public:
 
     /**
      * Get the stage tree wrapped by this executor, without transferring ownership.
+     * If this executor doesn't wrap a classic stage tree, returns nullptr;
      */
     virtual PlanStage* getRootStage() const = 0;
 

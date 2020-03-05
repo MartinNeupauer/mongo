@@ -192,6 +192,9 @@ value::SlotAccessor* ExchangeConsumer::getAccessor(CompileCtx& ctx, value::SlotI
     return ctx.getAccessor(slot);
 }
 void ExchangeConsumer::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
+
     if (reOpen) {
         uasserted(ErrorCodes::InternalError, "exchange consumer cannot be reopened");
     }
@@ -280,6 +283,8 @@ void ExchangeConsumer::open(bool reOpen) {
 }
 
 PlanState ExchangeConsumer::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     if (_orderPreserving) {
         // build a heap and return min element
         uasserted(ErrorCodes::InternalErrorNotSupported, "ordere exchange not yet implemented");
@@ -288,7 +293,7 @@ PlanState ExchangeConsumer::getNext() {
             auto buffer = getBuffer(0);
             if (!buffer) {
                 // early out
-                return PlanState::IS_EOF;
+                return trackPlanState(PlanState::IS_EOF);
             }
             if (_bufferPos[0] < buffer->count()) {
                 // we still return from the current buffer
@@ -298,7 +303,7 @@ PlanState ExchangeConsumer::getNext() {
                 }
                 ++_bufferPos[0];
                 ++_rowProcessed;
-                return PlanState::ADVANCED;
+                return trackPlanState(PlanState::ADVANCED);
             }
 
             if (buffer->isEof()) {
@@ -309,9 +314,12 @@ PlanState ExchangeConsumer::getNext() {
             _bufferPos[0] = 0;
         }
     }
-    return PlanState::IS_EOF;
+    return trackPlanState(PlanState::IS_EOF);
 }
 void ExchangeConsumer::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
+
     {
         std::unique_lock lock(_state->consumerCloseMutex());
         ++_state->consumerClose();
@@ -479,6 +487,8 @@ value::SlotAccessor* ExchangeProducer::getAccessor(CompileCtx& ctx, value::SlotI
     return _children[0]->getAccessor(ctx, slot);
 }
 void ExchangeProducer::open(bool reOpen) {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.opens++;
     if (reOpen) {
         uasserted(ErrorCodes::InternalError, "exchange producer cannot be reopened");
     }
@@ -500,6 +510,8 @@ bool ExchangeProducer::appendData(size_t consumerId) {
 }
 
 PlanState ExchangeProducer::getNext() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+
     while (_children[0]->getNext() == PlanState::ADVANCED) {
         // push to the correct pipe
         switch (_state->policy()) {
@@ -507,14 +519,14 @@ PlanState ExchangeProducer::getNext() {
                 for (size_t idx = 0; idx < _pipes.size(); ++idx) {
                     // detect early out in the loop
                     if (!appendData(idx)) {
-                        return PlanState::IS_EOF;
+                        return trackPlanState(PlanState::IS_EOF);
                     }
                 }
             } break;
             case ExchangePolicy::roundrobin: {
                 // detect early out in the loop
                 if (!appendData(_roundRobinCounter)) {
-                    return PlanState::IS_EOF;
+                    return trackPlanState(PlanState::IS_EOF);
                 }
                 _roundRobinCounter = (_roundRobinCounter + 1) % _pipes.size();
             } break;
@@ -532,15 +544,17 @@ PlanState ExchangeProducer::getNext() {
         auto buffer = getBuffer(idx);
         // detect early out in the loop
         if (!buffer) {
-            return PlanState::IS_EOF;
+            return trackPlanState(PlanState::IS_EOF);
         }
         buffer->markEof();
         // send it off to consumer
         putBuffer(idx);
     }
-    return PlanState::IS_EOF;
+    return trackPlanState(PlanState::IS_EOF);
 }
 void ExchangeProducer::close() {
+    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
+    _commonStats.closes++;
     _children[0]->close();
 }
 

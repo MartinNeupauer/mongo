@@ -29,18 +29,23 @@
 
 #pragma once
 
+#include <queue>
+
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/query/plan_executor.h"
 
 namespace mongo {
 class PlanExecutorSBE final : public PlanExecutor {
 public:
-    PlanExecutorSBE(OperationContext* opCtx,
-                    std::unique_ptr<CanonicalQuery> cq,
-                    std::unique_ptr<sbe::PlanStage> root,
-                    sbe::value::SlotAccessor* result,
-                    sbe::value::SlotAccessor* resultRecordId,
-                    NamespaceString nss);
+    PlanExecutorSBE(
+        OperationContext* opCtx,
+        std::unique_ptr<CanonicalQuery> cq,
+        std::unique_ptr<sbe::PlanStage> root,
+        sbe::value::SlotAccessor* result,
+        sbe::value::SlotAccessor* resultRecordId,
+        NamespaceString nss,
+        bool isOpen,
+        boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash);
 
     WorkingSet* getWorkingSet() const override {
         MONGO_UNREACHABLE;
@@ -141,7 +146,7 @@ public:
     }
 
 private:
-    enum State { beforeOpen, opened, stashed };
+    enum State { beforeOpen, opened };
 
     State _state{beforeOpen};
 
@@ -153,7 +158,7 @@ private:
     sbe::value::SlotAccessor* _result{nullptr};
     sbe::value::SlotAccessor* _resultRecordId{nullptr};
 
-    BSONObj _stash;
+    std::queue<std::pair<BSONObj, boost::optional<RecordId>>> _stash;
 
     // If _killStatus has a non-OK value, then we have been killed and the value represents the
     // reason for the kill.
@@ -161,4 +166,10 @@ private:
 
     std::unique_ptr<CanonicalQuery> _cq;
 };
+
+sbe::PlanState fetchNext(sbe::PlanStage* root,
+                         sbe::value::SlotAccessor* resultSlot,
+                         sbe::value::SlotAccessor* recordIdSlot,
+                         BSONObj* out,
+                         RecordId* dlOut);
 }  // namespace mongo
