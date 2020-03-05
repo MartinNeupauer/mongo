@@ -130,7 +130,6 @@ void ScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
 }
 
 void ScanStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     invariant(_opCtx);
     if (!reOpen) {
@@ -163,8 +162,6 @@ void ScanStage::open(bool reOpen) {
 }
 
 PlanState ScanStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
     if (!_cursor) {
         return trackPlanState(PlanState::IS_EOF);
     }
@@ -226,7 +223,6 @@ PlanState ScanStage::getNext() {
 }
 
 void ScanStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _cursor.reset();
     _coll.reset();

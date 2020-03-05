@@ -78,12 +78,10 @@ value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId sl
     }
 }
 void MakeObjStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
 }
 PlanState MakeObjStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     auto state = _children[0]->getNext();
 
     if (state == PlanState::ADVANCED) {
@@ -145,7 +143,6 @@ PlanState MakeObjStage::getNext() {
     return trackPlanState(state);
 }
 void MakeObjStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _children[0]->close();
 }

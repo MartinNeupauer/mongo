@@ -46,7 +46,6 @@ struct CommonStats {
     size_t closes{0};
     size_t yields{0};
     size_t unyields{0};
-    long long executionTimeMillis{0};
     bool isEOF{false};
 };
 using PlanStageStats = BasePlanStageStats<CommonStats>;

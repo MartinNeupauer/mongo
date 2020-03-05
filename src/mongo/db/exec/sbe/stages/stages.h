@@ -164,10 +164,6 @@ public:
     }
 
 protected:
-    ClockSource* getClock(OperationContext* opCtx) const {
-        return opCtx->getServiceContext()->getFastClockSource();
-    }
-
     PlanState trackPlanState(PlanState state) {
         if (state == PlanState::IS_EOF) {
             _commonStats.isEOF = true;

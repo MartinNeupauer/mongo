@@ -41,13 +41,10 @@ value::SlotAccessor* CoScanStage::getAccessor(CompileCtx& ctx, value::SlotId slo
 }
 
 void CoScanStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
 }
 
 PlanState CoScanStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
     checkForInterrupt(_opCtx);
 
     // run forever
@@ -65,7 +62,6 @@ const SpecificStats* CoScanStage::getSpecificStats() const {
 }
 
 void CoScanStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 }
 

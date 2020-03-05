@@ -79,7 +79,6 @@ value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
     return _children[1]->getAccessor(ctx, slot);
 }
 void LoopJoinStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
     _outerGetNext = true;
@@ -92,7 +91,6 @@ void LoopJoinStage::openInner() {
     _reOpenInner = true;
 }
 PlanState LoopJoinStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (_outerGetNext) {
         auto state = _children[0]->getNext();
         if (state != PlanState::ADVANCED) {
@@ -134,7 +132,6 @@ PlanState LoopJoinStage::getNext() {
     }
 }
 void LoopJoinStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 
     if (_reOpenInner) {

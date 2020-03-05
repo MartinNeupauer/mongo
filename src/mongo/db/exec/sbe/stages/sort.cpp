@@ -86,7 +86,6 @@ value::SlotAccessor* SortStage::getAccessor(CompileCtx& ctx, value::SlotId slot)
     return ctx.getAccessor(slot);
 }
 void SortStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
 
@@ -119,7 +118,6 @@ void SortStage::open(bool reOpen) {
     _stIt = _st.end();
 }
 PlanState SortStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (_stIt == _st.end()) {
         _stIt = _st.begin();
     } else {
@@ -133,7 +131,6 @@ PlanState SortStage::getNext() {
     return trackPlanState(PlanState::ADVANCED);
 }
 void SortStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 }
 

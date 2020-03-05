@@ -65,12 +65,10 @@ value::SlotAccessor* ProjectStage::getAccessor(CompileCtx& ctx, value::SlotId sl
     }
 }
 void ProjectStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
 }
 PlanState ProjectStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     auto state = _children[0]->getNext();
 
     if (state == PlanState::ADVANCED) {
@@ -86,7 +84,6 @@ PlanState ProjectStage::getNext() {
     return trackPlanState(state);
 }
 void ProjectStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _children[0]->close();
 }

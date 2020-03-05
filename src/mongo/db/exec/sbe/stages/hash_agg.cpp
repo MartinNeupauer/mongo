@@ -91,7 +91,6 @@ value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, value::SlotId sl
     return ctx.getAccessor(slot);
 }
 void HashAggStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
 
@@ -125,8 +124,6 @@ void HashAggStage::open(bool reOpen) {
     _htIt = _ht.end();
 }
 PlanState HashAggStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
     if (_htIt == _ht.end()) {
         _htIt = _ht.begin();
     } else {
@@ -151,7 +148,6 @@ const SpecificStats* HashAggStage::getSpecificStats() const {
 }
 
 void HashAggStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 }
 

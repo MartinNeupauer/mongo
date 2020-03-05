@@ -67,7 +67,6 @@ public:
     }
 
     void open(bool reOpen) final {
-        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
         _commonStats.opens++;
 
         if constexpr (IsConst) {
@@ -86,8 +85,6 @@ public:
     }
 
     PlanState getNext() final {
-        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
         // The constant filter evaluates the predicate in the open method.
         if constexpr (IsConst) {
             if (!_childOpened) {
@@ -117,7 +114,6 @@ public:
     }
 
     void close() final {
-        ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
         _commonStats.closes++;
 
         if (_childOpened) {

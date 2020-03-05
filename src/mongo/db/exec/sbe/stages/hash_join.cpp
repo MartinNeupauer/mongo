@@ -107,7 +107,6 @@ value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
     return ctx.getAccessor(slot);
 }
 void HashJoinStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
     // insert the outer side into the hash table
@@ -143,8 +142,6 @@ void HashJoinStage::open(bool reOpen) {
     _htItEnd = _ht.end();
 }
 PlanState HashJoinStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
     if (_htIt != _htItEnd) {
         ++_htIt;
     }
@@ -175,7 +172,6 @@ PlanState HashJoinStage::getNext() {
     return trackPlanState(PlanState::ADVANCED);
 }
 void HashJoinStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _children[1]->close();
 }

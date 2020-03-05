@@ -70,7 +70,6 @@ value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, value::SlotId slo
     return _children[0]->getAccessor(ctx, slot);
 }
 void UnwindStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
 
@@ -78,7 +77,6 @@ void UnwindStage::open(bool reOpen) {
     _inArray = false;
 }
 PlanState UnwindStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (!_inArray) {
         auto state = _children[0]->getNext();
         if (state != PlanState::ADVANCED) {
@@ -123,7 +121,6 @@ PlanState UnwindStage::getNext() {
     return trackPlanState(PlanState::ADVANCED);
 }
 void UnwindStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _children[0]->close();
 }

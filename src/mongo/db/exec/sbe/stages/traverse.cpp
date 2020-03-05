@@ -108,7 +108,6 @@ value::SlotAccessor* TraverseStage::getAccessor(CompileCtx& ctx, value::SlotId s
     }
 }
 void TraverseStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _children[0]->open(reOpen);
     // do not open the inner child as we do not have values of correlated parameters yet.
@@ -125,7 +124,6 @@ void TraverseStage::openInner(value::TypeTags tag, value::Value val) {
 }
 
 PlanState TraverseStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     auto state = _children[0]->getNext();
     if (state != PlanState::ADVANCED) {
         return trackPlanState(state);
@@ -240,7 +238,6 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
 }
 
 void TraverseStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 
     if (_reOpenInner) {

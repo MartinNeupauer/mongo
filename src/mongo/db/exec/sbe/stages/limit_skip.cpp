@@ -56,7 +56,6 @@ value::SlotAccessor* LimitSkipStage::getAccessor(CompileCtx& ctx, value::SlotId 
     return _children[0]->getAccessor(ctx, slot);
 }
 void LimitSkipStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
     _isEOF = false;
     _children[0]->open(reOpen);
@@ -69,7 +68,6 @@ void LimitSkipStage::open(bool reOpen) {
     _current = 0;
 }
 PlanState LimitSkipStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     if (_isEOF || (_limit && _current++ == *_limit)) {
         return trackPlanState(PlanState::IS_EOF);
     }
@@ -77,7 +75,6 @@ PlanState LimitSkipStage::getNext() {
     return trackPlanState(_children[0]->getNext());
 }
 void LimitSkipStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
     _children[0]->close();
 }

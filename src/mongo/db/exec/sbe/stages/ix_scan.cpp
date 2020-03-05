@@ -141,7 +141,6 @@ void IndexScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
 }
 
 void IndexScanStage::open(bool reOpen) {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.opens++;
 
     invariant(_opCtx);
@@ -200,8 +199,6 @@ void IndexScanStage::open(bool reOpen) {
 }
 
 PlanState IndexScanStage::getNext() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
-
     if (!_cursor) {
         return trackPlanState(PlanState::IS_EOF);
     }
@@ -240,7 +237,6 @@ PlanState IndexScanStage::getNext() {
 }
 
 void IndexScanStage::close() {
-    ScopedTimer timer(getClock(_opCtx), &_commonStats.executionTimeMillis);
     _commonStats.closes++;
 
     _cursor.reset();
