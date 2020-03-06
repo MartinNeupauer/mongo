@@ -37,19 +37,29 @@ MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
                            boost::optional<value::SlotId> rootSlot,
                            const std::vector<std::string>& restrictFields,
                            const std::vector<std::string>& projectFields,
-                           const std::vector<value::SlotId>& projectVars)
+                           const std::vector<value::SlotId>& projectVars,
+                           bool forceNewObject,
+                           bool returnOldObject)
     : PlanStage("mkobj"_sd),
       _objSlot(objSlot),
       _rootSlot(rootSlot),
       _restrictFields(restrictFields),
       _projectFields(projectFields),
-      _projectVars(projectVars) {
+      _projectVars(projectVars),
+      _forceNewObject(forceNewObject),
+      _returnOldObject(returnOldObject) {
     _children.emplace_back(std::move(input));
     invariant(_projectVars.size() == _projectFields.size());
 }
 std::unique_ptr<PlanStage> MakeObjStage::clone() {
-    return std::make_unique<MakeObjStage>(
-        _children[0]->clone(), _objSlot, _rootSlot, _restrictFields, _projectFields, _projectVars);
+    return std::make_unique<MakeObjStage>(_children[0]->clone(),
+                                          _objSlot,
+                                          _rootSlot,
+                                          _restrictFields,
+                                          _projectFields,
+                                          _projectVars,
+                                          _forceNewObject,
+                                          _returnOldObject);
 }
 void MakeObjStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
@@ -58,13 +68,17 @@ void MakeObjStage::prepare(CompileCtx& ctx) {
         _root = _children[0]->getAccessor(ctx, *_rootSlot);
     }
     for (auto& p : _restrictFields) {
-        auto [it, inserted] = _restrictFieldsSet.emplace(p);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+        if (p.empty()) {
+            _restrictAllFields = true;
+        } else {
+            auto [it, inserted] = _restrictFieldsSet.emplace(p);
+            uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+        }
     }
     for (size_t idx = 0; idx < _projectFields.size(); ++idx) {
         auto& p = _projectFields[idx];
 
-        auto [it, inserted] = _projectFieldsSet.emplace(p);
+        auto [it, inserted] = _projectFieldsMap.emplace(p, idx);
         uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
         _projects.emplace_back(p, _children[0]->getAccessor(ctx, _projectVars[idx]));
     }
@@ -77,6 +91,16 @@ value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId sl
         return _children[0]->getAccessor(ctx, slot);
     }
 }
+void MakeObjStage::projectField(value::Object* obj, size_t idx) {
+    const auto& p = _projects[idx];
+
+    auto [tag, val] = p.second->getViewOfValue();
+    if (tag != value::TypeTags::Nothing) {
+        auto [tagCopy, valCopy] = value::copyValue(tag, val);
+        obj->push_back(p.first, tagCopy, valCopy);
+    }
+}
+
 void MakeObjStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -87,6 +111,7 @@ PlanState MakeObjStage::getNext() {
     if (state == PlanState::ADVANCED) {
         auto [tag, val] = value::makeNewObject();
         auto obj = value::getObjectView(val);
+        std::set<size_t> alreadyProjected;
 
         _obj.reset(tag, val);
 
@@ -104,10 +129,14 @@ PlanState MakeObjStage::getNext() {
                 while (*be != 0) {
                     auto sv = bson::fieldNameView(be);
 
-                    if (_restrictFieldsSet.count(sv) == 0 && _projectFieldsSet.count(sv) == 0) {
+                    if (auto it = _projectFieldsMap.find(sv);
+                        !isFieldRestricted(sv) && it == _projectFieldsMap.end()) {
                         auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
                         auto [copyTag, copyVal] = value::copyValue(tag, val);
                         obj->push_back(sv, copyTag, copyVal);
+                    } else if (it != _projectFieldsMap.end()) {
+                        projectField(obj, it->second);
+                        alreadyProjected.insert(it->second);
                     }
 
                     // advance
@@ -119,24 +148,39 @@ PlanState MakeObjStage::getNext() {
                 for (size_t idx = 0; idx < objRoot->size(); ++idx) {
                     std::string_view sv(objRoot->field(idx));
 
-                    if (_restrictFieldsSet.count(sv) == 0 && _projectFieldsSet.count(sv) == 0) {
-
+                    if (auto it = _projectFieldsMap.find(sv);
+                        !isFieldRestricted(sv) && it == _projectFieldsMap.end()) {
                         auto [tag, val] = objRoot->getAt(idx);
                         auto [copyTag, copyVal] = value::copyValue(tag, val);
                         obj->push_back(sv, copyTag, copyVal);
+                    } else if (it != _projectFieldsMap.end()) {
+                        projectField(obj, it->second);
+                        alreadyProjected.insert(it->second);
                     }
                 }
             } else {
-                // _root is not an object return it unmodified
-                _obj.reset(false, tag, val);
+                for (size_t idx = 0; idx < _projects.size(); ++idx) {
+                    if (alreadyProjected.count(idx) == 0) {
+                        projectField(obj, idx);
+                    }
+                }
+                // if the result is non empty object return it
+                if (obj->size() || _forceNewObject) {
+                    return trackPlanState(state);
+                }
+                // now we have to make a decision - return Nothing or the original _root
+                if (!_returnOldObject) {
+                    _obj.reset(false, value::TypeTags::Nothing, 0);
+                } else {
+                    // _root is not an object return it unmodified
+                    _obj.reset(false, tag, val);
+                }
                 return trackPlanState(state);
             }
         }
-        for (auto p : _projects) {
-            auto [tag, val] = p.second->getViewOfValue();
-            if (tag != value::TypeTags::Nothing) {
-                auto [tagCopy, valCopy] = value::copyValue(tag, val);
-                obj->push_back(p.first, tagCopy, valCopy);
+        for (size_t idx = 0; idx < _projects.size(); ++idx) {
+            if (alreadyProjected.count(idx) == 0) {
+                projectField(obj, idx);
             }
         }
     }
@@ -188,6 +232,9 @@ std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
         DebugPrinter::addIdentifier(ret, _projectVars[idx]);
     }
     ret.emplace_back(DebugPrinter::Block("`]"));
+
+    ret.emplace_back(_forceNewObject ? "true" : "false");
+    ret.emplace_back(_returnOldObject ? "true" : "false");
 
     DebugPrinter::addNewLine(ret);
     DebugPrinter::addBlocks(ret, _children[0]->debugPrint());

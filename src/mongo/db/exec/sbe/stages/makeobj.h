@@ -45,8 +45,11 @@ class MakeObjStage final : public PlanStage {
     const std::vector<std::string> _restrictFields;
     const std::vector<std::string> _projectFields;
     const std::vector<value::SlotId> _projectVars;
+    const bool _forceNewObject;
+    const bool _returnOldObject;
+
     std::set<std::string, std::less<>> _restrictFieldsSet;
-    std::set<std::string, std::less<>> _projectFieldsSet;
+    std::map<std::string, size_t, std::less<>> _projectFieldsMap;
 
     std::vector<std::pair<std::string, value::SlotAccessor*>> _projects;
 
@@ -55,6 +58,12 @@ class MakeObjStage final : public PlanStage {
     value::SlotAccessor* _root{nullptr};
 
     bool _compiled{false};
+    bool _restrictAllFields{false};
+    void projectField(value::Object* obj, size_t idx);
+
+    bool isFieldRestricted(const std::string_view& sv) const {
+        return _restrictAllFields || _restrictFieldsSet.count(sv) != 0;
+    }
 
 public:
     MakeObjStage(std::unique_ptr<PlanStage> input,
@@ -62,7 +71,9 @@ public:
                  boost::optional<value::SlotId> rootSlot,
                  const std::vector<std::string>& restrictFields,
                  const std::vector<std::string>& projectFields,
-                 const std::vector<value::SlotId>& projectVars);
+                 const std::vector<value::SlotId>& projectVars,
+                 bool forceNewObject,
+                 bool returnOldObject);
 
     std::unique_ptr<PlanStage> clone() final;
 

@@ -27,6 +27,7 @@
  *    it in the license file.
  */
 
+#include "mongo/db/exec/sbe/abt/abt.h"
 #include "mongo/db/exec/sbe/parser/parser.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
@@ -165,4 +166,16 @@ TEST(SBE_Parser, Basic) {
     auto q = p.parse(nullptr, "nodb"sv, "mkobj $$RESULT [] limit 1 coscan"sv);
 
     q->open(false);
+}
+
+TEST(SBE_abt, Basic) {
+    auto a = abt::make<abt::NoType>();
+    ASSERT_TRUE(a.is<abt::NoType>());
+    ASSERT_TRUE(a.is<abt::TypeSyntaxSort>());
+}
+
+TEST(SBE_abt, PathIdentity) {
+    auto a = abt::make<abt::PathIdentity>(abt::notype());
+    ASSERT_TRUE(a.is<abt::PathIdentity>());
+    ASSERT_TRUE(a.is<abt::PathSyntaxSort>());
 }

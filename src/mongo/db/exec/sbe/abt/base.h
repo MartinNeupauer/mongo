@@ -29,41 +29,55 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/algebra/operator.h"
 
-namespace mongo::sbe {
-class UnwindStage final : public PlanStage {
-    const value::SlotId _inField;
-    const value::SlotId _outField;
-    const value::SlotId _outIndex;
-    const bool _preserveNullAndEmptyArrays;
+namespace mongo {
+namespace sbe {
+namespace abt {
+/**
+ * Type sort
+ */
+class NoType;
+class VariantType;
+class FunctionType;
 
-    value::SlotAccessor* _inFieldAccessor{nullptr};
-    std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
-    std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
+/**
+ * Path sort
+ */
+class PathIdentity;
+class PathExpression;
+class PathRestrict;
+class PathFieldApply;
+class PathObject;
+class PathValue;
+/**
+ * Value sort
+ */
+using ABT = algebra::PolyValue<NoType,
+                               VariantType,
+                               FunctionType,
+                               PathIdentity,
+                               PathExpression,
+                               PathRestrict,
+                               PathFieldApply,
+                               PathObject,
+                               PathValue>;
 
-    value::ArrayAccessor _inArrayAccessor;
+template <typename Derived, size_t Arity>
+using Operator = algebra::OpSpecificArity<ABT, Derived, Arity>;
 
-    size_t _index{0};
-    bool _inArray{false};
+template <typename Derived, size_t Arity>
+using OperatorDynamic = algebra::OpSpecificDynamicArity<ABT, Derived, Arity>;
 
-public:
-    UnwindStage(std::unique_ptr<PlanStage> input,
-                value::SlotId inField,
-                value::SlotId outField,
-                value::SlotId outIndex,
-                bool preserveNullAndEmptyArrays);
+template <typename T, typename... Args>
+inline auto make(Args&&... args) {
+    return ABT::make<T>(std::forward<Args>(args)...);
+}
 
-    std::unique_ptr<PlanStage> clone() final;
+class TypeSyntaxSort {};
+class ValueSyntaxSort {};
+class PathSyntaxSort;
 
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
-};
-}  // namespace mongo::sbe
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

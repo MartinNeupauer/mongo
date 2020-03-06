@@ -138,7 +138,9 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
                                                    boost::none,
                                                    std::vector<std::string>{},
                                                    gb->getIdFieldNames(),
-                                                   gbs);
+                                                   gbs,
+                                                   true,
+                                                   false);
     }
     // Construct the result.
     _resultSlot = _slotIdGenerator->generate();
@@ -155,7 +157,9 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
                                                boost::none,
                                                std::vector<std::string>{},
                                                fieldsOut,
-                                               slotsOut);
+                                               slotsOut,
+                                               true,
+                                               false);
 
     return inputStage;
 }
@@ -229,7 +233,8 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind
     // Create the unwind
     auto indexSlot = _slotIdGenerator->generate();
     auto outSlot = _slotIdGenerator->generate();
-    inputStage = sbe::makeS<sbe::UnwindStage>(std::move(inputStage), slot, outSlot, indexSlot);
+    inputStage = sbe::makeS<sbe::UnwindStage>(
+        std::move(inputStage), slot, outSlot, indexSlot, un->preserveNullAndEmptyArrays());
 
     // Construct the result
     auto oldResult = _resultSlot;
@@ -245,7 +250,9 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind
                                                oldResult,
                                                std::vector<std::string>{},
                                                fieldsOut,
-                                               slotsOut);
+                                               slotsOut,
+                                               true,
+                                               false);
     return inputStage;
 }
 

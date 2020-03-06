@@ -266,7 +266,9 @@ public:
                                                               boost::none,
                                                               std::vector<std::string>{},
                                                               projectFields,
-                                                              projectSlots),
+                                                              projectSlots,
+                                                              true,
+                                                              false),
                                 sbe::makeE<sbe::EFunction>("isObject"sv,
                                                            sbe::makeEs(sbe::makeE<sbe::EVariable>(
                                                                _context->topLevel().inputSlot))))
@@ -275,7 +277,9 @@ public:
                                                           _context->topLevel().inputSlot,
                                                           restrictFields,
                                                           projectFields,
-                                                          projectSlots)}});
+                                                          projectSlots,
+                                                          false,
+                                                          true)}});
         _context->popLevel();
     }
 

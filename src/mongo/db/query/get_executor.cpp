@@ -400,7 +400,9 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                 boost::none,
                 std::vector<std::string>{},
                 std::vector<std::string>{},
-                std::vector<sbe::value::SlotId>{});
+                std::vector<sbe::value::SlotId>{},
+                true,
+                false);
         } else {
             root = std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get());
         }

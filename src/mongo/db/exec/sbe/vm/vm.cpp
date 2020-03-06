@@ -36,14 +36,103 @@
 namespace mongo {
 namespace sbe {
 namespace vm {
-void CodeFragment::append(std::unique_ptr<CodeFragment> code) {
-    _instrs.insert(_instrs.end(), code->_instrs.begin(), code->_instrs.end());
+
+/*
+ * This table must be kept in sync with Instruction::Tags. It encodes how the instruction affects
+ * the stack; i.e. push(+1), pop(-1), or no effect.
+ */
+int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
+    1,   // pushConstVal
+    1,   // pushAccessVal
+    1,   // pushLocalVal
+    -1,  // pop
+    0,   // swap
+
+    -1,  // add
+    -1,  // sub
+    -1,  // mul
+    -1,  // div
+    0,   // negate
+
+    0,  // logicNot
+
+    -1,  // less
+    -1,  // lessEq
+    -1,  // greater
+    -1,  // greaterEq
+    -1,  // eq
+    -1,  // neq
+    -1,  // cmp3w
+
+    -1,  // fillEmpty
+
+    -1,  // getField
+
+    -1,  // sum
+
+    0,  // exists
+    0,  // isObject
+
+    0,  // function is special, the stack offset is encoded in the instruction itself
+
+    0,   // jmp
+    -1,  // jmpTrue
+    0,   // jmpNothing
+};
+
+void CodeFragment::adjustStackSimple(const Instruction& i) {
+    _stackSize += Instruction::stackOffset[i.tag];
 }
 
+void CodeFragment::fixup(int offset) {
+    for (auto fixUp : _fixUps) {
+        auto ptr = instrs().data() + fixUp.offset;
+        int newOffset = value::readFromMemory<int>(ptr) + offset;
+        value::writeToMemory(ptr, newOffset);
+    }
+}
+
+void CodeFragment::removeFixup(FrameId frameId) {
+    _fixUps.erase(std::remove_if(_fixUps.begin(),
+                                 _fixUps.end(),
+                                 [frameId](const auto& f) { return f.frameId == frameId; }),
+                  _fixUps.end());
+}
+void CodeFragment::copyCodeAndFixup(const CodeFragment& from) {
+    for (auto fixUp : from._fixUps) {
+        fixUp.offset += _instrs.size();
+        _fixUps.push_back(fixUp);
+    }
+
+    _instrs.insert(_instrs.end(), from._instrs.begin(), from._instrs.end());
+}
+
+void CodeFragment::append(std::unique_ptr<CodeFragment> code) {
+    // fixup before copying
+    code->fixup(_stackSize);
+
+    copyCodeAndFixup(*code);
+
+    _stackSize += code->_stackSize;
+}
+
+void CodeFragment::append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<CodeFragment> rhs) {
+    invariant(lhs->stackSize() == rhs->stackSize());
+
+    // fixup before copying
+    lhs->fixup(_stackSize);
+    rhs->fixup(_stackSize);
+
+    copyCodeAndFixup(*lhs);
+    copyCodeAndFixup(*rhs);
+
+    _stackSize += lhs->_stackSize;
+}
 void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val, bool owned) {
     Instruction i;
     i.owned = owned;
     i.tag = Instruction::pushConstVal;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(tag) + sizeof(val));
 
@@ -56,6 +145,7 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
     Instruction i;
     i.owned = false;
     i.tag = Instruction::pushAccessVal;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(accessor));
 
@@ -63,6 +153,20 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
     offset += value::writeToMemory(offset, accessor);
 }
 
+void CodeFragment::appendLocalVal(FrameId frameId, int stackOffset) {
+    Instruction i;
+    i.owned = false;
+    i.tag = Instruction::pushLocalVal;
+    adjustStackSimple(i);
+
+    auto fixUpOffset = _instrs.size() + sizeof(Instruction);
+    _fixUps.push_back(FixUp{frameId, fixUpOffset});
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(stackOffset));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, stackOffset);
+}
 void CodeFragment::appendAdd() {
     appendSimpleInstruction(Instruction::add);
 }
@@ -85,6 +189,7 @@ void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
     i.owned = false;  // this is not used
     i.tag = tag;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction));
 
@@ -107,6 +212,11 @@ void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     i.owned = false;  // this is not used
     i.tag = Instruction::function;
 
+    // account for consumed arguments
+    _stackSize -= arity;
+    // and the return value;
+    _stackSize += 1;
+
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(f) + sizeof(arity));
 
     offset += value::writeToMemory(offset, i);
@@ -117,6 +227,7 @@ void CodeFragment::appendJump(int jumpOffset) {
     Instruction i;
     i.owned = false;  // this is not used
     i.tag = Instruction::jmp;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
 
@@ -127,6 +238,7 @@ void CodeFragment::appendJumpTrue(int jumpOffset) {
     Instruction i;
     i.owned = false;  // this is not used
     i.tag = Instruction::jmpTrue;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
 
@@ -137,6 +249,7 @@ void CodeFragment::appendJumpNothing(int jumpOffset) {
     Instruction i;
     i.owned = false;  // this is not used
     i.tag = Instruction::jmpNothing;
+    adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(jumpOffset));
 
@@ -428,6 +541,40 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = accessor->getViewOfValue();
                     pushStack(i.owned, tag, val);
+
+                    break;
+                }
+                case Instruction::pushLocalVal: {
+                    auto stackOffset = value::readFromMemory<int>(pcPointer);
+                    pcPointer += sizeof(stackOffset);
+
+                    auto [owned, tag, val] = getFromStack(stackOffset);
+
+                    pushStack(i.owned, tag, val);
+
+                    break;
+                }
+                case Instruction::pop: {
+                    auto [owned, tag, val] = getFromStack(0);
+                    popStack();
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+
+                    break;
+                }
+                case Instruction::swap: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(1);
+
+                    // swap values only if they are not physically same.
+                    // note - this has huge consquences for the memory management, it allows to
+                    // return owned values from the let expressions
+                    if (!(rhsTag == lhsTag && rhsVal == lhsVal)) {
+                        setStack(0, lhsOwned, lhsTag, lhsVal);
+                        setStack(1, rhsOwned, rhsTag, rhsVal);
+                    }
 
                     break;
                 }

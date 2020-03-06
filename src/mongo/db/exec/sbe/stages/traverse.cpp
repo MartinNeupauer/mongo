@@ -71,7 +71,9 @@ void TraverseStage::prepare(CompileCtx& ctx) {
 
     // prepare the accessor for the correlated parameter
     ctx.pushCorrelated(_inField, &_correlatedAccessor);
-
+    for (auto slot : _correlatedSlots) {
+        ctx.pushCorrelated(slot, _children[0]->getAccessor(ctx, slot));
+    }
     // prepare the inner side
     _children[1]->prepare(ctx);
 
@@ -89,6 +91,9 @@ void TraverseStage::prepare(CompileCtx& ctx) {
     }
 
     // restore correlated parameters
+    for (size_t idx = 0; idx < _correlatedSlots.size(); ++idx) {
+        ctx.popCorrelated();
+    }
     ctx.popCorrelated();
 
     _compiled = true;

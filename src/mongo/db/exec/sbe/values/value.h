@@ -47,6 +47,8 @@ namespace KeyString {
 class Value;
 }
 namespace sbe {
+using FrameId = int64_t;
+
 namespace value {
 using SlotId = int64_t;
 

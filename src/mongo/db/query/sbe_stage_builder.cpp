@@ -418,7 +418,9 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionSimple(
         boost::none,
         std::vector<std::string>{},
         pn->proj.getRequiredFields(),
-        fieldSlots);
+        fieldSlots,
+        true,
+        false);
 }
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionDefault(

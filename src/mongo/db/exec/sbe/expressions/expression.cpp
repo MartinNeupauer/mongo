@@ -40,6 +40,8 @@ std::unique_ptr<vm::CodeFragment> wrapNothingTest(std::unique_ptr<vm::CodeFragme
     auto inner = std::make_unique<vm::CodeFragment>();
     inner = f(std::move(inner));
 
+    invariant(inner->stackSize() == 0);
+
     // append the jump
     code->appendJumpNothing(inner->instrs().size());
 
@@ -73,20 +75,30 @@ std::vector<DebugPrinter::Block> EConstant::debugPrint() {
     return ret;
 }
 std::unique_ptr<EExpression> EVariable::clone() {
-    return std::make_unique<EVariable>(_var);
+    return _frameId ? std::make_unique<EVariable>(*_frameId, _var)
+                    : std::make_unique<EVariable>(_var);
 }
 std::unique_ptr<vm::CodeFragment> EVariable::compile(CompileCtx& ctx) {
     auto code = std::make_unique<vm::CodeFragment>();
 
-    auto accessor = ctx.root->getAccessor(ctx, _var);
-    code->appendAccessVal(accessor);
+    if (_frameId) {
+        int offset = -_var - 1;
+        code->appendLocalVal(*_frameId, offset);
+    } else {
+        auto accessor = ctx.root->getAccessor(ctx, _var);
+        code->appendAccessVal(accessor);
+    }
 
     return code;
 }
 std::vector<DebugPrinter::Block> EVariable::debugPrint() {
     std::vector<DebugPrinter::Block> ret;
 
-    DebugPrinter::addIdentifier(ret, _var);
+    if (_frameId) {
+        DebugPrinter::addIdentifier(ret, *_frameId, _var);
+    } else {
+        DebugPrinter::addIdentifier(ret, _var);
+    }
 
     return ret;
 }
@@ -165,10 +177,8 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code = wrapNothingTest(std::move(code), [&](std::unique_ptr<vm::CodeFragment> code) {
                 // jump if true
                 code->appendJumpTrue(codeFalseBranch->instrs().size());
-                // append the false branch
-                code->append(std::move(codeFalseBranch));
-                // append the rhs
-                code->append(std::move(rhs));
+                // append the false branch and the rhs branch
+                code->append(std::move(codeFalseBranch), std::move(rhs));
 
                 return code;
             });
@@ -185,10 +195,8 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
             code = wrapNothingTest(std::move(code), [&](std::unique_ptr<vm::CodeFragment> code) {
                 // jump if true
                 code->appendJumpTrue(rhs->instrs().size());
-                // append the false branch
-                code->append(std::move(rhs));
-                // append the true branch
-                code->append(std::move(codeTrueBranch));
+                // append the false branch and the true branch
+                code->append(std::move(rhs), std::move(codeTrueBranch));
 
                 return code;
             });
@@ -416,6 +424,10 @@ std::unique_ptr<vm::CodeFragment> EIf::compile(CompileCtx& ctx) {
     auto thenBranch = _nodes[1]->compile(ctx);
 
     auto elseBranch = _nodes[2]->compile(ctx);
+
+    // then and else branches must be balanced
+    invariant(thenBranch->stackSize() == elseBranch->stackSize());
+
     // jump to the merge point that will be right after the thenBranch
     elseBranch->appendJump(thenBranch->instrs().size());
 
@@ -424,10 +436,8 @@ std::unique_ptr<vm::CodeFragment> EIf::compile(CompileCtx& ctx) {
     code = wrapNothingTest(std::move(code), [&](std::unique_ptr<vm::CodeFragment> code) {
         // jump around the elseBranch
         code->appendJumpTrue(elseBranch->instrs().size());
-        // append else
-        code->append(std::move(elseBranch));
-        // append then
-        code->append(std::move(thenBranch));
+        // append else and then branches
+        code->append(std::move(elseBranch), std::move(thenBranch));
 
         return code;
     });
@@ -449,6 +459,52 @@ std::vector<DebugPrinter::Block> EIf::debugPrint() {
     DebugPrinter::addBlocks(ret, _nodes[2]->debugPrint());
 
     ret.emplace_back("`)");
+
+    return ret;
+}
+
+std::unique_ptr<EExpression> ELocalBind::clone() {
+    std::vector<std::unique_ptr<EExpression>> binds;
+    for (size_t idx = 0; idx < _nodes.size() - 1; ++idx) {
+        binds.emplace_back(_nodes[idx]->clone());
+    }
+    return std::make_unique<ELocalBind>(_frameId, std::move(binds), _nodes.back()->clone());
+}
+
+std::unique_ptr<vm::CodeFragment> ELocalBind::compile(CompileCtx& ctx) {
+    auto code = std::make_unique<vm::CodeFragment>();
+
+    for (size_t idx = 0; idx < _nodes.size(); ++idx) {
+        auto c = _nodes[idx]->compile(ctx);
+        code->append(std::move(c));
+    }
+
+    for (size_t idx = 0; idx < _nodes.size() - 1; ++idx) {
+        code->appendSwap();
+        code->appendPop();
+    }
+    code->removeFixup(_frameId);
+    return code;
+}
+
+std::vector<DebugPrinter::Block> ELocalBind::debugPrint() {
+    std::vector<DebugPrinter::Block> ret;
+
+    DebugPrinter::addKeyword(ret, "let");
+
+    ret.emplace_back("[`");
+    for (size_t idx = 0; idx < _nodes.size() - 1; ++idx) {
+        if (idx != 0) {
+            ret.emplace_back(DebugPrinter::Block("`,"));
+        }
+
+        DebugPrinter::addIdentifier(ret, _frameId, idx);
+        ret.emplace_back("=");
+        DebugPrinter::addBlocks(ret, _nodes[idx]->debugPrint());
+    }
+    ret.emplace_back("`]");
+
+    DebugPrinter::addBlocks(ret, _nodes.back()->debugPrint());
 
     return ret;
 }

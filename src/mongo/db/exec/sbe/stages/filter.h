@@ -88,8 +88,7 @@ public:
         // The constant filter evaluates the predicate in the open method.
         if constexpr (IsConst) {
             if (!_childOpened) {
-                _commonStats.isEOF = true;
-                return PlanState::IS_EOF;
+                return trackPlanState(PlanState::IS_EOF);
             } else {
                 return trackPlanState(_children[0]->getNext());
             }
@@ -152,5 +151,44 @@ public:
 
         return ret;
     }
+};
+
+class BranchStage final : public PlanStage {
+    const std::unique_ptr<EExpression> _filter;
+    const std::vector<value::SlotId> _inputThenVals;
+    const std::vector<value::SlotId> _inputElseVals;
+    const std::vector<value::SlotId> _outputVals;
+    std::unique_ptr<vm::CodeFragment> _filterCode;
+
+    std::vector<value::SlotAccessor*> _inputThenAccessors;
+    std::vector<value::SlotAccessor*> _inputElseAccessors;
+    std::vector<value::ViewOfValueAccessor> _outValueAccessors;
+
+    boost::optional<int> _activeBranch;
+    bool _thenOpened{false};
+    bool _elseOpened{false};
+
+    vm::ByteCode _bytecode;
+    FilterStats _specificStats;
+
+public:
+    BranchStage(std::unique_ptr<PlanStage> inputThen,
+                std::unique_ptr<PlanStage> inputElse,
+                std::unique_ptr<EExpression> filter,
+                const std::vector<value::SlotId>& inputThenVals,
+                const std::vector<value::SlotId>& inputElseVals,
+                const std::vector<value::SlotId>& outputVals);
+
+    std::unique_ptr<PlanStage> clone() final;
+
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
+
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
+    std::vector<DebugPrinter::Block> debugPrint() final;
 };
 }  // namespace mongo::sbe

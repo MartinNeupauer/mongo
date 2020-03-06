@@ -29,41 +29,5 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/stages/stages.h"
-
-namespace mongo::sbe {
-class UnwindStage final : public PlanStage {
-    const value::SlotId _inField;
-    const value::SlotId _outField;
-    const value::SlotId _outIndex;
-    const bool _preserveNullAndEmptyArrays;
-
-    value::SlotAccessor* _inFieldAccessor{nullptr};
-    std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
-    std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
-
-    value::ArrayAccessor _inArrayAccessor;
-
-    size_t _index{0};
-    bool _inArray{false};
-
-public:
-    UnwindStage(std::unique_ptr<PlanStage> input,
-                value::SlotId inField,
-                value::SlotId outField,
-                value::SlotId outIndex,
-                bool preserveNullAndEmptyArrays);
-
-    std::unique_ptr<PlanStage> clone() final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
-};
-}  // namespace mongo::sbe
+#include "mongo/db/exec/sbe/abt/path.h"
+#include "mongo/db/exec/sbe/abt/type.h"

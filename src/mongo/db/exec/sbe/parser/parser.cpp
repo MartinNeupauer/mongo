@@ -59,7 +59,7 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / CFILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / CFILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION / BRANCH / SIMPLE_PROJ / PFO
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -92,6 +92,12 @@ static constexpr auto syntax = R"(
                                    IDENT # index name to scan
 
                 PROJECT <- 'project' PROJECT_LIST OPERATOR
+                SIMPLE_PROJ <- '$p' IDENT # output
+                                    IDENT # input
+                                    PFV # path
+                                    OPERATOR # input
+                PFV <- (IDENT '.' PFV) / IDENT
+                       
                 FILTER <- 'filter' '{' EXPR '}' OPERATOR
                 CFILTER <- 'cfilter' '{' EXPR '}' OPERATOR
                 MKOBJ <- 'mkobj' IDENT (IDENT IDENT_LIST)? IDENT_LIST_WITH_RENAMES OPERATOR
@@ -118,11 +124,30 @@ static constexpr auto syntax = R"(
                                        'from' OPERATOR
                 EXCHANGE <- 'exchange' IDENT_LIST NUMBER IDENT OPERATOR
                 SORT <- 'sort' IDENT_LIST IDENT_LIST OPERATOR
-                UNWIND <- 'unwind' IDENT IDENT IDENT OPERATOR
+                UNWIND <- 'unwind' IDENT IDENT IDENT UNWIND_FLAG OPERATOR
+                UNWIND_FLAG <- <'true'> / <'false'>
                 UNION <- 'union' IDENT_LIST UNION_BRANCH_LIST
 
                 UNION_BRANCH_LIST <- '[' (UNION_BRANCH (',' UNION_BRANCH)* )?']'
                 UNION_BRANCH <- IDENT_LIST OPERATOR
+
+                BRANCH <- 'branch' '{' EXPR '}' # boolean condition/switch
+                                   IDENT_LIST # output of the operator
+                                   IDENT_LIST # output of the then branch
+                                   OPERATOR # then branch
+                                   IDENT_LIST # output of the else branch
+                                   OPERATOR # else branch
+                PFO <- '$pfo' IDENT # output
+                              IDENT # input
+                              IDENT_LIST # correlated slots
+                              PATH # path
+                              OPERATOR # input operator
+                PATH <- '{' PF (',' PF)* '}'
+                PF <- (IDENT ':' PF_ACTION) / PF_DROPALL
+                PF_ACTION <- PATH / '=' EXPR / PF_DROP / PF_INCL
+                PF_DROP <- '0'
+                PF_INCL <- '1'
+                PF_DROPALL <- '~'
 
                 PROJECT_LIST <- '[' (ASSIGN (',' ASSIGN)* )?']'
                 ASSIGN <- IDENT '=' EXPR
@@ -142,10 +167,13 @@ static constexpr auto syntax = R"(
                 MUL_EXPR <- PRIMARY_EXPR MUL_TOK MUL_EXPR / PRIMARY_EXPR
                 MUL_TOK <- <'*'> / <'/'>
 
-                PRIMARY_EXPR <- '(' EXPR ')' / CONST_TOK / IF_EXPR / FUN_CALL / IDENT / NUMBER / STRING
+                PRIMARY_EXPR <- '(' EXPR ')' / CONST_TOK / IF_EXPR / LET_EXPR / FUN_CALL / IDENT / NUMBER / STRING
                 CONST_TOK <- <'true'> / <'false'> / <'null'>
 
                 IF_EXPR <- 'if' '(' EXPR ',' EXPR ',' EXPR ')'
+
+                LET_EXPR <- 'let' FRAME_PROJECT_LIST EXPR
+                FRAME_PROJECT_LIST <- '[' (ASSIGN (',' ASSIGN)* )?']'
 
                 FUN_CALL <- IDENT '(' (EXPR (',' EXPR)*)? ')'
 
@@ -323,20 +351,28 @@ void Parser::walkPrimaryExpr(AstQuery& ast) {
     walkChildren(ast);
 
     if (ast.nodes[0]->tag == "IDENT"_) {
-        ast.expr = std::make_unique<EVariable>(lookupSlotStrict(ast.nodes[0]->identifier));
+        // lookup local binds (let) first
+        auto symbol = lookupSymbol(ast.nodes[0]->identifier);
+        if (symbol) {
+            ast.expr = makeE<EVariable>(symbol->id, symbol->slotId);
+        } else {
+            ast.expr = makeE<EVariable>(lookupSlotStrict(ast.nodes[0]->identifier));
+        }
     } else if (ast.nodes[0]->tag == "NUMBER"_) {
         ast.expr = makeE<EConstant>(value::TypeTags::NumberInt64, std::stoll(ast.nodes[0]->token));
     } else if (ast.nodes[0]->tag == "CONST_TOK"_) {
         if (ast.nodes[0]->token == "true") {
-            ast.expr = std::make_unique<EConstant>(value::TypeTags::Boolean, 1);
+            ast.expr = makeE<EConstant>(value::TypeTags::Boolean, 1);
         } else if (ast.nodes[0]->token == "false") {
-            ast.expr = std::make_unique<EConstant>(value::TypeTags::Boolean, 0);
+            ast.expr = makeE<EConstant>(value::TypeTags::Boolean, 0);
         } else if (ast.nodes[0]->token == "null") {
-            ast.expr = std::make_unique<EConstant>(value::TypeTags::Null, 0);
+            ast.expr = makeE<EConstant>(value::TypeTags::Null, 0);
         }
     } else if (ast.nodes[0]->tag == "EXPR"_) {
         ast.expr = std::move(ast.nodes[0]->expr);
     } else if (ast.nodes[0]->tag == "IF_EXPR"_) {
+        ast.expr = std::move(ast.nodes[0]->expr);
+    } else if (ast.nodes[0]->tag == "LET_EXPR"_) {
         ast.expr = std::move(ast.nodes[0]->expr);
     } else if (ast.nodes[0]->tag == "FUN_CALL"_) {
         ast.expr = std::move(ast.nodes[0]->expr);
@@ -345,6 +381,33 @@ void Parser::walkPrimaryExpr(AstQuery& ast) {
         // drop quotes
         str = str.substr(1, str.size() - 2);
         ast.expr = makeE<EConstant>(str);
+    }
+}
+void Parser::walkLetExpr(AstQuery& ast) {
+    auto frame = newFrameSymbolTable();
+    walkChildren(ast);
+
+    auto plist = ast.nodes[0];
+    std::vector<std::unique_ptr<EExpression>> binds;
+
+    binds.resize(frame->table.size());
+    for (auto& symbol : frame->table) {
+        auto it = plist->projects.find(symbol.first);
+        invariant(it != plist->projects.end());
+        binds[symbol.second] = std::move(it->second);
+    }
+    popFrameSymbolTable();
+
+    ast.expr = makeE<ELocalBind>(frame->id, std::move(binds), std::move(ast.nodes[1]->expr));
+}
+
+void Parser::walkFrameProjectList(AstQuery& ast) {
+    value::SlotId slotId{0};
+    for (size_t idx = 0; idx < ast.nodes.size(); ++idx) {
+        walk(*ast.nodes[idx]);
+        currentFrameSymbolTable()->table[ast.nodes[idx]->identifier] = slotId++;
+
+        ast.projects[ast.nodes[idx]->identifier] = std::move(ast.nodes[idx]->expr);
     }
 }
 void Parser::walkIfExpr(AstQuery& ast) {
@@ -637,10 +700,12 @@ void Parser::walkUnionBranch(AstQuery& ast) {
 void Parser::walkUnwind(AstQuery& ast) {
     walkChildren(ast);
 
-    ast.stage = makeS<UnwindStage>(std::move(ast.nodes[3]->stage),
+    bool preserveNullAndEmptyArrays = (ast.nodes[3]->token == "true") ? true : false;
+    ast.stage = makeS<UnwindStage>(std::move(ast.nodes[4]->stage),
                                    lookupSlotStrict(ast.nodes[2]->identifier),
                                    lookupSlotStrict(ast.nodes[0]->identifier),
-                                   lookupSlotStrict(ast.nodes[1]->identifier));
+                                   lookupSlotStrict(ast.nodes[1]->identifier),
+                                   preserveNullAndEmptyArrays);
 }
 
 void Parser::walkMkObj(AstQuery& ast) {
@@ -667,7 +732,9 @@ void Parser::walkMkObj(AstQuery& ast) {
                                     lookupSlot(oldRootName),
                                     std::move(restrictFields),
                                     std::move(ast.nodes[projectListPos]->renames),
-                                    lookupSlots(std::move(ast.nodes[projectListPos]->identifiers)));
+                                    lookupSlots(std::move(ast.nodes[projectListPos]->identifiers)),
+                                    false,
+                                    true);
 }
 
 void Parser::walkGroup(AstQuery& ast) {
@@ -787,6 +854,267 @@ void Parser::walkExchange(AstQuery& ast) {
                                         nullptr);
 }
 
+void Parser::walkBranch(AstQuery& ast) {
+    walkChildren(ast);
+
+    std::vector<value::SlotId> outputVals{lookupSlots(ast.nodes[1]->identifiers)};
+    std::vector<value::SlotId> inputThenVals{lookupSlots(ast.nodes[2]->identifiers)};
+    std::vector<value::SlotId> inputElseVals{lookupSlots(ast.nodes[4]->identifiers)};
+
+    ast.stage = makeS<BranchStage>(std::move(ast.nodes[3]->stage),
+                                   std::move(ast.nodes[5]->stage),
+                                   std::move(ast.nodes[0]->expr),
+                                   inputThenVals,
+                                   inputElseVals,
+                                   outputVals);
+}
+std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
+                                                 value::SlotId inputSlot,
+                                                 std::unique_ptr<PlanStage> inputStage,
+                                                 value::SlotId outputSlot) {
+    if (ast.nodes.size() == 1) {
+        return makeProjectStage(
+            std::move(inputStage),
+            outputSlot,
+            makeE<EFunction>(
+                "getField"sv,
+                makeEs(makeE<EVariable>(inputSlot), makeE<EConstant>(ast.nodes[0]->identifier))));
+    } else {
+        auto traverseIn = _slotIdGenerator->generate();
+        auto from =
+            makeProjectStage(std::move(inputStage),
+                             traverseIn,
+                             makeE<EFunction>("getField"sv,
+                                              makeEs(makeE<EVariable>(inputSlot),
+                                                     makeE<EConstant>(ast.nodes[0]->identifier))));
+        auto in = makeS<LimitSkipStage>(makeS<CoScanStage>(), 1, boost::none);
+        return makeS<TraverseStage>(
+            std::move(from),
+            walkPathValue(*ast.nodes[1], traverseIn, std::move(in), outputSlot),
+            traverseIn,
+            outputSlot,
+            outputSlot,
+            nullptr,
+            nullptr);
+    }
+}
+
+void Parser::walkSimpleProj(AstQuery& ast) {
+    walkChildren(ast);
+
+    auto inputStage = std::move(ast.nodes[3]->stage);
+    auto outputSlot = lookupSlotStrict(ast.nodes[0]->identifier);
+    auto inputSlot = lookupSlotStrict(ast.nodes[1]->identifier);
+
+    ast.stage = walkPathValue(*ast.nodes[2], inputSlot, std::move(inputStage), outputSlot);
+}
+
+bool needNewObject(AstQuery& ast) {
+    switch (ast.tag) {
+        case "PATH"_: {
+            // if anything in the path needs a new object then this path needs a new object
+            bool newObj = false;
+            for (const auto& node : ast.nodes) {
+                newObj |= needNewObject(*node);
+            }
+            return newObj;
+        }
+        case "PF"_: {
+            if (ast.nodes.size() == 1) {
+                // PF_DROPALL
+                return false;
+            }
+            uassert(
+                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 2);
+
+            // follow the action on the field
+            return needNewObject(*ast.nodes[1]);
+        }
+        case "PF_ACTION"_: {
+            uassert(
+                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 1);
+
+            return needNewObject(*ast.nodes[0]);
+        }
+        case "PF_DROP"_: {
+            return false;
+        }
+        case "PF_INCL"_: {
+            return false;
+        }
+        case "EXPR"_: {
+            // This is the only place that forces a new object.
+            return true;
+        }
+        default:;
+    }
+    uasserted(ErrorCodes::InternalError, "grammer and ast do not match");
+    MONGO_UNREACHABLE;
+}
+// do we return the old object if the new one is empty?
+bool returnOldObject(AstQuery& ast) {
+    switch (ast.tag) {
+        case "PATH"_: {
+            // if anything in the path needs a new object then this path needs a new object
+            bool retOldObj = true;
+            for (const auto& node : ast.nodes) {
+                retOldObj &= returnOldObject(*node);
+            }
+            return retOldObj;
+        }
+        case "PF"_: {
+            if (ast.nodes.size() == 1) {
+                // PF_DROPALL
+                return true;
+            }
+            uassert(
+                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 2);
+
+            // follow the action on the field
+            return returnOldObject(*ast.nodes[1]);
+        }
+        case "PF_ACTION"_: {
+            uassert(
+                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 1);
+
+            return returnOldObject(*ast.nodes[0]);
+        }
+        case "PF_DROP"_: {
+            return true;
+        }
+        case "PF_INCL"_: {
+            return false;
+        }
+        case "EXPR"_: {
+            return false;
+        }
+        default:;
+    }
+    uasserted(ErrorCodes::InternalError, "grammer and ast do not match");
+    MONGO_UNREACHABLE;
+}
+std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
+                                            value::SlotId inputSlot,
+                                            value::SlotId outputSlot) {
+    // do we have to unconditionally create a new object?
+    // the algorithm is recursive - if any action anythere is the path needs a new object then the
+    // request is bubbled all the way up.
+    bool newObj = needNewObject(ast);
+    bool restrictAll = false;
+    bool retOldObj = returnOldObject(ast);
+
+    std::vector<std::string> fieldNames;
+    std::vector<std::string> fieldRestrictNames;
+    std::vector<value::SlotId> fieldVars;
+    std::unique_ptr<PlanStage> stage = makeS<LimitSkipStage>(makeS<CoScanStage>(), 1, boost::none);
+
+    for (size_t idx = ast.nodes.size(); idx-- > 0;) {
+        const auto& pf = ast.nodes[idx];
+        if (pf->nodes[0]->name == "PF_DROPALL") {
+            restrictAll = true;
+        } else {
+            walk(*pf->nodes[0]);
+            const auto& action = *pf->nodes[1];
+            switch (action.nodes[0]->tag) {
+                case "PF_DROP"_: {
+                    fieldRestrictNames.emplace(fieldRestrictNames.begin(),
+                                               std::move(pf->nodes[0]->identifier));
+
+                    break;
+                }
+                case "PF_INCL"_: {
+                    // restrictAll = true;
+                    fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    stage = makeProjectStage(
+                        std::move(stage),
+                        fieldVars.front(),
+                        makeE<EFunction>("getField",
+                                         makeEs(makeE<EVariable>(inputSlot),
+                                                makeE<EConstant>(fieldNames.front()))));
+                    break;
+                }
+                case "EXPR"_: {
+                    fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
+                    walk(*action.nodes[0]);
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    stage = makeProjectStage(
+                        std::move(stage), fieldVars.front(), std::move(action.nodes[0]->expr));
+                    break;
+                }
+                case "PATH"_: {
+                    fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    auto traverseOut = fieldVars.front();
+                    auto traverseIn = _slotIdGenerator->generate();
+                    stage = makeProjectStage(
+                        std::move(stage),
+                        traverseIn,
+                        makeE<EFunction>("getField",
+                                         makeEs(makeE<EVariable>(inputSlot),
+                                                makeE<EConstant>(fieldNames.front()))));
+
+                    stage =
+                        makeS<TraverseStage>(std::move(stage),
+                                             walkPath(*action.nodes[0], traverseIn, traverseOut),
+                                             traverseIn,
+                                             traverseOut,
+                                             traverseOut,
+                                             nullptr,
+                                             nullptr);
+                    break;
+                }
+            }
+        }
+    }
+
+    if (restrictAll) {
+        fieldRestrictNames.clear();
+        fieldRestrictNames.emplace_back("");
+    }
+    std::cout << "newObj = " << newObj << "\n";
+    std::cout << "restrictAll = " << restrictAll << "\n";
+    std::cout << "retOldObj = " << retOldObj << "\n";
+    std::cout << "fieldNames\n";
+    for (const auto& fn : fieldNames) {
+        std::cout << "\"" << fn << "\" ";
+    }
+    std::cout << "\n";
+    std::cout << "fieldRestrictNames\n";
+    for (const auto& fn : fieldRestrictNames) {
+        std::cout << "\"" << fn << "\" ";
+    }
+    std::cout << "\n";
+    stage = makeS<MakeObjStage>(std::move(stage),
+                                outputSlot,
+                                inputSlot,
+                                fieldRestrictNames,
+                                fieldNames,
+                                fieldVars,
+                                newObj,
+                                retOldObj);
+
+    return stage;
+}
+void Parser::walkPFO(AstQuery& ast) {
+    walk(*ast.nodes[0]);
+    walk(*ast.nodes[1]);
+    walk(*ast.nodes[2]);
+    walk(*ast.nodes[4]);
+
+
+    ast.stage = makeS<TraverseStage>(std::move(ast.nodes[4]->stage),
+                                     walkPath(*ast.nodes[3],
+                                              lookupSlotStrict(ast.nodes[1]->identifier),
+                                              lookupSlotStrict(ast.nodes[0]->identifier)),
+                                     lookupSlotStrict(ast.nodes[1]->identifier),
+                                     lookupSlotStrict(ast.nodes[0]->identifier),
+                                     lookupSlotStrict(ast.nodes[0]->identifier),
+                                     nullptr,
+                                     nullptr);
+    static_cast<TraverseStage*>(ast.stage.get())->_correlatedSlots =
+        lookupSlots(ast.nodes[2]->identifiers);
+}
 void Parser::walk(AstQuery& ast) {
     switch (ast.tag) {
         case "OPERATOR"_:
@@ -902,8 +1230,23 @@ void Parser::walk(AstQuery& ast) {
         case "IF_EXPR"_:
             walkIfExpr(ast);
             break;
+        case "LET_EXPR"_:
+            walkLetExpr(ast);
+            break;
+        case "FRAME_PROJECT_LIST"_:
+            walkFrameProjectList(ast);
+            break;
         case "FUN_CALL"_:
             walkFunCall(ast);
+            break;
+        case "BRANCH"_:
+            walkBranch(ast);
+            break;
+        case "SIMPLE_PROJ"_:
+            walkSimpleProj(ast);
+            break;
+        case "PFO"_:
+            walkPFO(ast);
             break;
         default:
             walkChildren(ast);

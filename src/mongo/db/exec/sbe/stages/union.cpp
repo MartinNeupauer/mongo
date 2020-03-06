@@ -74,7 +74,7 @@ void UnionStage::prepare(CompileCtx& ctx) {
         auto [it, inserted] = dupCheck.insert(slot);
         uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
-        _outValueAccessors.emplace_back(value::OwnedValueAccessor{});
+        _outValueAccessors.emplace_back(value::ViewOfValueAccessor{});
     }
 }
 value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
@@ -89,6 +89,8 @@ value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot
 void UnionStage::open(bool reOpen) {
     _commonStats.opens++;
     if (reOpen) {
+        // TODO this assumption is incorrect. There is no quarantee that the getnext call will run
+        // until EOS or that close is called.
         invariant(_remainingBranchesToDrain.empty());
     }
 
@@ -119,7 +121,7 @@ PlanState UnionStage::getNext() {
 
             for (size_t idx = 0; idx < inValueAccessors.size(); idx++) {
                 auto [tag, val] = inValueAccessors[idx]->getViewOfValue();
-                _outValueAccessors[idx].reset(false, tag, val);
+                _outValueAccessors[idx].reset(tag, val);
             }
         }
     }

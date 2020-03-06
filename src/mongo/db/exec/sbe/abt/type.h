@@ -29,41 +29,39 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/abt/base.h"
 
-namespace mongo::sbe {
-class UnwindStage final : public PlanStage {
-    const value::SlotId _inField;
-    const value::SlotId _outField;
-    const value::SlotId _outIndex;
-    const bool _preserveNullAndEmptyArrays;
+namespace mongo {
+namespace sbe {
+namespace abt {
+class NoType : public Operator<NoType, 0>, public TypeSyntaxSort {
+public:
+    bool operator==(const NoType&) const {
+        return true;
+    }
+};
 
-    value::SlotAccessor* _inFieldAccessor{nullptr};
-    std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
-    std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
+// Variant type - "atomic" types only, does not admit function values
+class VariantType : public Operator<VariantType, 0>, public TypeSyntaxSort {
+public:
+    bool operator==(const NoType&) const {
+        return true;
+    }
+};
 
-    value::ArrayAccessor _inArrayAccessor;
-
-    size_t _index{0};
-    bool _inArray{false};
+class FunctionType : public Operator<FunctionType, 2>, public TypeSyntaxSort {
+    using Base = Operator<FunctionType, 2>;
 
 public:
-    UnwindStage(std::unique_ptr<PlanStage> input,
-                value::SlotId inField,
-                value::SlotId outField,
-                value::SlotId outIndex,
-                bool preserveNullAndEmptyArrays);
-
-    std::unique_ptr<PlanStage> clone() final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    FunctionType(ABT lhs, ABT rhs) : Base(std::move(lhs), std::move(rhs)) {}
 };
-}  // namespace mongo::sbe
+
+inline auto notype() {
+    return make<NoType>();
+}
+inline auto varianttype() {
+    return make<VariantType>();
+}
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

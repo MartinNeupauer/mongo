@@ -34,8 +34,13 @@ namespace mongo::sbe {
 UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
                          value::SlotId inField,
                          value::SlotId outField,
-                         value::SlotId outIndex)
-    : PlanStage("unwind"_sd), _inField(inField), _outField(outField), _outIndex(outIndex) {
+                         value::SlotId outIndex,
+                         bool preserveNullAndEmptyArrays)
+    : PlanStage("unwind"_sd),
+      _inField(inField),
+      _outField(outField),
+      _outIndex(outIndex),
+      _preserveNullAndEmptyArrays(preserveNullAndEmptyArrays) {
     _children.emplace_back(std::move(input));
 
     if (_outField == _outIndex) {
@@ -44,7 +49,8 @@ UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
     }
 }
 std::unique_ptr<PlanStage> UnwindStage::clone() {
-    return std::make_unique<UnwindStage>(_children[0]->clone(), _inField, _outField, _outIndex);
+    return std::make_unique<UnwindStage>(
+        _children[0]->clone(), _inField, _outField, _outIndex, _preserveNullAndEmptyArrays);
 }
 void UnwindStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
@@ -78,31 +84,40 @@ void UnwindStage::open(bool reOpen) {
 }
 PlanState UnwindStage::getNext() {
     if (!_inArray) {
-        auto state = _children[0]->getNext();
-        if (state != PlanState::ADVANCED) {
-            return trackPlanState(state);
-        }
+        do {
+            auto state = _children[0]->getNext();
+            if (state != PlanState::ADVANCED) {
+                return trackPlanState(state);
+            }
 
-        // get the value
-        auto [tag, val] = _inFieldAccessor->getViewOfValue();
+            // get the value
+            auto [tag, val] = _inFieldAccessor->getViewOfValue();
 
-        if (!value::isArray(tag)) {
-            _outFieldOutputAccessor->reset(tag, val);
-            _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
-            return trackPlanState(PlanState::ADVANCED);
-        }
+            if (value::isArray(tag)) {
+                _inArrayAccessor.reset(tag, val);
+                _index = 0;
+                _inArray = true;
 
-        _inArrayAccessor.reset(tag, val);
-        _index = 0;
-        _inArray = true;
+                // empty input array
+                if (_inArrayAccessor.atEnd()) {
+                    _inArray = false;
+                    if (_preserveNullAndEmptyArrays) {
+                        _outFieldOutputAccessor->reset(value::TypeTags::Nothing, 0);
+                        _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
+                        return trackPlanState(PlanState::ADVANCED);
+                    }
+                }
+            } else {
+                bool nullOrNothing =
+                    tag == value::TypeTags::Null || tag == value::TypeTags::Nothing;
 
-        // empty input array
-        if (_inArrayAccessor.atEnd()) {
-            _inArray = false;
-            _outFieldOutputAccessor->reset(value::TypeTags::Nothing, 0);
-            _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
-            return trackPlanState(PlanState::ADVANCED);
-        }
+                if (!nullOrNothing || _preserveNullAndEmptyArrays) {
+                    _outFieldOutputAccessor->reset(tag, val);
+                    _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
+                    return trackPlanState(PlanState::ADVANCED);
+                }
+            }
+        } while (!_inArray);
     }
 
     // in array
@@ -142,6 +157,7 @@ std::vector<DebugPrinter::Block> UnwindStage::debugPrint() {
     DebugPrinter::addIdentifier(ret, _outField);
     DebugPrinter::addIdentifier(ret, _outIndex);
     DebugPrinter::addIdentifier(ret, _inField);
+    ret.emplace_back(_preserveNullAndEmptyArrays ? "true" : "false");
 
     DebugPrinter::addNewLine(ret);
     DebugPrinter::addBlocks(ret, _children[0]->debugPrint());

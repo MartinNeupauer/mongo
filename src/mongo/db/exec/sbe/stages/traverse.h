@@ -61,6 +61,7 @@ class TraverseStage final : public PlanStage {
                   size_t level);
 
 public:
+    std::vector<value::SlotId> _correlatedSlots;
     TraverseStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
                   value::SlotId inField,

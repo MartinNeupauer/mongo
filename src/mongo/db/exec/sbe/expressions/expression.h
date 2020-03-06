@@ -40,6 +40,7 @@
 
 namespace mongo {
 namespace sbe {
+
 class PlanStage;
 struct CompileCtx {
     PlanStage* root{nullptr};
@@ -138,9 +139,11 @@ public:
 
 class EVariable final : public EExpression {
     value::SlotId _var;
+    boost::optional<FrameId> _frameId;
 
 public:
-    EVariable(value::SlotId var) : _var(var) {}
+    EVariable(value::SlotId var) : _var(var), _frameId(boost::none) {}
+    EVariable(FrameId frameId, value::SlotId var) : _var(var), _frameId(frameId) {}
 
     std::unique_ptr<EExpression> clone() override;
 
@@ -234,6 +237,25 @@ public:
         _nodes.emplace_back(std::move(cond));
         _nodes.emplace_back(std::move(thenBranch));
         _nodes.emplace_back(std::move(elseBranch));
+    }
+
+    std::unique_ptr<EExpression> clone() override;
+
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+
+    std::vector<DebugPrinter::Block> debugPrint() override;
+};
+
+class ELocalBind final : public EExpression {
+    FrameId _frameId;
+
+public:
+    ELocalBind(FrameId frameId,
+               std::vector<std::unique_ptr<EExpression>> binds,
+               std::unique_ptr<EExpression> in)
+        : _frameId(frameId) {
+        _nodes = std::move(binds);
+        _nodes.emplace_back(std::move(in));
     }
 
     std::unique_ptr<EExpression> clone() override;

@@ -98,6 +98,9 @@ struct Instruction {
     enum Tags {
         pushConstVal,
         pushAccessVal,
+        pushLocalVal,
+        pop,
+        swap,
 
         add,
         sub,
@@ -131,7 +134,13 @@ struct Instruction {
         jmp,  // offset is calculated from the end of instruction
         jmpTrue,
         jmpNothing,
+
+        lastInstruction  // this is just a marker used to calculate number of instructions
     };
+
+    // Make sure that values in this arrays are always in-sync with the enum.
+    static int stackOffset[];
+
     uint8_t owned : 1;
     uint8_t tag : 7;
 };
@@ -147,6 +156,13 @@ enum class Builtin : uint8_t {
 
 class CodeFragment {
     std::vector<uint8_t> _instrs;
+    struct FixUp {
+        FrameId frameId;
+        size_t offset;
+    };
+    std::vector<FixUp> _fixUps;
+
+    int _stackSize{0};
 
     auto allocateSpace(size_t size) {
         auto oldSize = _instrs.size();
@@ -154,13 +170,30 @@ class CodeFragment {
         return _instrs.data() + oldSize;
     }
 
+    void adjustStackSimple(const Instruction& i);
+    void fixup(int offset);
+    void copyCodeAndFixup(const CodeFragment& from);
+
 public:
     auto& instrs() {
         return _instrs;
     }
+    auto stackSize() const {
+        return _stackSize;
+    }
+    void removeFixup(FrameId frameId);
+
     void append(std::unique_ptr<CodeFragment> code);
+    void append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<CodeFragment> rhs);
     void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
     void appendAccessVal(value::SlotAccessor* accessor);
+    void appendLocalVal(FrameId frameId, int stackOffset);
+    void appendPop() {
+        appendSimpleInstruction(Instruction::pop);
+    }
+    void appendSwap() {
+        appendSimpleInstruction(Instruction::swap);
+    }
     void appendAdd();
     void appendSub();
     void appendMul();
@@ -276,6 +309,13 @@ class ByteCode {
         auto val = _argStackVals[backOffset];
 
         return {owned, tag, val};
+    }
+
+    void setStack(size_t offset, bool owned, value::TypeTags tag, value::Value val) {
+        auto backOffset = _argStackOwned.size() - 1 - offset;
+        _argStackOwned[backOffset] = owned;
+        _argStackTags[backOffset] = tag;
+        _argStackVals[backOffset] = val;
     }
 
     void pushStack(bool owned, value::TypeTags tag, value::Value val) {

@@ -52,12 +52,48 @@ struct ParsedQueryTree {
 using AstQuery = peg::AstBase<ParsedQueryTree>;
 
 class Parser {
+    using SymbolTable = std::unordered_map<std::string, value::SlotId>;
     peg::parser _parser;
     OperationContext* _opCtx{nullptr};
     std::string _defaultDb;
-    std::unordered_map<std::string, value::SlotId> _symbolsLookupTable;
+    SymbolTable _symbolsLookupTable;
     std::unique_ptr<value::SlotIdGenerator> _slotIdGenerator{value::makeDefaultSlotIdGenerator()};
+    FrameId _frameId{0};
+    struct FrameSymbolTable {
+        FrameId id;
+        SymbolTable table;
+    };
+    struct FrameSymbol {
+        FrameId id;
+        value::SlotId slotId;
+    };
+    std::vector<std::unique_ptr<FrameSymbolTable>> _frameLookupTable;
 
+    FrameSymbolTable* newFrameSymbolTable() {
+        auto table = std::make_unique<FrameSymbolTable>();
+        table->id = ++_frameId;
+
+        _frameLookupTable.emplace_back(std::move(table));
+
+        return _frameLookupTable.back().get();
+    }
+    FrameSymbolTable* currentFrameSymbolTable() {
+        return _frameLookupTable.back().get();
+    }
+    void popFrameSymbolTable() {
+        _frameLookupTable.pop_back();
+    }
+
+    boost::optional<FrameSymbol> lookupSymbol(const std::string& name) {
+        for (size_t idx = _frameLookupTable.size(); idx-- > 0;) {
+            if (auto it = _frameLookupTable[idx]->table.find(name);
+                it != _frameLookupTable[idx]->table.end()) {
+                return FrameSymbol{_frameLookupTable[idx]->id, it->second};
+            }
+        }
+
+        return boost::none;
+    }
     boost::optional<value::SlotId> lookupSlot(const std::string& name) {
         if (name.empty()) {
             return boost::none;
@@ -113,6 +149,8 @@ class Parser {
     void walkMulExpr(AstQuery& ast);
     void walkPrimaryExpr(AstQuery& ast);
     void walkIfExpr(AstQuery& ast);
+    void walkLetExpr(AstQuery& ast);
+    void walkFrameProjectList(AstQuery& ast);
     void walkFunCall(AstQuery& ast);
     void walkUnionBranch(AstQuery& ast);
 
@@ -136,8 +174,19 @@ class Parser {
     void walkCoScan(AstQuery& ast);
     void walkTraverse(AstQuery& ast);
     void walkExchange(AstQuery& ast);
+    void walkBranch(AstQuery& ast);
+    void walkSimpleProj(AstQuery& ast);
+    void walkPFO(AstQuery& ast);
 
     void walk(AstQuery& ast);
+
+    std::unique_ptr<PlanStage> walkPath(AstQuery& ast,
+                                        value::SlotId inputSlot,
+                                        value::SlotId outputSlot);
+    std::unique_ptr<PlanStage> walkPathValue(AstQuery& ast,
+                                             value::SlotId inputSlot,
+                                             std::unique_ptr<PlanStage> inputStage,
+                                             value::SlotId outputSlot);
 
 public:
     Parser();
