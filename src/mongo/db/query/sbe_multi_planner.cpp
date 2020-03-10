@@ -150,10 +150,7 @@ std::vector<std::unique_ptr<sbe::PlanStageStats>> collectExecutionStats(
 
     auto done{false};
     auto numReads{MultiPlanStage::getTrialPeriodWorks(opCtx, collection)};
-    auto tracker{opCtx->getMultiPlannerProgressTracker()};
     size_t numFailures{0};
-
-    invariant(tracker);
 
     for (size_t it = 0; it < numReads && !done; ++it) {
         for (size_t ix = 0; ix < candidates.size(); ++ix) {
