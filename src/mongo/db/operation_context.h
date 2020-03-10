@@ -35,6 +35,7 @@
 #include "mongo/base/status.h"
 #include "mongo/db/client.h"
 #include "mongo/db/concurrency/locker.h"
+#include "mongo/db/exec/multi_planner_progress_tracker.h"
 #include "mongo/db/logical_session_id.h"
 #include "mongo/db/storage/recovery_unit.h"
 #include "mongo/db/storage/storage_options.h"
@@ -432,6 +433,30 @@ public:
      */
     void restoreMaxTimeMS();
 
+    /**
+     * The multi-planner will call these method before starting a trial run to specify the maximum
+     * number of documents to be returned by a candidate plan before the the trialing period is
+     * completed.
+     */
+    void startTrialRun(size_t numResults) {
+        _multiPlannerProgressTracker.emplace(numResults);
+    }
+
+    /**
+     * Called by the multi-planner when the trialing period ends.
+     */
+    void stopTrialRun() {
+        _multiPlannerProgressTracker.reset();
+    }
+
+    /**
+     * Returns a multi-planner progress tracker, if the multi-planning trial run has been started,
+     * or boost::none otherwise.
+     */
+    boost::optional<MultiPlannerProgressTracker> getMultiPlannerProgressTracker() {
+        return _multiPlannerProgressTracker;
+    }
+
 private:
     StatusWith<stdx::cv_status> waitForConditionOrInterruptNoAssertUntil(
         stdx::condition_variable& cv, BasicLockableAdapter m, Date_t deadline) noexcept override;
@@ -572,6 +597,9 @@ private:
 
     // Whether this operation is an exhaust command.
     bool _exhaust = false;
+
+    // Used during the multi-planning trial run to track progress of the work done so far.
+    boost::optional<MultiPlannerProgressTracker> _multiPlannerProgressTracker;
 };
 
 namespace repl {

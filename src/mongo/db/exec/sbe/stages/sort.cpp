@@ -91,6 +91,7 @@ void SortStage::open(bool reOpen) {
 
     value::MaterializedRow keys;
     value::MaterializedRow vals;
+    size_t numResults{0};
 
     while (_children[0]->getNext() == PlanState::ADVANCED) {
         keys._fields.reserve(_inKeyAccessors.size());
@@ -110,6 +111,21 @@ void SortStage::open(bool reOpen) {
         _st.emplace(std::move(keys), std::move(vals));
         if (_st.size() - 1 == _limit) {
             _st.erase(--_st.end());
+        }
+
+        if (auto tracker = _opCtx->getMultiPlannerProgressTracker()) {
+            if (tracker->trackProgress(++numResults)) {
+                // We're in a multi-planning trial run and we've done enough work for the trial
+                // runner to complete. Since we haven't reached an EOF yet, we need to place a dummy
+                // sorting value so that when the multi-planner starts retrieving the documents from
+                // this execution tree with 'getNext', we wouldn't return the EOF state. Note that
+                // the multi-planner will not load more documents than we actually retrieved from
+                // the child stage, so this fake value should never sneak out. Moreover, the
+                // multi-planner will resume this execution tree from the very beginning, should
+                // this plan wins, and discard all the results loaded during the trial run.
+                _st.emplace(value::MaterializedRow{}, value::MaterializedRow{});
+                break;
+            }
         }
     }
 
@@ -132,6 +148,7 @@ PlanState SortStage::getNext() {
 }
 void SortStage::close() {
     _commonStats.closes++;
+    _st.clear();
 }
 
 std::unique_ptr<PlanStageStats> SortStage::getStats() const {

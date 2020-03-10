@@ -42,6 +42,30 @@
 namespace mongo::sbe::multi_planner {
 namespace {
 /**
+ * Prepares the given plan stage tree for execution, attaches it to the operation context and
+ * returns two slot accessors for the result and recordId slots.
+ */
+std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*> prepareExecutionPlan(
+    OperationContext* opCtx, const CanonicalQuery& canonicalQuery, sbe::PlanStage* root) {
+    sbe::CompileCtx ctx;
+    root->prepare(ctx);
+
+    auto resultSlot = root->getAccessor(ctx, sbe::value::SystemSlots::kResultSlot);
+    uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
+
+    sbe::value::SlotAccessor* resultRecordId{nullptr};
+    if (canonicalQuery.metadataDeps()[DocumentMetadataFields::kRecordId]) {
+        resultRecordId = root->getAccessor(ctx, sbe::value::SystemSlots::kRecordIdSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
+    }
+
+    root->attachFromOperationContext(opCtx);
+    root->open(false);
+
+    return {resultSlot, resultRecordId};
+}
+
+/**
  * Prepares the given SBE plan stage trees in the 'planRoots' vector for execution and returns
  * a pair of vectors, one holding CandidatePlans instances, corresponding to each plan stage tree,
  * and another one pairs of result and recordId slot accessors for the same tree.
@@ -64,23 +88,7 @@ prepareCandidatePlans(OperationContext* opCtx,
     }
 
     for (auto&& root : planRoots) {
-        sbe::CompileCtx ctx;
-        root->prepare(ctx);
-
-        auto resultSlot = root->getAccessor(ctx, sbe::value::SystemSlots::kResultSlot);
-        uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
-
-        sbe::value::SlotAccessor* resultRecordId{nullptr};
-        if (canonicalQuery.metadataDeps()[DocumentMetadataFields::kRecordId]) {
-            resultRecordId = root->getAccessor(ctx, sbe::value::SystemSlots::kRecordIdSlot);
-            uassert(
-                ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
-        }
-
-        root->attachFromOperationContext(opCtx);
-        root->open(false);
-
-        slotAccessors.push_back({resultSlot, resultRecordId});
+        slotAccessors.push_back(prepareExecutionPlan(opCtx, canonicalQuery, root.get()));
     }
     return {std::move(candidates), std::move(slotAccessors)};
 }
@@ -93,25 +101,28 @@ prepareCandidatePlans(OperationContext* opCtx,
  * will be set to 'true', and the 'numFailures' parameter incremented by 1.
  */
 bool fetchNextDocument(
-    sbe::PlanStage* root,
-    sbe::value::SlotAccessor* resultSlot,
-    sbe::value::SlotAccessor* recordIdSlot,
     plan_ranker::CandidatePlan<sbe::PlanStage, std::pair<BSONObj, boost::optional<RecordId>>>*
         candidate,
+    sbe::value::SlotAccessor* resultSlot,
+    sbe::value::SlotAccessor* recordIdSlot,
     size_t* numFailures) {
+
     try {
         BSONObj obj;
         RecordId recordId;
 
-        if (fetchNext(root, resultSlot, recordIdSlot, &obj, recordIdSlot ? &recordId : nullptr) ==
-            sbe::PlanState::IS_EOF) {
-            root->close();
+        auto state = fetchNext(
+            candidate->root, resultSlot, recordIdSlot, &obj, recordIdSlot ? &recordId : nullptr);
+        if (state == sbe::PlanState::IS_EOF) {
+            candidate->root->close();
             return true;
         }
 
+        invariant(state == sbe::PlanState::ADVANCED);
         candidate->results.push(
             {obj, recordIdSlot ? boost::make_optional(recordId) : boost::optional<RecordId>{}});
     } catch (DBException&) {
+        candidate->root->close();
         candidate->failed = true;
         ++(*numFailures);
     }
@@ -132,23 +143,24 @@ std::vector<std::unique_ptr<sbe::PlanStageStats>> collectExecutionStats(
     std::vector<std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>>& slotAccessors,
     std::vector<
         plan_ranker::CandidatePlan<sbe::PlanStage, std::pair<BSONObj, boost::optional<RecordId>>>>&
-        candidates) {
+        candidates,
+    size_t numResults) {
     invariant(opCtx);
     invariant(candidates.size() == slotAccessors.size());
 
     auto done{false};
-    auto numResults{MultiPlanStage::getTrialPeriodNumToReturn(canonicalQuery)};
     auto numReads{MultiPlanStage::getTrialPeriodWorks(opCtx, collection)};
+    auto tracker{opCtx->getMultiPlannerProgressTracker()};
     size_t numFailures{0};
+
+    invariant(tracker);
+
     for (size_t it = 0; it < numReads && !done; ++it) {
-        for (size_t ix = 0; ix < candidates.size() && !done; ++ix) {
+        for (size_t ix = 0; ix < candidates.size(); ++ix) {
             if (!candidates[ix].failed) {
                 auto [resultSlot, recordIdSlot] = slotAccessors[ix];
-                done = fetchNextDocument(candidates[ix].root,
-                                         resultSlot,
-                                         recordIdSlot,
-                                         &candidates[ix],
-                                         &numFailures) ||
+                done |=
+                    fetchNextDocument(&candidates[ix], resultSlot, recordIdSlot, &numFailures) ||
                     (numResults == candidates[ix].results.size()) ||
                     (numFailures == candidates.size());
             }
@@ -175,6 +187,7 @@ std::tuple<std::unique_ptr<sbe::PlanStage>,
            sbe::value::SlotAccessor*,
            std::queue<std::pair<BSONObj, boost::optional<RecordId>>>>
 finalizeExecutionPlans(
+    OperationContext* opCtx,
     std::vector<std::unique_ptr<sbe::PlanStage>> planRoots,
     std::vector<std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>> slotAccessors,
     std::unique_ptr<plan_ranker::PlanRankingDecision<PlanStageStats>> decision,
@@ -203,6 +216,17 @@ finalizeExecutionPlans(
         planRoots[planIdx]->close();
     }
 
+    // If the winning stage has a blocking sort stage, clear the results queue and reopen the plan
+    // stage tree, as we cannot resume such execution tree from where the trial run has stopped,
+    // and, as a result, we cannot stash the results returned so far into the  plan executor.
+    if (candidates[bestPlanIdx].solution->hasNode(STAGE_SORT_DEFAULT) ||
+        candidates[bestPlanIdx].solution->hasNode(STAGE_SORT_SIMPLE)) {
+        opCtx->stopTrialRun();
+        planRoots[bestPlanIdx]->close();
+        planRoots[bestPlanIdx]->open(false);
+        candidates[bestPlanIdx].results = decltype(candidates[0].results){};
+    }
+
     return {std::move(planRoots[bestPlanIdx]),
             slotAccessors[bestPlanIdx].first,
             slotAccessors[bestPlanIdx].second,
@@ -219,12 +243,21 @@ pickBestPlan(OperationContext* opCtx,
              Collection* collection,
              std::vector<std::unique_ptr<QuerySolution>> querySolutions,
              std::vector<std::unique_ptr<sbe::PlanStage>> planRoots) {
+    ON_BLOCK_EXIT([opCtx]() { opCtx->stopTrialRun(); });
+
+    auto numResults{MultiPlanStage::getTrialPeriodNumToReturn(canonicalQuery)};
+    opCtx->startTrialRun(numResults);
+
     auto&& [candidates, slotAccessors] =
         prepareCandidatePlans(opCtx, canonicalQuery, std::move(querySolutions), planRoots);
-    auto stats =
-        collectExecutionStats(opCtx, canonicalQuery, collection, slotAccessors, candidates);
-    auto decision = uassertStatusOK(plan_ranker::pickBestPlan(std::move(stats), candidates));
     return finalizeExecutionPlans(
-        std::move(planRoots), std::move(slotAccessors), std::move(decision), std::move(candidates));
+        opCtx,
+        std::move(planRoots),
+        std::move(slotAccessors),
+        uassertStatusOK(plan_ranker::pickBestPlan(
+            collectExecutionStats(
+                opCtx, canonicalQuery, collection, slotAccessors, candidates, numResults),
+            candidates)),
+        std::move(candidates));
 }
 }  // namespace mongo::sbe::multi_planner
