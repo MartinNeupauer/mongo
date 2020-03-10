@@ -603,7 +603,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = genericCompareEq(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, !val);
+                    topStack(i.owned, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
