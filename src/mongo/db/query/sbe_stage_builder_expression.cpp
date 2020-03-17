@@ -637,7 +637,64 @@ public:
         unsupportedExpression("$coerceToBool");
     }
     void visit(ExpressionCompare* expr) final {
-        unsupportedExpression(expr->getOpName());
+        _context->ensureArity(2);
+        std::vector<std::unique_ptr<sbe::EExpression>> operands(2);
+        for (auto it = operands.rbegin(); it != operands.rend(); ++it) {
+            *it = _context->popExpr();
+        }
+
+        auto [slotList, projectStage] = generateProjectForLogicalOperator(
+            std::move(_context->traverseStage), std::move(operands), _context->slotIdGenerator);
+        invariant(slotList.size() == 2);
+
+        auto comparisonOperator = [expr]() {
+            switch (expr->getOp()) {
+                case ExpressionCompare::CmpOp::EQ:
+                    return sbe::EPrimBinary::eq;
+                case ExpressionCompare::CmpOp::NE:
+                    return sbe::EPrimBinary::neq;
+                case ExpressionCompare::CmpOp::GT:
+                    return sbe::EPrimBinary::greater;
+                case ExpressionCompare::CmpOp::GTE:
+                    return sbe::EPrimBinary::greaterEq;
+                case ExpressionCompare::CmpOp::LT:
+                    return sbe::EPrimBinary::less;
+                case ExpressionCompare::CmpOp::LTE:
+                    return sbe::EPrimBinary::lessEq;
+                case ExpressionCompare::CmpOp::CMP:
+                    return sbe::EPrimBinary::cmp3w;
+            }
+            // Note, the default case is explicitly omitted so that the compiler will check for
+            // exhaustiveness.
+        }();
+
+        // We use the "cmp3e" primitive for every comparison, because it "type brackets" its
+        // comparisons (for example, a number will always compare as less than a string). The other
+        // comparison primitives are designed for comparing values of the same type.
+        auto cmp3w = sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w,
+                                                  sbe::makeE<sbe::EVariable>(slotList[0]),
+                                                  sbe::makeE<sbe::EVariable>(slotList[1]));
+        auto cmp = (comparisonOperator == sbe::EPrimBinary::cmp3w)
+            ? std::move(cmp3w)
+            : sbe::makeE<sbe::EPrimBinary>(
+                  comparisonOperator,
+                  std::move(cmp3w),
+                  sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt32, 0));
+
+        // If either operand evaluates to "Nothing," then the entire operation expressed by 'cmp'
+        // will also evaluate to "Nothing." MQL comparisons, however, treat "Nothing" as if it is a
+        // value that is less than everything other than MinKey. (Notably, two expressions that
+        // evaluate to "Nothing" are considered equal to each other.)
+        auto nothingFallbackCmp = sbe::makeE<sbe::EPrimBinary>(
+            comparisonOperator,
+            sbe::makeE<sbe::EFunction>("exists",
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(slotList[0]))),
+            sbe::makeE<sbe::EFunction>("exists",
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(slotList[1]))));
+        _context->pushExpr(
+            sbe::makeE<sbe::EFunction>("fillEmpty",
+                                       sbe::makeEs(std::move(cmp), std::move(nothingFallbackCmp))),
+            std::move(projectStage));
     }
     void visit(ExpressionConcat* expr) final {
         unsupportedExpression(expr->getOpName());

@@ -258,6 +258,70 @@ function runQuery(
             runQuery({proj: {foo: {$let: {vars: {CURRENT: "$$CURRENT.a"}, "in": "$$CURRENT"}}}});
             runQuery({proj: {a: "$$REMOVE"}});
             runQuery({proj: {a: "$$REMOVE.x.y"}});
+
+            // Comparison expressions.
+            runQuery({
+                proj: {
+                    foo: {$lt: ["$a", "$x"]},
+                    bar: {$lt: ["$a", "$b"]},
+                    baz: {$lt: ["$x.y", "$v.w"]},
+                    qux: {$lt: ["$a", "$nonexistent"]}
+                }
+            });
+            runQuery({
+                proj: {
+                    foo: {$lte: ["$a", "$x"]},
+                    bar: {$lte: ["$a", "$b"]},
+                    baz: {$lte: ["$x.y", "$v.w"]},
+                    qux: {$lte: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                proj: {
+                    foo: {$gt: ["$a", "$x"]},
+                    bar: {$gt: ["$a", "$b"]},
+                    baz: {$gt: ["$x.y", "$v.w"]},
+                    qux: {$gt: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                proj: {
+                    foo: {$gte: ["$a", "$x"]},
+                    bar: {$gte: ["$a", "$b"]},
+                    baz: {$gte: ["$x.y", "$v.w"]},
+                    qux: {$gte: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                proj: {
+                    foo: {$eq: ["$a", "$x"]},
+                    bar: {$eq: ["$a", "$b"]},
+                    baz: {$eq: ["$x.y", "$v.w"]},
+                    qux: {$eq: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                proj: {
+                    foo: {$ne: ["$a", "$x"]},
+                    bar: {$ne: ["$a", "$b"]},
+                    baz: {$ne: ["$x.y", "$v.w"]},
+                    qux: {$ne: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                proj: {
+                    foo: {$cmp: ["$a", "$x"]},
+                    bar: {$cmp: ["$a", "$b"]},
+                    baz: {$cmp: ["$x.y", "$v.w"]},
+                    qux: {$cmp: ["$a", "$nonexistent"]}
+                },
+                hint: hint
+            });
         }
     });
 
