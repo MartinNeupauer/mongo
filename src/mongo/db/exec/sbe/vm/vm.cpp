@@ -81,6 +81,8 @@ int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
     0,   // jmp
     -1,  // jmpTrue
     0,   // jmpNothing
+
+    -1,   // fail
 };
 
 void CodeFragment::adjustStackSimple(const Instruction& i) {
@@ -267,6 +269,17 @@ void CodeFragment::appendJumpNothing(int jumpOffset) {
 
     offset += value::writeToMemory(offset, i);
     offset += value::writeToMemory(offset, jumpOffset);
+}
+
+ByteCode::~ByteCode() {
+    auto size = _argStackOwned.size();
+    invariant(_argStackTags.size() == size);
+    invariant(_argStackVals.size() == size);
+    for (size_t i = 0; i < size; ++i) {
+        if (_argStackOwned[i]) {
+            value::releaseValue(_argStackTags[i], _argStackVals[i]);
+        }
+    }
 }
 
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTags objTag,
@@ -971,6 +984,21 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     if (tag == value::TypeTags::Nothing) {
                         pcPointer += jumpOffset;
                     }
+                    break;
+                }
+                case Instruction::fail: {
+                    auto [ownedCode, tagCode, valCode] = getFromStack(1);
+                    invariant(tagCode == value::TypeTags::NumberInt64);
+
+                    auto [ownedMsg, tagMsg, valMsg] = getFromStack(0);
+                    invariant(value::isString(tagMsg));
+
+                    ErrorCodes::Error code{
+                        static_cast<ErrorCodes::Error>(value::bitcastTo<int64_t>(valCode))};
+                    std::string message{value::getStringView(tagMsg, valMsg)};
+
+                    uasserted(code, message);
+
                     break;
                 }
                 default:

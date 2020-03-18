@@ -264,5 +264,19 @@ public:
 
     std::vector<DebugPrinter::Block> debugPrint() override;
 };
+
+class EFail final : public EExpression {
+    ErrorCodes::Error _code;
+    std::string _message;
+
+public:
+    EFail(ErrorCodes::Error code, std::string message) : _code(code), _message(message) {}
+
+    std::unique_ptr<EExpression> clone() override;
+
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+
+    std::vector<DebugPrinter::Block> debugPrint() override;
+};
 }  // namespace sbe
 }  // namespace mongo

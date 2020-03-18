@@ -530,6 +530,38 @@ std::vector<DebugPrinter::Block> ELocalBind::debugPrint() {
     return ret;
 }
 
+std::unique_ptr<EExpression> EFail::clone() {
+    return std::make_unique<EFail>(_code, _message);
+}
+std::unique_ptr<vm::CodeFragment> EFail::compile(CompileCtx& ctx) {
+    auto code = std::make_unique<vm::CodeFragment>();
+
+    code->appendConstVal(value::TypeTags::NumberInt64,
+                         value::bitcastFrom(static_cast<int64_t>(_code)));
+
+    auto [tag, val] = value::makeNewString(_message);
+    auto owned = true;
+    code->appendConstVal(tag, val, owned);
+
+    code->appendFail();
+
+    return code;
+}
+std::vector<DebugPrinter::Block> EFail::debugPrint() {
+    std::vector<DebugPrinter::Block> ret;
+    DebugPrinter::addKeyword(ret, "fail");
+
+    ret.emplace_back("(");
+
+    ret.emplace_back(DebugPrinter::Block(std::to_string(_code)));
+    ret.emplace_back(DebugPrinter::Block(",`"));
+    ret.emplace_back(DebugPrinter::Block(_message));
+
+    ret.emplace_back("`)");
+
+    return ret;
+}
+
 value::SlotAccessor* CompileCtx::getAccessor(value::SlotId slot) {
     for (auto it = correlated.rbegin(); it != correlated.rend(); ++it) {
         if (it->first == slot) {

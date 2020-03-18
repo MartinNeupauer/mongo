@@ -138,6 +138,8 @@ struct Instruction {
         jmpTrue,
         jmpNothing,
 
+        fail,
+
         lastInstruction  // this is just a marker used to calculate number of instructions
     };
 
@@ -238,6 +240,9 @@ public:
     void appendJump(int jumpOffset);
     void appendJumpTrue(int jumpOffset);
     void appendJumpNothing(int jumpOffset);
+    void appendFail() {
+        appendSimpleInstruction(Instruction::fail);
+    }
 
 private:
     void appendSimpleInstruction(Instruction::Tags tag);
@@ -343,6 +348,8 @@ class ByteCode {
     }
 
 public:
+    ~ByteCode();
+
     std::tuple<uint8_t, value::TypeTags, value::Value> run(CodeFragment* code);
 };
 }  // namespace vm
