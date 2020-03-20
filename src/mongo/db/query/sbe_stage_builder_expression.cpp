@@ -524,7 +524,28 @@ public:
     }
 
     void visit(ExpressionAbs* expr) final {
-        unsupportedExpression(expr->getOpName());
+        auto frameId = _context->frameIdGenerator->generate();
+        auto binds = sbe::makeEs(_context->popExpr());
+        sbe::EVariable inputRef(frameId, 0);
+
+        auto checkNullOrEmpty = sbe::makeE<sbe::EPrimBinary>(
+            sbe::EPrimBinary::logicOr,
+            sbe::makeE<sbe::EPrimUnary>(
+                sbe::EPrimUnary::logicNot,
+                sbe::makeE<sbe::EFunction>("exists", sbe::makeEs(inputRef.clone()))),
+            sbe::makeE<sbe::EFunction>("isNull", sbe::makeEs(inputRef.clone())));
+
+        auto absExpr = sbe::makeE<sbe::EIf>(
+            std::move(checkNullOrEmpty),
+            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Null, 0),
+            sbe::makeE<sbe::EIf>(
+                sbe::makeE<sbe::EFunction>("isNumber", sbe::makeEs(inputRef.clone())),
+                sbe::makeE<sbe::EFunction>("abs", sbe::makeEs(inputRef.clone())),
+                sbe::makeE<sbe::EFail>(ErrorCodes::Error /* Intentionally duplicated */ {28765},
+                                       "$abs only supports numeric types, not string")));
+
+        _context->pushExpr(
+            sbe::makeE<sbe::ELocalBind>(frameId, std::move(binds), std::move(absExpr)));
     }
     void visit(ExpressionAdd* expr) final {
         _context->ensureArity(2);

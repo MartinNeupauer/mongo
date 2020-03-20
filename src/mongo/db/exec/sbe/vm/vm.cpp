@@ -524,6 +524,13 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewKeyString(ui
     return {true, value::TypeTags::ksValue, value::bitcastFrom(new KeyString::Value(kb.release()))};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAbs(uint8_t arity) {
+    invariant(arity == 1);
+
+    auto [_, tagOperand, valOperand] = getFromStack(0);
+
+    return genericAbs(tagOperand, valOperand);
+}
 
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
@@ -538,6 +545,8 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
             return builtinKeyStringToString(arity);
         case Builtin::newKs:
             return builtinNewKeyString(arity);
+        case Builtin::abs:
+            return builtinAbs(arity);
     }
 
     invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));

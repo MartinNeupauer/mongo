@@ -422,6 +422,12 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         code->appendFunction(vm::Builtin::newKs, _nodes.size());
 
         return code;
+    } else if (_name == "abs" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+        code->append(_nodes[0]->compile(ctx));
+        code->appendFunction(vm::Builtin::abs, 1);
+
+        return code;
     }
 
     uasserted(ErrorCodes::InternalError, str::stream() << "unknown function call: " << _name);

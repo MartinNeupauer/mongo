@@ -175,6 +175,44 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericDiv(value::Type
     return {false, value::TypeTags::Nothing, 0};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericAbs(value::TypeTags operandTag,
+                                                                     value::Value operandValue) {
+    switch (operandTag) {
+        case value::TypeTags::NumberInt32: {
+            auto operand = value::bitcastTo<int32_t>(operandValue);
+            if (operand == std::numeric_limits<int32_t>::min()) {
+                return {false, value::TypeTags::NumberInt64, value::bitcastFrom(int64_t{operand})};
+            }
+
+            return {false,
+                    value::TypeTags::NumberInt32,
+                    value::bitcastFrom(operand >= 0 ? operand : -operand)};
+        }
+        case value::TypeTags::NumberInt64: {
+            auto operand = value::bitcastTo<int64_t>(operandValue);
+            uassert(/* Intentionally duplicated */ 28680,
+                    "can't take $abs of long long min",
+                    operand != std::numeric_limits<int64_t>::min());
+            return {false,
+                    value::TypeTags::NumberInt64,
+                    value::bitcastFrom(operand >= 0 ? operand : -operand)};
+        }
+        case value::TypeTags::NumberDouble: {
+            auto operand = value::bitcastTo<double>(operandValue);
+            return {false,
+                    value::TypeTags::NumberDouble,
+                    value::bitcastFrom(operand >= 0 ? operand : -operand)};
+        }
+        case value::TypeTags::NumberDecimal: {
+            auto operand = value::getDecimalView(operandValue);
+            auto [tag, value] = value::makeCopyDecimal(operand->toAbs());
+            return {true, tag, value};
+        }
+        default:
+            return {false, value::TypeTags::Nothing, 0};
+    }
+}
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericNot(value::TypeTags tag,
                                                                      value::Value value) {
     if (tag == value::TypeTags::Boolean) {

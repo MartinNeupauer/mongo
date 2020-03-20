@@ -158,6 +158,7 @@ enum class Builtin : uint8_t {
     newObj,
     ksToString,  // KeyString to string
     newKs,       // new KeyString
+    abs,         // absolute value
 };
 
 class CodeFragment {
@@ -271,6 +272,8 @@ class ByteCode {
                                                                value::Value lhsValue,
                                                                value::TypeTags rhsTag,
                                                                value::Value rhsValue);
+    std::tuple<bool, value::TypeTags, value::Value> genericAbs(value::TypeTags operandTag,
+                                                               value::Value operandValue);
     std::tuple<bool, value::TypeTags, value::Value> genericNot(value::TypeTags tag,
                                                                value::Value value);
     template <typename Op>
@@ -312,6 +315,7 @@ class ByteCode {
     std::tuple<bool, value::TypeTags, value::Value> builtinNewObj(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinKeyStringToString(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinNewKeyString(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinAbs(uint8_t arity);
 
     std::tuple<bool, value::TypeTags, value::Value> dispatchBuiltin(Builtin f, uint8_t arity);
 
