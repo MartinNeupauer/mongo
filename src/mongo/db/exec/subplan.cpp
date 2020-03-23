@@ -37,6 +37,7 @@
 #include <vector>
 
 #include "mongo/db/exec/multi_plan.h"
+#include "mongo/db/exec/plan_cache_util.h"
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/matcher/extensions_callback_real.h"
 #include "mongo/db/query/collection_query_info.h"
@@ -266,7 +267,7 @@ Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
                 std::make_unique<MultiPlanStage>(expCtx(),
                                                  collection(),
                                                  branchResult->canonicalQuery.get(),
-                                                 MultiPlanStage::CachingMode::SometimesCache));
+                                                 PlanCachingMode::SometimesCache));
             ON_BLOCK_EXIT([&] {
                 invariant(_children.size() == 1);  // Make sure nothing else was added to _children.
                 _children.pop_back();

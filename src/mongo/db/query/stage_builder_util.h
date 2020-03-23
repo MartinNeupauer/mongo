@@ -55,13 +55,13 @@ std::unique_ptr<PlanStageType> buildExecutableTree(OperationContext* opCtx,
     // execute the query.
     invariant(!cq.canHaveNoopMatchNodes());
 
-    invariant(ws);
     invariant(solution.root);
 
     std::unique_ptr<StageBuilder<PlanStageType>> builder;
     if constexpr (std::is_same_v<PlanStageType, sbe::PlanStage>) {
-        builder = std::make_unique<SlotBasedStageBuilder>(opCtx, collection, cq, solution, ws);
+        builder = std::make_unique<SlotBasedStageBuilder>(opCtx, collection, cq, solution);
     } else {
+        invariant(ws);
         builder = std::make_unique<ClassicStageBuilder>(opCtx, collection, cq, solution, ws);
     }
     return builder->build(solution.root.get());

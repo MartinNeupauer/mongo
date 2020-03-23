@@ -82,6 +82,7 @@
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/db/query/query_settings.h"
+#include "mongo/db/query/sbe_cached_solution_planner.h"
 #include "mongo/db/query/sbe_multi_planner.h"
 #include "mongo/db/query/stage_builder_util.h"
 #include "mongo/db/query/util/make_data_structure.h"
@@ -352,14 +353,17 @@ template <typename PlanStageType>
 struct PrepareExecutionResult {
     PrepareExecutionResult(unique_ptr<CanonicalQuery> canonicalQuery,
                            std::vector<unique_ptr<QuerySolution>> querySolutions,
-                           std::vector<unique_ptr<PlanStageType>> roots)
+                           std::vector<unique_ptr<PlanStageType>> roots,
+                           boost::optional<size_t> decisionWorks = boost::none)
         : canonicalQuery(std::move(canonicalQuery)),
           querySolutions(std::move(querySolutions)),
-          roots(std::move(roots)) {}
+          roots(std::move(roots)),
+          decisionWorks(std::move(decisionWorks)) {}
 
     unique_ptr<CanonicalQuery> canonicalQuery;
     std::vector<unique_ptr<QuerySolution>> querySolutions;
     std::vector<unique_ptr<PlanStageType>> roots;
+    boost::optional<size_t> decisionWorks;
 };
 
 /**
@@ -526,59 +530,58 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
     }
 
     // Check that the query should be cached.
-    // Cached plans are not supported in SBE yet.
-    if constexpr (!isSlotBased) {
-        if (CollectionQueryInfo::get(collection)
-                .getPlanCache()
-                ->shouldCacheQuery(*canonicalQuery)) {
-            // Fill in opDebug information.
-            const auto planCacheKey =
-                CollectionQueryInfo::get(collection).getPlanCache()->computeKey(*canonicalQuery);
-            CurOp::get(opCtx)->debug().queryHash =
-                canonical_query_encoder::computeHash(planCacheKey.getStableKeyStringData());
-            CurOp::get(opCtx)->debug().planCacheKey =
-                canonical_query_encoder::computeHash(planCacheKey.toString());
+    if (CollectionQueryInfo::get(collection).getPlanCache()->shouldCacheQuery(*canonicalQuery)) {
+        // Fill in opDebug information.
+        const auto planCacheKey =
+            CollectionQueryInfo::get(collection).getPlanCache()->computeKey(*canonicalQuery);
+        CurOp::get(opCtx)->debug().queryHash =
+            canonical_query_encoder::computeHash(planCacheKey.getStableKeyStringData());
+        CurOp::get(opCtx)->debug().planCacheKey =
+            canonical_query_encoder::computeHash(planCacheKey.toString());
 
-            // Try to look up a cached solution for the query.
-            if (auto cs = CollectionQueryInfo::get(collection)
-                              .getPlanCache()
-                              ->getCacheEntryIfActive(planCacheKey)) {
-                // We have a CachedSolution.  Have the planner turn it into a QuerySolution.
-                auto statusWithQs =
-                    QueryPlanner::planFromCache(*canonicalQuery, plannerParams, *cs);
+        // Try to look up a cached solution for the query.
+        if (auto cs = CollectionQueryInfo::get(collection)
+                          .getPlanCache()
+                          ->getCacheEntryIfActive(planCacheKey)) {
+            // We have a CachedSolution.  Have the planner turn it into a QuerySolution.
+            auto statusWithQs = QueryPlanner::planFromCache(*canonicalQuery, plannerParams, *cs);
 
-                if (statusWithQs.isOK()) {
-                    auto querySolution = std::move(statusWithQs.getValue());
-                    if ((plannerParams.options & QueryPlannerParams::IS_COUNT) &&
-                        turnIxscanIntoCount(querySolution.get())) {
-                        LOGV2_DEBUG(20923,
-                                    2,
-                                    "Using fast count: {canonicalQuery_Short}",
-                                    "canonicalQuery_Short"_attr =
-                                        redact(canonicalQuery->toStringShort()));
-                    }
+            if (statusWithQs.isOK()) {
+                auto querySolution = std::move(statusWithQs.getValue());
+                if (!isSlotBased && (plannerParams.options & QueryPlannerParams::IS_COUNT) &&
+                    turnIxscanIntoCount(querySolution.get())) {
+                    LOGV2_DEBUG(20923,
+                                2,
+                                "Using fast count: {canonicalQuery_Short}",
+                                "canonicalQuery_Short"_attr =
+                                    redact(canonicalQuery->toStringShort()));
+                }
 
+                root = stage_builder::buildExecutableTree<PlanStageType>(
+                    opCtx, collection, *canonicalQuery, *querySolution, ws);
+
+                if constexpr (!isSlotBased) {
                     // Add a CachedPlanStage on top of the previous root.
                     //
                     // 'decisionWorks' is used to determine whether the existing cache entry should
                     // be evicted, and the query replanned.
-                    root = std::make_unique<CachedPlanStage>(
-                        canonicalQuery->getExpCtx().get(),
-                        collection,
-                        ws,
-                        canonicalQuery.get(),
-                        plannerParams,
-                        cs->decisionWorks,
-                        stage_builder::buildExecutableTree<PlanStageType>(
-                            opCtx, collection, *canonicalQuery, *querySolution, ws));
-                    return PrepareExecutionResult(
-                        std::move(canonicalQuery),
-                        make_vector<std::unique_ptr<QuerySolution>>(std::move(querySolution)),
-                        make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
+                    root = std::make_unique<CachedPlanStage>(canonicalQuery->getExpCtx().get(),
+                                                             collection,
+                                                             ws,
+                                                             canonicalQuery.get(),
+                                                             plannerParams,
+                                                             cs->decisionWorks,
+                                                             std::move(root));
                 }
+                return PrepareExecutionResult(
+                    std::move(canonicalQuery),
+                    make_vector<std::unique_ptr<QuerySolution>>(std::move(querySolution)),
+                    make_vector<std::unique_ptr<PlanStageType>>(std::move(root)),
+                    cs->decisionWorks);
             }
         }
     }
+
 
     // Sub-queries are not supported in SBE yet.
     if constexpr (!isSlotBased) {
@@ -715,41 +718,66 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
     }
 }
 
+/**
+ * Checks if the prepared execution plans require further planning in runtime to pick the best
+ * plan based on the collected execution stats, and returns a 'RuntimePlanner' instance if such
+ * planning needs to be done, or nullptr otherwise.
+ */
+std::unique_ptr<sbe::RuntimePlanner> makeRuntimePlannerIfNeeded(
+    OperationContext* opCtx,
+    Collection* collection,
+    const PrepareExecutionResult<sbe::PlanStage>& result,
+    size_t plannerOptions) {
+    if (result.roots.size() == 1) {
+        // If we have a single solution but it was created from a cached plan, we will need to
+        // do the runtime planning to check if the cached plan still performs efficiently, or
+        // requires re-planning. The 'decisionWorks' is used to determine whether the existing
+        // cache entry should be evicted, and the query re-planned.
+        if (result.decisionWorks) {
+            QueryPlannerParams plannerParams;
+            plannerParams.options = plannerOptions;
+            fillOutPlannerParams(opCtx, collection, result.canonicalQuery.get(), &plannerParams);
+            return std::make_unique<sbe::CachedSolutionPlanner>(
+                opCtx, collection, *result.canonicalQuery, plannerParams, *result.decisionWorks);
+        }
+        return nullptr;
+    }
+
+    // If we have multiple solutions, we always need to do the runtime planning.
+    return std::make_unique<sbe::MultiPlanner>(
+        opCtx, collection, *result.canonicalQuery, PlanCachingMode::AlwaysCache);
+}
+
 StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor(
     OperationContext* opCtx,
     Collection* collection,
-    unique_ptr<CanonicalQuery> canonicalQuery,
+    unique_ptr<CanonicalQuery> cq,
     size_t plannerOptions) {
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     auto executionResult = prepareExecution<sbe::PlanStage>(
-        opCtx, collection, ws.get(), std::move(canonicalQuery), plannerOptions);
+        opCtx, collection, ws.get(), std::move(cq), plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
+
     auto&& result = executionResult.getValue();
     invariant(result.roots.size() > 0);
-    if (result.roots.size() == 1) {
-        return PlanExecutor::make(
-            opCtx, std::move(result.canonicalQuery), std::move(result.roots[0]), {});
-    } else {
-        invariant(executionResult.getValue().querySolutions.size() ==
-                  executionResult.getValue().roots.size());
 
-        auto&& [root, resultSlot, recordIdSlot, results] =
-            sbe::multi_planner::pickBestPlan(opCtx,
-                                             *result.canonicalQuery,
-                                             collection,
-                                             std::move(result.querySolutions),
-                                             std::move(result.roots));
-
+    if (auto planner = makeRuntimePlannerIfNeeded(opCtx, collection, result, plannerOptions)) {
+        // Do the runtime planning and pick the best candidate plan.
+        auto plan = planner->plan(std::move(result.querySolutions), std::move(result.roots));
         return PlanExecutor::make(opCtx,
                                   std::move(result.canonicalQuery),
-                                  std::move(root),
-                                  {},
-                                  resultSlot,
-                                  recordIdSlot,
-                                  std::move(results));
+                                  std::move(plan.root),
+                                  {},                // ns
+                                  plan.data.first,   // resultSlot
+                                  plan.data.second,  // recordIdSlot
+                                  std::move(plan.results));
     }
+    // No need for runtime planning, just use the constructed plan stage tree.
+    invariant(result.roots.size() == 1);
+    return PlanExecutor::make(
+        opCtx, std::move(result.canonicalQuery), std::move(result.roots[0]), {});
 }
 }  // namespace
 

@@ -39,7 +39,11 @@ namespace mongo::stage_builder {
 class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage>,
                               public BaseSlotBasedStageBuilder {
 public:
-    using StageBuilder<sbe::PlanStage>::StageBuilder;
+    SlotBasedStageBuilder(OperationContext* opCtx,
+                          const Collection* collection,
+                          const CanonicalQuery& cq,
+                          const QuerySolution& solution)
+        : StageBuilder(opCtx, collection, cq, solution, nullptr) {}
 
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
 

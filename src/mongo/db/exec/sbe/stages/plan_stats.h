@@ -99,4 +99,9 @@ struct LimitSkipStats : public SpecificStats {
     boost::optional<long long> skip;
 };
 
+/**
+ * Calculates the total number of physical reads in the given plan stats tree. If a stage can do
+ * a physical read (e.g. COLLSCAN or IXSCAN), then its 'numReads' stats is added to the total.
+ */
+size_t calculateNumberOfReads(const PlanStageStats* root);
 }  // namespace mongo::sbe

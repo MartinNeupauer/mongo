@@ -1074,14 +1074,15 @@ void Explain::planCacheEntryToBSON(const PlanCacheEntry& entry, BSONObjBuilder* 
     out->append("works", static_cast<long long>(entry.works));
 
     BSONObjBuilder cachedPlanBob(out->subobjStart("cachedPlan"));
-    Explain::statsToBSON(
-        *entry.decision->stats[0], &cachedPlanBob, ExplainOptions::Verbosity::kQueryPlanner);
+    Explain::statsToBSON(*((entry.decision->getStats<PlanStageStats>())[0]),
+                         &cachedPlanBob,
+                         ExplainOptions::Verbosity::kQueryPlanner);
     cachedPlanBob.doneFast();
 
     out->append("timeOfCreation", entry.timeOfCreation);
 
     BSONArrayBuilder creationBuilder(out->subarrayStart("creationExecStats"));
-    for (auto&& stat : entry.decision->stats) {
+    for (auto&& stat : entry.decision->getStats<PlanStageStats>()) {
         BSONObjBuilder planBob(creationBuilder.subobjStart());
         Explain::generateSinglePlanExecutionInfo(
             stat.get(), ExplainOptions::Verbosity::kExecAllPlans, boost::none, &planBob);

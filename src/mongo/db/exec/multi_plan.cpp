@@ -73,7 +73,7 @@ void markShouldCollectTimingInfoOnSubtree(PlanStage* root) {
 MultiPlanStage::MultiPlanStage(ExpressionContext* expCtx,
                                const Collection* collection,
                                CanonicalQuery* cq,
-                               CachingMode cachingMode)
+                               PlanCachingMode cachingMode)
     : RequiresCollectionStage(kStageType, expCtx, collection),
       _cachingMode(cachingMode),
       _query(cq),
@@ -171,7 +171,7 @@ Status MultiPlanStage::tryYield(PlanYieldPolicy* yieldPolicy) {
         if (!yieldStatus.isOK()) {
             _failure = true;
             _statusMemberId =
-                WorkingSetCommon::allocateStatusMember(_candidates[0].ws, yieldStatus);
+                WorkingSetCommon::allocateStatusMember(_candidates[0].data, yieldStatus);
             return yieldStatus;
         }
     }
@@ -235,7 +235,7 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
 
     if (_failure) {
         invariant(WorkingSet::INVALID_ID != _statusMemberId);
-        WorkingSetMember* member = _candidates[0].ws->get(_statusMemberId);
+        WorkingSetMember* member = _candidates[0].data->get(_statusMemberId);
         return WorkingSetCommon::getMemberStatus(*member).withContext(
             "multiplanner encountered a failure while selecting best plan");
     }
@@ -243,17 +243,9 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     // Each plan will have a stat tree.
     std::vector<std::unique_ptr<PlanStageStats>> statTrees;
 
-    // Get stat trees from each plan.
-    // Copy stats trees instead of transferring ownership
-    // because multi plan runner will need its own stats
-    // trees for explain.
-    for (size_t i = 0; i < _candidates.size(); ++i) {
-        statTrees.push_back(_candidates[i].root->getStats());
-    }
-
     // After picking best plan, ranking will own plan stats from
     // candidate solutions (winner and losers).
-    auto statusWithRanking = plan_ranker::pickBestPlan(std::move(statTrees), _candidates);
+    auto statusWithRanking = plan_ranker::pickBestPlan<PlanStageStats>(_candidates);
     if (!statusWithRanking.isOK()) {
         return statusWithRanking.getStatus();
     }
@@ -265,11 +257,6 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     _bestPlanIdx = ranking->candidateOrder[0];
 
     verify(_bestPlanIdx >= 0 && _bestPlanIdx < static_cast<int>(_candidates.size()));
-
-    // Copy candidate order and failed candidates. We will need this to sort candidate stats for
-    // explain after transferring ownership of 'ranking' to plan cache.
-    std::vector<size_t> candidateOrder = ranking->candidateOrder;
-    std::vector<size_t> failedCandidates = ranking->failedCandidates;
 
     auto& bestCandidate = _candidates[_bestPlanIdx];
     const auto& alreadyProduced = bestCandidate.results;
@@ -288,7 +275,7 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     _backupPlanIdx = kNoSuchPlan;
     if (bestSolution->hasBlockingStage && (0 == alreadyProduced.size())) {
         LOGV2_DEBUG(20592, 5, "Winner has blocking stage, looking for backup plan...");
-        for (auto&& ix : candidateOrder) {
+        for (auto&& ix : ranking->candidateOrder) {
             if (!_candidates[ix].solution->hasBlockingStage) {
                 LOGV2_DEBUG(20593, 5, "Candidate {ix} is backup child", "ix"_attr = ix);
                 _backupPlanIdx = ix;
@@ -297,103 +284,8 @@ Status MultiPlanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
         }
     }
 
-    // Even if the query is of a cacheable shape, the caller might have indicated that we shouldn't
-    // write to the plan cache.
-    //
-    // TODO: We can remove this if we introduce replanning logic to the SubplanStage.
-    bool canCache = (_cachingMode == CachingMode::AlwaysCache);
-    if (_cachingMode == CachingMode::SometimesCache) {
-        // In "sometimes cache" mode, we cache unless we hit one of the special cases below.
-        canCache = true;
-
-        if (ranking->tieForBest) {
-            // The winning plan tied with the runner-up and we're using "sometimes cache" mode. We
-            // will not write a plan cache entry.
-            canCache = false;
-
-            // These arrays having two or more entries is implied by 'tieForBest'.
-            invariant(ranking->scores.size() > 1U);
-            invariant(ranking->candidateOrder.size() > 1U);
-
-            size_t winnerIdx = ranking->candidateOrder[0];
-            size_t runnerUpIdx = ranking->candidateOrder[1];
-
-            LOGV2_DEBUG(20594,
-                        1,
-                        "Winning plan tied with runner-up. Not caching. query: {query_Short} "
-                        "winner score: {ranking_scores_0} winner summary: "
-                        "{Explain_getPlanSummary_candidates_winnerIdx_root} runner-up score: "
-                        "{ranking_scores_1} runner-up summary: "
-                        "{Explain_getPlanSummary_candidates_runnerUpIdx_root}",
-                        "query_Short"_attr = redact(_query->toStringShort()),
-                        "ranking_scores_0"_attr = ranking->scores[0],
-                        "Explain_getPlanSummary_candidates_winnerIdx_root"_attr =
-                            Explain::getPlanSummary(_candidates[winnerIdx].root),
-                        "ranking_scores_1"_attr = ranking->scores[1],
-                        "Explain_getPlanSummary_candidates_runnerUpIdx_root"_attr =
-                            Explain::getPlanSummary(_candidates[runnerUpIdx].root));
-        }
-
-        if (alreadyProduced.empty()) {
-            // We're using the "sometimes cache" mode, and the winning plan produced no results
-            // during the plan ranking trial period. We will not write a plan cache entry.
-            canCache = false;
-
-            size_t winnerIdx = ranking->candidateOrder[0];
-            LOGV2_DEBUG(20595,
-                        1,
-                        "Winning plan had zero results. Not caching. query: {query_Short} winner "
-                        "score: {ranking_scores_0} winner summary: "
-                        "{Explain_getPlanSummary_candidates_winnerIdx_root}",
-                        "query_Short"_attr = redact(_query->toStringShort()),
-                        "ranking_scores_0"_attr = ranking->scores[0],
-                        "Explain_getPlanSummary_candidates_winnerIdx_root"_attr =
-                            Explain::getPlanSummary(_candidates[winnerIdx].root));
-        }
-    }
-
-    // Store the choice we just made in the cache, if the query is of a type that is safe to
-    // cache.
-    if (PlanCache::shouldCacheQuery(*_query) && canCache) {
-        // Create list of candidate solutions for the cache with
-        // the best solution at the front.
-        std::vector<QuerySolution*> solutions;
-
-        // Generate solutions and ranking decisions sorted by score.
-        for (auto&& ix : candidateOrder) {
-            solutions.push_back(_candidates[ix].solution.get());
-        }
-        // Insert the failed plans in the back.
-        for (auto&& ix : failedCandidates) {
-            solutions.push_back(_candidates[ix].solution.get());
-        }
-
-        // Check solution cache data. Do not add to cache if
-        // we have any invalid SolutionCacheData data.
-        // XXX: One known example is 2D queries
-        bool validSolutions = true;
-        for (size_t ix = 0; ix < solutions.size(); ++ix) {
-            if (nullptr == solutions[ix]->cacheData.get()) {
-                LOGV2_DEBUG(
-                    20596,
-                    5,
-                    "Not caching query because this solution has no cache data: {solutions_ix}",
-                    "solutions_ix"_attr = redact(solutions[ix]->toString()));
-                validSolutions = false;
-                break;
-            }
-        }
-
-        if (validSolutions) {
-            CollectionQueryInfo::get(collection())
-                .getPlanCache()
-                ->set(*_query,
-                      solutions,
-                      std::move(ranking),
-                      opCtx()->getServiceContext()->getPreciseClockSource()->now())
-                .transitional_ignore();
-        }
-    }
+    updatePlanCache(
+        expCtx()->opCtx, collection(), _cachingMode, *_query, std::move(ranking), _candidates);
 
     return Status::OK();
 }
@@ -417,7 +309,7 @@ bool MultiPlanStage::workAllPlans(size_t numResults, PlanYieldPolicy* yieldPolic
 
         if (PlanStage::ADVANCED == state) {
             // Save result for later.
-            WorkingSetMember* member = candidate.ws->get(id);
+            WorkingSetMember* member = candidate.data->get(id);
             // Ensure that the BSONObj underlying the WorkingSetMember is owned in case we choose to
             // return the results from the 'candidate' plan.
             member->makeObjOwnedIfNeeded();

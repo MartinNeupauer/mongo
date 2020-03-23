@@ -70,7 +70,7 @@ TEST(PlanRankerTest, NoFetchBonus) {
     badPlan->children[0]->children.emplace_back(
         makeStats("IXSCAN", STAGE_IXSCAN, make_unique<IndexScanStats>()));
 
-    auto ranker = plan_ranker::makePlanRanker<PlanStageStats>(nullptr);
+    auto ranker = plan_ranker::makePlanRanker();
     auto goodScore = ranker->calculateRank(goodPlan.get());
     auto badScore = ranker->calculateRank(badPlan.get());
 

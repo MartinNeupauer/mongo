@@ -342,6 +342,7 @@ public:
     void visit(ExpressionInternalFindPositional* expr) final {}
     void visit(ExpressionInternalFindElemMatch* expr) final {}
     void visit(ExpressionFunction* expr) final {}
+    void visit(ExpressionInternalRemoveFieldTombstones* expr) final {}
 
 private:
     ExpressionVisitorContext* _context;
@@ -506,6 +507,7 @@ public:
     void visit(ExpressionInternalFindPositional* expr) final {}
     void visit(ExpressionInternalFindElemMatch* expr) final {}
     void visit(ExpressionFunction* expr) final {}
+    void visit(ExpressionInternalRemoveFieldTombstones* expr) final {}
 
 private:
     ExpressionVisitorContext* _context;

@@ -29,26 +29,17 @@
 
 #pragma once
 
-namespace mongo {
+#include "mongo/db/query/plan_ranker.h"
+
+namespace mongo::sbe::plan_ranker {
+using CandidatePlan = mongo::plan_ranker::BaseCandidatePlan<
+    std::unique_ptr<mongo::sbe::PlanStage>,
+    std::pair<BSONObj, boost::optional<RecordId>>,
+    std::pair<mongo::sbe::value::SlotAccessor*, mongo::sbe::value::SlotAccessor*>>;
+
 /**
- * During the multi-planning phases this tracker is used to track the progress of the work done
- * so far. A plan stage in a candidate plan stage tree may supply the number of documents it has
- * processed, and the tracker will use it to check whether the execution treed has progressed
- * enough.
+ * A factory function to create a plan ranker for an SBE plan stage stats tree.
  */
-class MultiPlannerProgressTracker final {
-public:
-    MultiPlannerProgressTracker(size_t maxResults) : _maxResults{maxResults} {}
-
-    bool trackProgress(size_t numResults) {
-        if (!_done && numResults >= _maxResults) {
-            _done = true;
-        }
-        return _done;
-    }
-
-private:
-    const size_t _maxResults;
-    bool _done{false};
-};
-}  // namespace mongo
+std::unique_ptr<mongo::plan_ranker::PlanRanker<PlanStageStats>> makePlanRanker(
+    const QuerySolution* solution);
+}  // namespace mongo::sbe::plan_ranker

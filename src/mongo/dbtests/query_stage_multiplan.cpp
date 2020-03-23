@@ -587,10 +587,8 @@ TEST_F(QueryStageMultiPlanTest, ShouldReportErrorIfExceedsTimeLimitDuringPlannin
     queryRequest->setFilter(filterObj);
     auto canonicalQuery =
         uassertStatusOK(CanonicalQuery::canonicalize(opCtx(), std::move(queryRequest)));
-    MultiPlanStage multiPlanStage(_expCtx.get(),
-                                  ctx.getCollection(),
-                                  canonicalQuery.get(),
-                                  MultiPlanStage::CachingMode::NeverCache);
+    MultiPlanStage multiPlanStage(
+        _expCtx.get(), ctx.getCollection(), canonicalQuery.get(), PlanCachingMode::NeverCache);
     multiPlanStage.addPlan(createQuerySolution(), std::move(ixScanRoot), sharedWs.get());
     multiPlanStage.addPlan(createQuerySolution(), std::move(collScanRoot), sharedWs.get());
 
@@ -630,10 +628,8 @@ TEST_F(QueryStageMultiPlanTest, ShouldReportErrorIfKilledDuringPlanning) {
     queryRequest->setFilter(BSON("foo" << BSON("$gte" << 0)));
     auto canonicalQuery =
         uassertStatusOK(CanonicalQuery::canonicalize(opCtx(), std::move(queryRequest)));
-    MultiPlanStage multiPlanStage(_expCtx.get(),
-                                  ctx.getCollection(),
-                                  canonicalQuery.get(),
-                                  MultiPlanStage::CachingMode::NeverCache);
+    MultiPlanStage multiPlanStage(
+        _expCtx.get(), ctx.getCollection(), canonicalQuery.get(), PlanCachingMode::NeverCache);
     multiPlanStage.addPlan(createQuerySolution(), std::move(ixScanRoot), sharedWs.get());
     multiPlanStage.addPlan(createQuerySolution(), std::move(collScanRoot), sharedWs.get());
 
@@ -676,10 +672,8 @@ TEST_F(QueryStageMultiPlanTest, AddsContextDuringException) {
                                  << "query"));
     auto canonicalQuery =
         uassertStatusOK(CanonicalQuery::canonicalize(opCtx(), std::move(queryRequest)));
-    MultiPlanStage multiPlanStage(_expCtx.get(),
-                                  ctx.getCollection(),
-                                  canonicalQuery.get(),
-                                  MultiPlanStage::CachingMode::NeverCache);
+    MultiPlanStage multiPlanStage(
+        _expCtx.get(), ctx.getCollection(), canonicalQuery.get(), PlanCachingMode::NeverCache);
     unique_ptr<WorkingSet> sharedWs(new WorkingSet());
     multiPlanStage.addPlan(
         createQuerySolution(), std::make_unique<ThrowyPlanStage>(_expCtx.get()), sharedWs.get());

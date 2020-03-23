@@ -91,7 +91,7 @@ void SortStage::open(bool reOpen) {
 
     value::MaterializedRow keys;
     value::MaterializedRow vals;
-    size_t numResults{0};
+    auto tracker = _opCtx->trialRunProgressTracker();
 
     while (_children[0]->getNext() == PlanState::ADVANCED) {
         keys._fields.reserve(_inKeyAccessors.size());
@@ -113,19 +113,17 @@ void SortStage::open(bool reOpen) {
             _st.erase(--_st.end());
         }
 
-        if (auto tracker = _opCtx->getMultiPlannerProgressTracker()) {
-            if (tracker->trackProgress(++numResults)) {
-                // We're in a multi-planning trial run and we've done enough work for the trial
-                // runner to complete. Since we haven't reached an EOF yet, we need to place a dummy
-                // sorting value so that when the multi-planner starts retrieving the documents from
-                // this execution tree with 'getNext', we wouldn't return the EOF state. Note that
-                // the multi-planner will not load more documents than we actually retrieved from
-                // the child stage, so this fake value should never sneak out. Moreover, the
-                // multi-planner will resume this execution tree from the very beginning, should
-                // this plan wins, and discard all the results loaded during the trial run.
-                _st.emplace(value::MaterializedRow{}, value::MaterializedRow{});
-                break;
-            }
+        if (tracker && tracker->trackProgress<TrialRunProgressTracker::kNumResults>(1)) {
+            // If we either hit the maximum number of document to return during the trial run, or
+            // if we've performed enough physical reads, stop populating the sort heap and bail out
+            // from the trial run by raising a special exception to signal a runtime planner that
+            // this candidate plan has completed its trial run early. Note that the sort stage is a
+            // blocking operation and until all documents are loaded from the child stage and
+            // sorted, the control is not returned to the runtime planner, so an raising this
+            // special is mechanism to stop the trial run without affecting the plan stats of the
+            // higher level stages.
+            _children[0]->close();
+            throw TrialRunProgressTracker::EarlyExitException{};
         }
     }
 

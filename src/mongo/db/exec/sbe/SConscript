@@ -15,6 +15,7 @@ env.Library(
         'stages/limit_skip.cpp',
         'stages/loop_join.cpp',
         'stages/makeobj.cpp',
+        'stages/plan_stats.cpp',
         'stages/project.cpp',
         'stages/sort.cpp',
         'stages/stages.cpp',

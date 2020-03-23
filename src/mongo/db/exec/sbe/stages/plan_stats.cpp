@@ -27,42 +27,35 @@
  *    it in the license file.
  */
 
-#pragma once
+#include "mongo/db/exec/sbe/stages/plan_stats.h"
 
-#include "mongo/db/exec/plan_cache_util.h"
-#include "mongo/db/query/plan_executor.h"
-#include "mongo/db/query/plan_ranker.h"
-#include "mongo/db/query/sbe_runtime_planner.h"
+#include <queue>
 
 namespace mongo::sbe {
-/**
- * Collects execution stats for all candidate plans, ranks them and picks the best.
- *
- * TODO: add support for backup plan
- */
-class MultiPlanner final : public BaseRuntimePlanner {
-public:
-    MultiPlanner(OperationContext* opCtx,
-                 const Collection* collection,
-                 const CanonicalQuery& cq,
-                 PlanCachingMode cachingMode)
-        : BaseRuntimePlanner{opCtx, collection, cq}, _cachingMode{cachingMode} {}
+size_t calculateNumberOfReads(const PlanStageStats* root) {
+    size_t numReads{0};
+    std::queue<const sbe::PlanStageStats*> remaining;
+    remaining.push(root);
 
-    plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                    std::vector<std::unique_ptr<PlanStage>> roots) final;
+    while (!remaining.empty()) {
+        auto stats = remaining.front();
+        remaining.pop();
 
-private:
-    /**
-     * Returns the best candidate plan selected according to the plan ranking 'decision'.
-     *
-     * Calls 'close' method on all other candidate plans and update the plan cache entry,
-     * if possible.
-     */
-    plan_ranker::CandidatePlan finalizeExecutionPlans(
-        std::unique_ptr<mongo::plan_ranker::PlanRankingDecision> decision,
-        std::vector<plan_ranker::CandidatePlan> candidates) const;
+        if (!stats) {
+            continue;
+        }
 
-    // Describes the cases in which we should write an entry for the winning plan to the plan cache.
-    const PlanCachingMode _cachingMode;
-};
+        if (auto scanStats = dynamic_cast<sbe::ScanStats*>(stats->specific.get())) {
+            numReads += scanStats->numReads;
+        } else if (auto indexScanStats =
+                       dynamic_cast<sbe::IndexScanStats*>(stats->specific.get())) {
+            numReads += indexScanStats->numReads;
+        }
+
+        for (auto&& child : stats->children) {
+            remaining.push(child.get());
+        }
+    }
+    return numReads;
+}
 }  // namespace mongo::sbe

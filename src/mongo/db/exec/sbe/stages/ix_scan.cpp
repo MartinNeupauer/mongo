@@ -232,7 +232,10 @@ PlanState IndexScanStage::getNext() {
                                  value::bitcastFrom<int64_t>(_nextRecord->loc.repr()));
     }
 
-    _specificStats.numReads++;
+    if (auto tracker = _opCtx->trialRunProgressTracker()) {
+        tracker->trackProgress<TrialRunProgressTracker::kNumReads>(1);
+    }
+    ++_specificStats.numReads;
     return trackPlanState(PlanState::ADVANCED);
 }
 

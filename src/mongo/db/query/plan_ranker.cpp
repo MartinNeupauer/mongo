@@ -31,123 +31,81 @@
 
 #include "mongo/platform/basic.h"
 
-#include <algorithm>
-#include <cmath>
-#include <utility>
-#include <vector>
-
 #include "mongo/db/query/plan_ranker.h"
 
-#include "mongo/db/exec/plan_stage.h"
-#include "mongo/db/exec/sbe/stages/scan.h"
-#include "mongo/db/exec/sbe/stages/sort.h"
-#include "mongo/db/exec/working_set.h"
-#include "mongo/db/query/explain.h"
-#include "mongo/db/query/query_knobs_gen.h"
-#include "mongo/db/query/query_solution.h"
-#include "mongo/db/server_options.h"
 #include "mongo/logv2/log.h"
 
 namespace mongo::plan_ranker {
+namespace log_detail {
+void logScoreFormula(std::string formula,
+                     double score,
+                     double baseScore,
+                     double productivity,
+                     double noFetchBonus,
+                     double noSortBonus,
+                     double noIxisectBonus,
+                     double tieBreakers) {
+    StringBuilder sb;
+    sb << "score(" << str::convertDoubleToString(score) << ") = baseScore("
+       << str::convertDoubleToString(baseScore) << ")"
+       << " + productivity(" << formula << " = " << str::convertDoubleToString(productivity) << ")"
+       << " + tieBreakers(" << str::convertDoubleToString(noFetchBonus) << " noFetchBonus + "
+       << str::convertDoubleToString(noSortBonus) << " noSortBonus + "
+       << str::convertDoubleToString(noIxisectBonus)
+       << " noIxisectBonus = " << str::convertDoubleToString(tieBreakers) << ")";
+    LOGV2_DEBUG(20961, 2, "{sb_str}", "sb_str"_attr = sb.str());
+}
+
+void logScoreBoost(double score) {
+    LOGV2_DEBUG(
+        20962, 5, "Score boosted to {score} due to intersection forcing.", "score"_attr = score);
+}
+
+void logScoringPlan(std::string solution,
+                    std::string explain,
+                    std::string planSummary,
+                    bool isEOF) {
+    LOGV2_DEBUG(20956,
+                5,
+                "Scoring plan "
+                "{i}:\n{candidates_i_solution}Stats:\n{Explain_statsToBSON_statTrees_i_jsonString_"
+                "ExtendedRelaxedV2_0_0_true}",
+                "i"_attr = solution,
+                "candidates_i_solution"_attr = redact(solution),
+                "Explain_statsToBSON_statTrees_i_jsonString_ExtendedRelaxedV2_0_0_true"_attr =
+                    redact(explain));
+    LOGV2_DEBUG(20957,
+                2,
+                "Scoring query plan: {Explain_getPlanSummary_candidates_i_root} "
+                "planHitEOF={statTrees_i_common_isEOF}",
+                "Explain_getPlanSummary_candidates_i_root"_attr = planSummary,
+                "statTrees_i_common_isEOF"_attr = isEOF);
+}
+
+void logScore(double score) {
+    LOGV2_DEBUG(20958, 5, "score = {score}", "score"_attr = score);
+}
+
+void logEOFBonus(double eofBonus) {
+    LOGV2_DEBUG(20959, 5, "Adding +{eofBonus} EOF bonus to score.", "eofBonus"_attr = eofBonus);
+}
+
+void logFailedPlan(std::string planSummary) {
+    LOGV2_DEBUG(20960,
+                2,
+                "Not scoring plan: {Explain_getPlanSummary_candidates_i_root} because the "
+                "plan failed.",
+                "Explain_getPlanSummary_candidates_i_root"_attr = planSummary);
+}
+}  // namespace log_detail
+
 namespace {
-template <typename PlanStageStatsType>
-/**
- * The base plan ranker which implements the main ranking algorithm. All specific plan rankers
- * should inherit from this ranker and provide methods to produce the plan productivity factor,
- * and the tie breaker epsilon.
- */
-class BasePlanRanker : public PlanRanker<PlanStageStatsType> {
-public:
-    double calculateRank(const PlanStageStatsType* stats) const final {
-        // We start all scores at 1.  Our "no plan selected" score is 0 and we want all plans to
-        // be greater than that.
-        const double baseScore = 1;
-
-        const auto [productivity, formula] = calculateProductivity(stats);
-        const double epsilon = calculateTieBreakerEpsilon(stats);
-
-        // We prefer queries that don't require a fetch stage.
-        double noFetchBonus = epsilon;
-        if (hasStage(STAGE_FETCH, stats)) {
-            noFetchBonus = 0;
-        }
-
-        // In the case of ties, prefer solutions without a blocking sort
-        // to solutions with a blocking sort.
-        double noSortBonus = epsilon;
-        if (hasStage(STAGE_SORT_DEFAULT, stats) || hasStage(STAGE_SORT_SIMPLE, stats)) {
-            noSortBonus = 0;
-        }
-
-        // In the case of ties, prefer single index solutions to ixisect. Index
-        // intersection solutions are often slower than single-index solutions
-        // because they require examining a superset of index keys that would be
-        // examined by a single index scan.
-        //
-        // On the other hand, index intersection solutions examine the same
-        // number or fewer of documents. In the case that index intersection
-        // allows us to examine fewer documents, the penalty given to ixisect
-        // can be made up via the no fetch bonus.
-        double noIxisectBonus = epsilon;
-        if (hasStage(STAGE_AND_HASH, stats) || hasStage(STAGE_AND_SORTED, stats)) {
-            noIxisectBonus = 0;
-        }
-
-        const double tieBreakers = noFetchBonus + noSortBonus + noIxisectBonus;
-        double score = baseScore + productivity + tieBreakers;
-
-        StringBuilder sb;
-        sb << "score(" << str::convertDoubleToString(score) << ") = baseScore("
-           << str::convertDoubleToString(baseScore) << ")"
-           << " + productivity(" << formula << " = " << str::convertDoubleToString(productivity)
-           << ")"
-           << " + tieBreakers(" << str::convertDoubleToString(noFetchBonus) << " noFetchBonus + "
-           << str::convertDoubleToString(noSortBonus) << " noSortBonus + "
-           << str::convertDoubleToString(noIxisectBonus)
-           << " noIxisectBonus = " << str::convertDoubleToString(tieBreakers) << ")";
-        LOGV2_DEBUG(2096101, 2, "{sb_str}", "sb_str"_attr = sb.str());
-
-        if (internalQueryForceIntersectionPlans.load()) {
-            if (hasStage(STAGE_AND_HASH, stats) || hasStage(STAGE_AND_SORTED, stats)) {
-                // The boost should be >2.001 to make absolutely sure the ixisect plan will win due
-                // to the combination of 1) productivity, 2) eof bonus, and 3) no ixisect bonus.
-                score += 3;
-                LOGV2_DEBUG(2096201,
-                            5,
-                            "Score boosted to {score} due to intersection forcing.",
-                            "score"_attr = score);
-            }
-        }
-        return score;
-    }
-
-protected:
-    /**
-     * Returns an abstract plan productivity value, and a string, desribing the calculus formula
-     * for the log output. Each implementation is free to define the formula to calculate the
-     * productivity. The value must be withing the range: [0, 1].
-     */
-    virtual std::pair<double, std::string> calculateProductivity(
-        const PlanStageStatsType* stats) const = 0;
-
-    /**
-     * Returns an epsilon value just enough to break a tie. Must be small enough to ensure that a
-     * more productive plan doesn't lose to a less productive plan due to tie breaking.
-     */
-    virtual double calculateTieBreakerEpsilon(const PlanStageStatsType* stats) const = 0;
-
-    /**
-     * True, if the plan stage stats tree represents a plan stage of the given 'type'.
-     */
-    virtual bool hasStage(StageType type, const PlanStageStatsType* stats) const = 0;
-};
-
 /**
  * A plan ranker for the classic plan stage tree. Defines the plan productivity as a number
  * of intermediate results returned, or advanced, by the root stage, divided by the "unit of works"
  * which the plan performed. Each call to work(...) counts as one unit.
  */
-class ClassicPlanRanker final : public BasePlanRanker<PlanStageStats> {
+class DefaultPlanRanker final : public BasePlanRanker<PlanStageStats> {
 protected:
     std::pair<double, std::string> calculateProductivity(const PlanStageStats* stats) const final {
         invariant(stats->common.works != 0);
@@ -184,227 +142,9 @@ protected:
         return false;
     }
 };
-
-/**
- * A plan ranker for the SBE plan stage tree. Defines productivity as a cumulative number of
- * physical reads from the storage performed by all stages in the plan which can read from the
- * storage, devided by the total number of advances of the root stage, which corresponds to the
- * number of returned documents.
- */
-class SBEPlanRanker final : public BasePlanRanker<sbe::PlanStageStats> {
-public:
-    SBEPlanRanker(const QuerySolution* solution) : _solution{solution} {
-        invariant(_solution);
-    }
-
-protected:
-    std::pair<double, std::string> calculateProductivity(
-        const sbe::PlanStageStats* root) const final {
-        size_t numReads{0};
-        std::queue<const sbe::PlanStageStats*> remaining;
-        remaining.push(root);
-
-        while (!remaining.empty()) {
-            auto stats = remaining.front();
-            remaining.pop();
-
-            if (auto scanStats = dynamic_cast<sbe::ScanStats*>(stats->specific.get())) {
-                numReads += scanStats->numReads;
-            } else if (auto indexScanStats =
-                           dynamic_cast<sbe::IndexScanStats*>(stats->specific.get())) {
-                numReads += indexScanStats->numReads;
-            }
-
-            for (auto&& child : stats->children) {
-                remaining.push(child.get());
-            }
-        }
-
-        double productivity = static_cast<double>(root->common.advances) /
-            static_cast<double>(numReads > 0 ? numReads : 1);
-
-        StringBuilder sb;
-        sb << "(" << root->common.advances << " advances)/(" << (numReads > 0 ? numReads : 1)
-           << " numReads)";
-        return {productivity, sb.str()};
-    }
-
-    double calculateTieBreakerEpsilon(const sbe::PlanStageStats* stats) const final {
-        return std::min(1.0 /
-                            static_cast<double>(
-                                1000 * (stats->common.advances > 0 ? stats->common.advances : 1)),
-                        1e-4);
-    }
-
-    bool hasStage(StageType type, const sbe::PlanStageStats* stats) const final {
-        // In SBE a plan stage doesn't map 1-to-1 to the solution nodes, and can expand into a
-        // subtree of basic operations, each having its own plan stage stats. So, to answer
-        // whether an SBE plan stage tree contains a stage of the given 'type', we need to
-        // look into the solution tree instead.
-        return _solution->hasNode(type);
-    }
-
-private:
-    const QuerySolution* _solution;
-};
-
-/**
- * Returns a PlanRankingDecision which has the ranking and the information about the ranking
- * process with status OK if everything worked. 'candidateOrder' within the PlanRankingDecision
- * holds indices into candidates ordered by score (winner in first element).
- *
- * Returns an error if there was an issue with plan ranking (e.g. there was no viable plan).
- */
-template <typename PlanStageStatsType, typename PlanStageType, typename ResultType>
-StatusWith<std::unique_ptr<PlanRankingDecision<PlanStageStatsType>>> pickBestPlan(
-    std::vector<std::unique_ptr<PlanStageStatsType>> statTrees,
-    const std::vector<CandidatePlan<PlanStageType, ResultType>>& candidates) {
-    invariant(!candidates.empty());
-    invariant(candidates.size() == statTrees.size());
-    // A plan that hits EOF is automatically scored above
-    // its peers. If multiple plans hit EOF during the same
-    // set of round-robin calls to work(), then all such plans
-    // receive the bonus.
-    double eofBonus = 1.0;
-
-    // Holds (score, candidateInndex).
-    // Used to derive scores and candidate ordering.
-    std::vector<std::pair<double, size_t>> scoresAndCandidateindices;
-    std::vector<size_t> failed;
-
-    // Compute score for each tree.  Record the best.
-    for (size_t i = 0; i < statTrees.size(); ++i) {
-        if (!candidates[i].failed) {
-            LOGV2_DEBUG(
-                20956,
-                5,
-                "Scoring plan "
-                "{i}:\n{candidates_i_solution}Stats:\n{Explain_statsToBSON_statTrees_i_jsonString_"
-                "ExtendedRelaxedV2_0_0_true}",
-                "i"_attr = i,
-                "candidates_i_solution"_attr = redact(candidates[i].solution->toString()),
-                "Explain_statsToBSON_statTrees_i_jsonString_ExtendedRelaxedV2_0_0_true"_attr =
-                    redact(Explain::statsToBSON(*statTrees[i])
-                               .jsonString(ExtendedRelaxedV2_0_0, true)));
-            LOGV2_DEBUG(20957,
-                        2,
-                        "Scoring query plan: {Explain_getPlanSummary_candidates_i_root} "
-                        "planHitEOF={statTrees_i_common_isEOF}",
-                        "Explain_getPlanSummary_candidates_i_root"_attr =
-                            Explain::getPlanSummary(candidates[i].root),
-                        "statTrees_i_common_isEOF"_attr = statTrees[i]->common.isEOF);
-
-            auto ranker = makePlanRanker<PlanStageStatsType>(candidates[i].solution.get());
-            double score = ranker->calculateRank(statTrees[i].get());
-            LOGV2_DEBUG(20958, 5, "score = {score}", "score"_attr = score);
-            if (statTrees[i]->common.isEOF) {
-                LOGV2_DEBUG(
-                    20959, 5, "Adding +{eofBonus} EOF bonus to score.", "eofBonus"_attr = eofBonus);
-                score += 1;
-            }
-
-            scoresAndCandidateindices.push_back(std::make_pair(score, i));
-        } else {
-            failed.push_back(i);
-            LOGV2_DEBUG(20960,
-                        2,
-                        "Not scording plan: {Explain_getPlanSummary_candidates_i_root} because the "
-                        "plan failed.",
-                        "Explain_getPlanSummary_candidates_i_root"_attr =
-                            Explain::getPlanSummary(candidates[i].root));
-        }
-    }
-
-    // If there isn't a viable plan we should error.
-    if (scoresAndCandidateindices.size() == 0U) {
-        return {ErrorCodes::Error(31157),
-                "No viable plan was found because all candidate plans failed."};
-    }
-
-    // Sort (scores, candidateIndex). Get best child and populate candidate ordering.
-    std::stable_sort(scoresAndCandidateindices.begin(),
-                     scoresAndCandidateindices.end(),
-                     [](const auto& lhs, const auto& rhs) {
-                         // Just compare score in lhs.first and rhs.first;
-                         // Ignore candidate array index in lhs.second and rhs.second.
-                         return lhs.first > rhs.first;
-                     });
-
-    auto why = std::make_unique<PlanRankingDecision<PlanStageStatsType>>();
-
-    // Determine whether plans tied for the win.
-    if (scoresAndCandidateindices.size() > 1U) {
-        double bestScore = scoresAndCandidateindices[0].first;
-        double runnerUpScore = scoresAndCandidateindices[1].first;
-        const double epsilon = 1e-10;
-        why->tieForBest = std::abs(bestScore - runnerUpScore) < epsilon;
-    }
-
-    // Update results in 'why'
-    // Stats and scores in 'why' are sorted in descending order by score.
-    why->stats.clear();
-    why->scores.clear();
-    why->candidateOrder.clear();
-    why->failedCandidates = std::move(failed);
-    for (size_t i = 0; i < scoresAndCandidateindices.size(); ++i) {
-        double score = scoresAndCandidateindices[i].first;
-        size_t candidateIndex = scoresAndCandidateindices[i].second;
-
-        // We shouldn't cache the scores with the EOF bonus included,
-        // as this is just a tie-breaking measure for plan selection.
-        // Plans not run through the multi plan runner will not receive
-        // the bonus.
-        //
-        // An example of a bad thing that could happen if we stored scores
-        // with the EOF bonus included:
-        //
-        //   Let's say Plan A hits EOF, is the highest ranking plan, and gets
-        //   cached as such. On subsequent runs it will not receive the bonus.
-        //   Eventually the plan cache feedback mechanism will evict the cache
-        //   entry---the scores will appear to have fallen due to the missing
-        //   EOF bonus.
-        //
-        // This begs the question, why don't we include the EOF bonus in
-        // scoring of cached plans as well? The problem here is that the cached
-        // plan runner always runs plans to completion before scoring. Queries
-        // that don't get the bonus in the multi plan runner might get the bonus
-        // after being run from the plan cache.
-        if (statTrees[candidateIndex]->common.isEOF) {
-            score -= eofBonus;
-        }
-
-        why->stats.push_back(std::move(statTrees[candidateIndex]));
-        why->scores.push_back(score);
-        why->candidateOrder.push_back(candidateIndex);
-    }
-    for (auto& i : why->failedCandidates) {
-        why->stats.push_back(std::move(statTrees[i]));
-    }
-
-    return StatusWith<std::unique_ptr<PlanRankingDecision<PlanStageStatsType>>>(std::move(why));
-}
 }  // namespace
 
-namespace detail {
-std::unique_ptr<PlanRanker<PlanStageStats>> makeClassicPlanRanker() {
-    return std::make_unique<ClassicPlanRanker>();
-}
-
-std::unique_ptr<PlanRanker<sbe::PlanStageStats>> makeSBEPlanRanker(const QuerySolution* solution) {
-    return std::make_unique<SBEPlanRanker>(solution);
-}
-}  // namespace detail
-
-StatusWith<std::unique_ptr<PlanRankingDecision<PlanStageStats>>> pickBestPlan(
-    std::vector<std::unique_ptr<PlanStageStats>> statTrees,
-    const std::vector<CandidatePlan<PlanStage, WorkingSetID>>& candidates) {
-    return pickBestPlan<>(std::move(statTrees), candidates);
-}
-
-StatusWith<std::unique_ptr<PlanRankingDecision<sbe::PlanStageStats>>> pickBestPlan(
-    std::vector<std::unique_ptr<sbe::PlanStageStats>> statTrees,
-    const std::vector<CandidatePlan<sbe::PlanStage, std::pair<BSONObj, boost::optional<RecordId>>>>&
-        candidates) {
-    return pickBestPlan<>(std::move(statTrees), candidates);
+std::unique_ptr<PlanRanker<PlanStageStats>> makePlanRanker() {
+    return std::make_unique<DefaultPlanRanker>();
 }
 }  // namespace mongo::plan_ranker

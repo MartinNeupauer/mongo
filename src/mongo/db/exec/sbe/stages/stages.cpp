@@ -72,6 +72,5 @@ void CanChangeState::restoreState() {
 
     doRestoreState();
 }
-
 }  // namespace sbe
 }  // namespace mongo

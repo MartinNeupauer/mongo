@@ -38,6 +38,7 @@
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/concurrency/write_conflict_exception.h"
 #include "mongo/db/exec/multi_plan.h"
+#include "mongo/db/exec/plan_cache_util.h"
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/exec/working_set_common.h"
 #include "mongo/db/query/collection_query_info.h"
@@ -246,8 +247,7 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
 
     // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
     // and so on. The working set will be shared by all candidate plans.
-    auto cachingMode = shouldCache ? MultiPlanStage::CachingMode::AlwaysCache
-                                   : MultiPlanStage::CachingMode::NeverCache;
+    auto cachingMode = shouldCache ? PlanCachingMode::AlwaysCache : PlanCachingMode::NeverCache;
     _children.emplace_back(
         new MultiPlanStage(expCtx(), collection(), _canonicalQuery, cachingMode));
     MultiPlanStage* multiPlanStage = static_cast<MultiPlanStage*>(child().get());
@@ -316,26 +316,10 @@ const SpecificStats* CachedPlanStage::getSpecificStats() const {
 }
 
 void CachedPlanStage::updatePlanCache() {
-    auto ranker = plan_ranker::makePlanRanker<PlanStageStats>(nullptr);
-    const double score = ranker->calculateRank(getStats()->children[0].get());
-
-    PlanCache* cache = CollectionQueryInfo::get(collection()).getPlanCache();
-    Status fbs = cache->feedback(*_canonicalQuery, score);
-    if (!fbs.isOK()) {
-        LOGV2_DEBUG(
-            20583,
-            5,
-            "{canonicalQuery_ns}: Failed to update cache with feedback: {fbs} - (query: "
-            "{canonicalQuery_getQueryObj}; sort: {canonicalQuery_getQueryRequest_getSort}; "
-            "projection: {canonicalQuery_getQueryRequest_getProj}) is no longer in plan cache.",
-            "canonicalQuery_ns"_attr = _canonicalQuery->ns(),
-            "fbs"_attr = redact(fbs),
-            "canonicalQuery_getQueryObj"_attr = redact(_canonicalQuery->getQueryObj()),
-            "canonicalQuery_getQueryRequest_getSort"_attr =
-                _canonicalQuery->getQueryRequest().getSort(),
-            "canonicalQuery_getQueryRequest_getProj"_attr =
-                _canonicalQuery->getQueryRequest().getProj());
-    }
+    auto ranker{plan_ranker::makePlanRanker()};
+    auto stats = getStats();
+    updatePlanCacheFeedback(
+        collection(), *_canonicalQuery, ranker->calculateRank(stats->children[0].get()));
 }
 
 }  // namespace mongo
