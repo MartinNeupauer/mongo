@@ -29,7 +29,8 @@ assert.commandWorked(coll.insert([
     {_id: 20, x: [[{y: 1}, {y: 2}], {y: 3}, {y: 4}, [[[{y: 5}]]], {y: 6}]},
     {_id: 21, i: {j: 5}, k: {l: 10}},
     {_id: 22, x: [[{y: 1}, {y: 2}], {y: 3}, {y: 4}, [[[{y: 5}]]], {y: 6}]},
-    {_id: 23, x: [[{y: {z: 1}}, {y: 2}], {y: 3}, {y: {z: 2}}, [[[{y: 5}, {y: {z: 3}}]]], {y: 6}]}
+    {_id: 23, x: [[{y: {z: 1}}, {y: 2}], {y: 3}, {y: {z: 2}}, [[[{y: 5}, {y: {z: 3}}]]], {y: 6}]},
+    {_id: 24, tf: [true, false], ff: [false, false], t: true, f: false, n: null, a: 1, b: 0}
 ]));
 let results;
 let mongoResults;
@@ -179,6 +180,84 @@ function runQuery(
             runQuery({proj: {foo: '$x.y', bar: '$v.w'}, hint: hint});
             runQuery({query: {'i.j': {$gt: 0}}, proj: {foo: {$add: ['$i.j', '$k.l']}}, hint: hint});
             runQuery({proj: {'x.y': 1, foo: '$v.w'}, hint: hint});
+
+            // $and
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {foo: {$and: []}, bar: {$and: ["$tf", "$t", "$a"]}},
+                hint: hint
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {
+                    foo: {$and: ["$a", "$b"]},
+                    bar: {$and: ["$a", "$f"]},
+                    baz: {$and: ["$a", "$n"]}
+                },
+                hint: hint
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {foo: {$and: ["$ff", "$t"]}, bar: {$and: ["$nonexistent", "$t"]}},
+                hint: hint
+            });
+
+            // $let
+            runQuery({
+                proj: {foo: {$let: {vars: {va: "$a", vb: "$b"}, "in": {$and: "$$va"}}}},
+                hint: hint
+            });
+            runQuery({
+                proj: {foo: {$let: {vars: {va: "$a", vb: "$b"}, "in": {$and: "$$vb"}}}},
+                hint: hint
+            });
+            runQuery({
+                proj: {foo: {$let: {vars: {va: "$a", vb: "$b"}, "in": {$and: ["$$va", "$$vb"]}}}},
+                hint: hint
+            });
+            runQuery({
+                proj: {foo: {$let: {vars: {va: {$and: ["$a", "$b"]}}, "in": "$$va"}}},
+                hint: hint
+            });
+            runQuery({proj: {foo: {$let: {vars: {va: "$x"}, in : "$$va.y"}}}, hint: hint});
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {
+                    foo: {
+                        $let: {
+                            vars: {vt: "$t", vf: "$f"},
+                            "in": {
+                                $let: {
+                                    vars: {vf: "$$vt", va: "$a"},
+                                    "in": {$and: ["$$vt", "$$vf", "$$va"]}
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {
+                    foo: {
+                        $let: {
+                            vars: {
+                                va: {
+                                    $let: {
+                                        vars: {vt: "$t", va: "$va"},
+                                        "in": {$and: ["$$vt", "$$va"]}
+                                    }
+                                }
+                            },
+                            "in": "$$va"
+                        }
+                    }
+                }
+            });
+            runQuery({proj: {foo: {$let: {vars: {doc: "$$CURRENT"}, "in": "$$doc.a"}}}});
+            runQuery({proj: {foo: {$let: {vars: {CURRENT: "$$CURRENT.a"}, "in": "$$CURRENT"}}}});
+            runQuery({proj: {a: "$$REMOVE"}});
+            runQuery({proj: {a: "$$REMOVE.x.y"}});
         }
     });
 

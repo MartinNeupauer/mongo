@@ -2380,10 +2380,13 @@ intrusive_ptr<Expression> ExpressionLet::parse(
     auto& inPtr = children.emplace_back(nullptr);
 
     std::vector<boost::intrusive_ptr<Expression>>::size_type index = 0;
+    std::vector<Variables::Id> orderedVariableIds;
     for (auto&& varElem : varsObj) {
         const string varName = varElem.fieldName();
         Variables::validateNameForUserWrite(varName);
         Variables::Id id = vpsSub.defineVariable(varName);
+
+        orderedVariableIds.push_back(id);
 
         vars.emplace(id, NameAndExpression{varName, children[index]});  // only has outer vars
         ++index;
@@ -2392,14 +2395,17 @@ intrusive_ptr<Expression> ExpressionLet::parse(
     // parse "in"
     inPtr = parseOperand(expCtx, inElem, vpsSub);  // has our vars
 
-    return new ExpressionLet(expCtx, std::move(vars), std::move(children));
+    return new ExpressionLet(
+        expCtx, std::move(vars), std::move(children), std::move(orderedVariableIds));
 }
 
 ExpressionLet::ExpressionLet(const boost::intrusive_ptr<ExpressionContext>& expCtx,
                              VariableMap&& vars,
-                             std::vector<boost::intrusive_ptr<Expression>> children)
+                             std::vector<boost::intrusive_ptr<Expression>> children,
+                             std::vector<Variables::Id> orderedVariableIds)
     : Expression(expCtx, std::move(children)),
       _variables(std::move(vars)),
+      _orderedVariableIds(std::move(orderedVariableIds)),
       _subExpression(_children.back()) {}
 
 intrusive_ptr<Expression> ExpressionLet::optimize() {
