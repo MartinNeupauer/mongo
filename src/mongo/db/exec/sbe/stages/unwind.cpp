@@ -103,7 +103,7 @@ PlanState UnwindStage::getNext() {
                     _inArray = false;
                     if (_preserveNullAndEmptyArrays) {
                         _outFieldOutputAccessor->reset(value::TypeTags::Nothing, 0);
-                        _outIndexOutputAccessor->reset(value::TypeTags::Nothing, 0);
+                        _outIndexOutputAccessor->reset(value::TypeTags::NumberInt64, _index);
                         return trackPlanState(PlanState::ADVANCED);
                     }
                 }

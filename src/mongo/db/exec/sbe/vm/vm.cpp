@@ -569,11 +569,15 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(1);
 
                     // swap values only if they are not physically same.
-                    // note - this has huge consquences for the memory management, it allows to
+                    // note - this has huge consequences for the memory management, it allows to
                     // return owned values from the let expressions
                     if (!(rhsTag == lhsTag && rhsVal == lhsVal)) {
                         setStack(0, lhsOwned, lhsTag, lhsVal);
                         setStack(1, rhsOwned, rhsTag, rhsVal);
+                    } else {
+                        // the values are physically same then the top of the stack must never ever
+                        // be owned
+                        invariant(!rhsOwned);
                     }
 
                     break;

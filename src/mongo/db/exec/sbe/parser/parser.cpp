@@ -144,10 +144,12 @@ static constexpr auto syntax = R"(
                               OPERATOR # input operator
                 PATH <- '{' PF (',' PF)* '}'
                 PF <- (IDENT ':' PF_ACTION) / PF_DROPALL
-                PF_ACTION <- PATH / '=' EXPR / PF_DROP / PF_INCL
+                PF_ACTION <- PATH / PF_EXPR / PF_MEXPR / PF_DROP / PF_INCL
                 PF_DROP <- '0'
                 PF_INCL <- '1'
                 PF_DROPALL <- '~'
+                PF_EXPR <- '=' EXPR
+                PF_MEXPR <- '|' EXPR
 
                 PROJECT_LIST <- '[' (ASSIGN (',' ASSIGN)* )?']'
                 ASSIGN <- IDENT '=' EXPR
@@ -168,7 +170,7 @@ static constexpr auto syntax = R"(
                 MUL_TOK <- <'*'> / <'/'>
 
                 PRIMARY_EXPR <- '(' EXPR ')' / CONST_TOK / IF_EXPR / LET_EXPR / FUN_CALL / IDENT / NUMBER / STRING
-                CONST_TOK <- <'true'> / <'false'> / <'null'>
+                CONST_TOK <- <'true'> / <'false'> / <'null'> / <'#'>
 
                 IF_EXPR <- 'if' '(' EXPR ',' EXPR ',' EXPR ')'
 
@@ -367,6 +369,8 @@ void Parser::walkPrimaryExpr(AstQuery& ast) {
             ast.expr = makeE<EConstant>(value::TypeTags::Boolean, 0);
         } else if (ast.nodes[0]->token == "null") {
             ast.expr = makeE<EConstant>(value::TypeTags::Null, 0);
+        } else if (ast.nodes[0]->token == "#") {
+            ast.expr = makeE<EConstant>(value::TypeTags::Nothing, 0);
         }
     } else if (ast.nodes[0]->tag == "EXPR"_) {
         ast.expr = std::move(ast.nodes[0]->expr);
@@ -942,9 +946,12 @@ bool needNewObject(AstQuery& ast) {
         case "PF_INCL"_: {
             return false;
         }
-        case "EXPR"_: {
+        case "PF_EXPR"_: {
             // This is the only place that forces a new object.
             return true;
+        }
+        case "PF_MEXPR"_: {
+            return false;
         }
         default:;
     }
@@ -985,8 +992,11 @@ bool returnOldObject(AstQuery& ast) {
         case "PF_INCL"_: {
             return false;
         }
-        case "EXPR"_: {
+        case "PF_EXPR"_: {
             return false;
+        }
+        case "PF_MEXPR"_: {
+            return true;
         }
         default:;
     }
@@ -1034,12 +1044,27 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                                                 makeE<EConstant>(fieldNames.front()))));
                     break;
                 }
-                case "EXPR"_: {
+                case "PF_EXPR"_: {
                     fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
                     walk(*action.nodes[0]);
                     fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
-                    stage = makeProjectStage(
-                        std::move(stage), fieldVars.front(), std::move(action.nodes[0]->expr));
+                    stage = makeProjectStage(std::move(stage),
+                                             fieldVars.front(),
+                                             std::move(action.nodes[0]->nodes[0]->expr));
+                    break;
+                }
+                case "PF_MEXPR"_: {
+                    auto [it, inserted] = _symbolsLookupTable.insert({"__self", inputSlot});
+                    invariant(inserted);
+
+                    fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
+                    walk(*action.nodes[0]);
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    stage = makeProjectStage(std::move(stage),
+                                             fieldVars.front(),
+                                             std::move(action.nodes[0]->nodes[0]->expr));
+
+                    _symbolsLookupTable.erase(it);
                     break;
                 }
                 case "PATH"_: {
