@@ -97,8 +97,11 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     // Project out group by fields/columns.
     for (size_t idx = 0; idx < gb->getIdExpressions().size(); ++idx) {
         auto fieldExpr = gb->getIdExpressions()[idx].get();
-        auto [slot, expr, stage] = generateExpression(
-            fieldExpr, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+        auto [slot, expr, stage] = generateExpression(fieldExpr,
+                                                      std::move(inputStage),
+                                                      _slotIdGenerator.get(),
+                                                      _frameIdGenerator.get(),
+                                                      *_resultSlot);
 
         inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
         gbs.push_back(slot);
@@ -109,8 +112,11 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
         auto acc = gb->getAccumulatedFields()[idx].makeAccumulator();
         if (acc->getOpName() == "$sum"_sd) {
             auto fieldExpr = gb->getAccumulatedFields()[idx].expr.argument.get();
-            auto [slot, expr, stage] = generateExpression(
-                fieldExpr, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+            auto [slot, expr, stage] = generateExpression(fieldExpr,
+                                                          std::move(inputStage),
+                                                          _slotIdGenerator.get(),
+                                                          _frameIdGenerator.get(),
+                                                          *_resultSlot);
 
             inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
 
@@ -184,8 +190,11 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildTransf
     auto policies = ProjectionPolicies::aggregateProjectionPolicies();
     auto projection = projection_ast::parse(prj->getContext(), trn.toBson(), policies);
 
-    auto [slot, stage] = generateProjection(
-        &projection, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+    auto [slot, stage] = generateProjection(&projection,
+                                            std::move(inputStage),
+                                            _slotIdGenerator.get(),
+                                            _frameIdGenerator.get(),
+                                            *_resultSlot);
     _resultSlot = slot;
 
     return std::move(stage);

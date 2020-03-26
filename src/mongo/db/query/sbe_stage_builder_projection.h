@@ -42,6 +42,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateProjectio
     const projection_ast::Projection* proj,
     std::unique_ptr<sbe::PlanStage> stage,
     sbe::value::SlotIdGenerator* slotIdGenerator,
+    sbe::value::FrameIdGenerator* frameIdGenerator,
     sbe::value::SlotId inputVar);
 
 }  // namespace mongo::stage_builder

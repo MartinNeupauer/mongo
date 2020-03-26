@@ -38,6 +38,7 @@ std::tuple<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>, std::unique_pt
 generateExpression(Expression* expr,
                    std::unique_ptr<sbe::PlanStage> stage,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
+                   sbe::value::FrameIdGenerator* frameIdGenerator,
                    sbe::value::SlotId inputVar);
 
 }  // namespace mongo::stage_builder

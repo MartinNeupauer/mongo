@@ -83,7 +83,7 @@ int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
     -1,  // jmpTrue
     0,   // jmpNothing
 
-    -1,   // fail
+    -1,  // fail
 };
 
 void CodeFragment::adjustStackSimple(const Instruction& i) {

@@ -55,27 +55,63 @@ public:
 };
 
 /**
- * A SlotId generator which generates SlotId's by incrementing a previous one by the
- * specified value. This class is not thread-safe and must not be accessed concurrently.
+ * An interface for FrameId generators, which provides a single method to generate unique FrameId's.
+ * The uniqueness guarantees are the same as for SlotIdGenerator.
  */
-class IncrementingSlotIdGenerator : public SlotIdGenerator {
+class FrameIdGenerator {
 public:
-    /**
-     * Constructs a new generator using 'startingSlotId' as the first generated SlotId,
-     * and 'incrementStep' value to be used as an increment for following SlotId's,
-     * which can be negative.
-     */
-    IncrementingSlotIdGenerator(int64_t startingSlotId, int64_t incrementStep)
-        : _currentSlotId{startingSlotId}, _incrementStep{incrementStep} {}
+    virtual ~FrameIdGenerator() = default;
 
-    value::SlotId generate() final {
-        _currentSlotId += _incrementStep;
-        return _currentSlotId;
+    /**
+     * Generates a new FrameId which is always different from all previously generated.
+     */
+    virtual FrameId generate() = 0;
+};
+
+/**
+ * A reusable id generator suitable for use with integer ids that generates each new id by adding an
+ * increment to the previously generated id. This generator is not thread safe; calls to
+ * generateByIncrementing must be serialized.
+ */
+template <class T>
+class IncrementingIdGenerator {
+protected:
+    /**
+     * Constructs a new generator using 'startingId' as the first generated id and 'incrementStep'
+     * as the value to add to generate subsequent ids. Note that 'incrementStep' may be negative but
+     * must not be zero.
+     */
+    IncrementingIdGenerator(T startingId, T incrementStep)
+        : _currentId(startingId), _incrementStep(incrementStep) {}
+
+    T generateByIncrementing() {
+        _currentId += _incrementStep;
+        return _currentId;
     }
 
 private:
-    int64_t _currentSlotId;
-    int64_t _incrementStep;
+    T _currentId;
+    T _incrementStep;
+};
+
+class IncrementingSlotIdGenerator : IncrementingIdGenerator<value::SlotId>, public SlotIdGenerator {
+public:
+    IncrementingSlotIdGenerator(int64_t startingSlotId, int64_t incrementStep)
+        : IncrementingIdGenerator<value::SlotId>(startingSlotId, incrementStep) {}
+
+    value::SlotId generate() final {
+        return generateByIncrementing();
+    }
+};
+
+class IncrementingFrameIdGenerator : IncrementingIdGenerator<FrameId>, public FrameIdGenerator {
+public:
+    IncrementingFrameIdGenerator(int64_t startingFrameId, int64_t incrementStep)
+        : IncrementingIdGenerator<FrameId>(startingFrameId, incrementStep) {}
+
+    FrameId generate() final {
+        return generateByIncrementing();
+    }
 };
 
 /**
@@ -83,5 +119,13 @@ private:
  */
 inline std::unique_ptr<SlotIdGenerator> makeDefaultSlotIdGenerator() {
     return std::make_unique<IncrementingSlotIdGenerator>(0, 1);
+}
+
+/**
+ * Constructs a new FrameIdGenerator using a default implemenation algorithm for generating
+ * FrameId's.
+ */
+inline std::unique_ptr<FrameIdGenerator> makeDefaultFrameIdGenerator() {
+    return std::make_unique<IncrementingFrameIdGenerator>(0, 1);
 }
 }  // namespace mongo::sbe::value

@@ -72,7 +72,8 @@ struct ProjectionTraversalVisitorContext {
     };
 
     projection_ast::ProjectType projectType;
-    sbe::value::SlotIdGenerator* slotIdGenerartor;
+    sbe::value::SlotIdGenerator* slotIdGenerator;
+    sbe::value::FrameIdGenerator* frameIdGenerator;
     PlanStageType inputStage;
     sbe::value::SlotId inputSlot;
     std::stack<NestedLevel> levels;
@@ -102,7 +103,7 @@ struct ProjectionTraversalVisitorContext {
     }
 
     void pushLevel(std::list<std::string> fields) {
-        levels.push({levels.empty() ? inputSlot : slotIdGenerartor->generate(), std::move(fields)});
+        levels.push({levels.empty() ? inputSlot : slotIdGenerator->generate(), std::move(fields)});
     }
 
     std::pair<sbe::value::SlotId, PlanStageType> done() {
@@ -175,7 +176,7 @@ public:
         if (node->value()) {
             _context->evals.push(
                 {{_context->topLevel().inputSlot,
-                  _context->slotIdGenerartor->generate(),
+                  _context->slotIdGenerator->generate(),
                   sbe::makeE<sbe::EFunction>(
                       "getField"sv,
                       sbe::makeEs(sbe::makeE<sbe::EVariable>(_context->topLevel().inputSlot),
@@ -190,7 +191,8 @@ public:
         auto [outputSlot, expr, stage] =
             generateExpression(node->expressionRaw(),
                                std::move(_context->topLevel().fieldPathExpressionsTraverseStage),
-                               _context->slotIdGenerartor,
+                               _context->slotIdGenerator,
+                               _context->frameIdGenerator,
                                _context->inputSlot);
         _context->evals.push({{_context->topLevel().inputSlot, outputSlot, std::move(expr)}});
         _context->topLevel().fieldPathExpressionsTraverseStage = std::move(stage);
@@ -256,7 +258,7 @@ public:
             inputStage = sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projects));
         }
 
-        auto outputSlot = _context->slotIdGenerartor->generate();
+        auto outputSlot = _context->slotIdGenerator->generate();
         _context->evals.push(
             {{_context->topLevel().inputSlot,
               outputSlot,
@@ -318,9 +320,10 @@ std::pair<sbe::value::SlotId, PlanStageType> generateProjection(
     const projection_ast::Projection* projection,
     PlanStageType stage,
     sbe::value::SlotIdGenerator* slotIdGenerator,
+    sbe::value::FrameIdGenerator* frameIdGenerator,
     sbe::value::SlotId inputVar) {
     ProjectionTraversalVisitorContext context{
-        projection->type(), slotIdGenerator, std::move(stage), inputVar};
+        projection->type(), slotIdGenerator, frameIdGenerator, std::move(stage), inputVar};
     ProjectionTraversalPreVisitor preVisitor{&context};
     ProjectionTraversalPostVisitor postVisitor{&context};
     ProjectionTraversalWalker walker{&preVisitor, &postVisitor};

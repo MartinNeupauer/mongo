@@ -60,6 +60,7 @@ std::pair<sbe::value::TypeTags, sbe::value::Value> convertFrom(Value val) {
 struct ExpressionVisitorContext {
     std::unique_ptr<sbe::PlanStage> traverseStage;
     sbe::value::SlotIdGenerator* slotIdGenerator{nullptr};
+    sbe::value::FrameIdGenerator* frameIdGenerator{nullptr};
     sbe::value::SlotId rootSlot;
     std::stack<std::unique_ptr<sbe::EExpression>> exprs;
     std::map<Variables::Id, sbe::value::SlotId> environment;
@@ -1097,8 +1098,9 @@ std::tuple<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>, std::unique_pt
 generateExpression(Expression* expr,
                    std::unique_ptr<sbe::PlanStage> stage,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
+                   sbe::value::FrameIdGenerator* frameIdGenerator,
                    sbe::value::SlotId rootSlot) {
-    ExpressionVisitorContext context{std::move(stage), slotIdGenerator, rootSlot};
+    ExpressionVisitorContext context{std::move(stage), slotIdGenerator, frameIdGenerator, rootSlot};
     ExpressionPreVisitor preVisitor{&context};
     ExpressionInVisitor inVisitor{&context};
     ExpressionPostVisitor postVisitor{&context};

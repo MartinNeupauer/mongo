@@ -430,8 +430,11 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionDefault(
     auto pn = static_cast<const ProjectionNodeDefault*>(root);
     auto inputStage = build(pn->children[0]);
     invariant(_resultSlot);
-    auto [slot, stage] =
-        generateProjection(&pn->proj, std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+    auto [slot, stage] = generateProjection(&pn->proj,
+                                            std::move(inputStage),
+                                            _slotIdGenerator.get(),
+                                            _frameIdGenerator.get(),
+                                            *_resultSlot);
     _resultSlot = slot;
     return std::move(stage);
 }

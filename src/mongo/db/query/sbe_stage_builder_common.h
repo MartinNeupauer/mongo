@@ -41,6 +41,8 @@ class BaseSlotBasedStageBuilder {
 protected:
     std::unique_ptr<sbe::value::SlotIdGenerator> _slotIdGenerator{
         sbe::value::makeDefaultSlotIdGenerator()};
+    std::unique_ptr<sbe::value::FrameIdGenerator> _frameIdGenerator{
+        sbe::value::makeDefaultFrameIdGenerator()};
     boost::optional<sbe::value::SlotId> _recordIdSlot;
     boost::optional<sbe::value::SlotId> _resultSlot;
 };
