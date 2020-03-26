@@ -119,6 +119,13 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             auto dbl = value::readFromMemory<double>(be);
             return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
         }
+        case bsonType::Decimal128: {
+            if (view) {
+                return {value::TypeTags::NumberDecimal, value::bitcastFrom(be)};
+            }
+            auto dec = value::readFromMemory<Decimal128>(be);
+            return value::makeCopyDecimal(dec);
+        }
         case bsonType::String: {
             if (view) {
                 return {value::TypeTags::bsonString, value::bitcastFrom(be)};
