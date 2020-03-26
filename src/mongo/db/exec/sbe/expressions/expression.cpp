@@ -342,6 +342,13 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         code->appendFillEmpty();
 
         return code;
+    } else if (_name == "isNull" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->appendIsNull();
+
+        return code;
     } else if (_name == "isObject" && _nodes.size() == 1) {
         auto code = std::make_unique<vm::CodeFragment>();
 

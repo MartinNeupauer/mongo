@@ -71,6 +71,7 @@ int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
     -1,  // sum
 
     0,  // exists
+    0,  // isNull
     0,  // isObject
     0,  // isArray
     0,  // isString
@@ -208,6 +209,9 @@ void CodeFragment::appendSum() {
 }
 void CodeFragment::appendExists() {
     appendSimpleInstruction(Instruction::exists);
+}
+void CodeFragment::appendIsNull() {
+    appendSimpleInstruction(Instruction::isNull);
 }
 void CodeFragment::appendIsObject() {
     appendSimpleInstruction(Instruction::isObject);
@@ -879,6 +883,18 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     topStack(i.owned, value::TypeTags::Boolean, tag != value::TypeTags::Nothing);
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::isNull: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    if (tag != value::TypeTags::Nothing) {
+                        topStack(i.owned, value::TypeTags::Boolean, tag == value::TypeTags::Null);
+                    }
 
                     if (owned) {
                         value::releaseValue(tag, val);

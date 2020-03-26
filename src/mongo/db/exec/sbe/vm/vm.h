@@ -127,6 +127,7 @@ struct Instruction {
         sum,
 
         exists,
+        isNull,
         isObject,
         isArray,
         isString,
@@ -232,6 +233,7 @@ public:
     void appendGetField();
     void appendSum();
     void appendExists();
+    void appendIsNull();
     void appendIsObject();
     void appendIsArray();
     void appendIsString();
