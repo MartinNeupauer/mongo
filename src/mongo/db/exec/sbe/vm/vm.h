@@ -128,6 +128,9 @@ struct Instruction {
 
         exists,
         isObject,
+        isArray,
+        isString,
+        isNumber,
 
         function,
 
@@ -228,6 +231,9 @@ public:
     void appendSum();
     void appendExists();
     void appendIsObject();
+    void appendIsArray();
+    void appendIsString();
+    void appendIsNumber();
     void appendFunction(Builtin f, uint8_t arity);
     void appendJump(int jumpOffset);
     void appendJumpTrue(int jumpOffset);

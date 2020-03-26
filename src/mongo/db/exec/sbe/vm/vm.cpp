@@ -72,6 +72,9 @@ int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
 
     0,  // exists
     0,  // isObject
+    0,  // isArray
+    0,  // isString
+    0,  // isNumber
 
     0,  // function is special, the stack offset is encoded in the instruction itself
 
@@ -206,6 +209,15 @@ void CodeFragment::appendExists() {
 }
 void CodeFragment::appendIsObject() {
     appendSimpleInstruction(Instruction::isObject);
+}
+void CodeFragment::appendIsArray() {
+    appendSimpleInstruction(Instruction::isArray);
+}
+void CodeFragment::appendIsString() {
+    appendSimpleInstruction(Instruction::isString);
+}
+void CodeFragment::appendIsNumber() {
+    appendSimpleInstruction(Instruction::isNumber);
 }
 void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     Instruction i;
@@ -865,6 +877,42 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     if (tag != value::TypeTags::Nothing) {
                         topStack(i.owned, value::TypeTags::Boolean, value::isObject(tag));
+                    }
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::isArray: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    if (tag != value::TypeTags::Nothing) {
+                        topStack(i.owned, value::TypeTags::Boolean, value::isArray(tag));
+                    }
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::isString: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    if (tag != value::TypeTags::Nothing) {
+                        topStack(i.owned, value::TypeTags::Boolean, value::isString(tag));
+                    }
+
+                    if (owned) {
+                        value::releaseValue(tag, val);
+                    }
+                    break;
+                }
+                case Instruction::isNumber: {
+                    auto [owned, tag, val] = getFromStack(0);
+
+                    if (tag != value::TypeTags::Nothing) {
+                        topStack(i.owned, value::TypeTags::Boolean, value::isNumber(tag));
                     }
 
                     if (owned) {

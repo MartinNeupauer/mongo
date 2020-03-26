@@ -349,6 +349,27 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         code->appendIsObject();
 
         return code;
+    } else if (_name == "isArray" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->appendIsArray();
+
+        return code;
+    } else if (_name == "isString" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->appendIsString();
+
+        return code;
+    } else if (_name == "isNumber" && _nodes.size() == 1) {
+        auto code = std::make_unique<vm::CodeFragment>();
+
+        code->append(_nodes[0]->compile(ctx));
+        code->appendIsNumber();
+
+        return code;
     } else if (_name == "split" && _nodes.size() == 2) {
         auto code = std::make_unique<vm::CodeFragment>();
 
