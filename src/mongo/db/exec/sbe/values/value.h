@@ -730,7 +730,7 @@ struct MaterializedRow {
             auto [rhsTag, rhsVal] = rhs._fields[idx].getViewOfValue();
             auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
 
-            if (tag != TypeTags::NumberInt64 || val != 0) {
+            if (tag != TypeTags::NumberInt32 || val != 0) {
                 return false;
             }
         }
@@ -751,16 +751,16 @@ struct MaterializedRowComparator {
             auto [lhsTag, lhsVal] = lhs._fields[idx].getViewOfValue();
             auto [rhsTag, rhsVal] = rhs._fields[idx].getViewOfValue();
             auto [tag, val] = compareValue(lhsTag, lhsVal, rhsTag, rhsVal);
-            if (tag != TypeTags::NumberInt64) {
+            if (tag != TypeTags::NumberInt32) {
                 return false;
             }
-            if (bitcastTo<int64_t>(val) < 0 && _direction[idx] == SortDirection::Ascending) {
+            if (bitcastTo<int32_t>(val) < 0 && _direction[idx] == SortDirection::Ascending) {
                 return true;
             }
-            if (bitcastTo<int64_t>(val) > 0 && _direction[idx] == SortDirection::Descending) {
+            if (bitcastTo<int32_t>(val) > 0 && _direction[idx] == SortDirection::Descending) {
                 return true;
             }
-            if (bitcastTo<int64_t>(val) != 0) {
+            if (bitcastTo<int32_t>(val) != 0) {
                 return false;
             }
         }
