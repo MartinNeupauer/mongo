@@ -666,8 +666,7 @@ public:
                 case ExpressionCompare::CmpOp::CMP:
                     return sbe::EPrimBinary::cmp3w;
             }
-            // Note, the default case is explicitly omitted so that the compiler will check for
-            // exhaustiveness.
+            MONGO_UNREACHABLE;
         }();
 
         // We use the "cmp3e" primitive for every comparison, because it "type brackets" its
