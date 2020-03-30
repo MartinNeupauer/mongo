@@ -38,6 +38,7 @@ class TraverseStage final : public PlanStage {
     const value::SlotId _inField;
     const value::SlotId _outField;
     const value::SlotId _outFieldInner;
+    std::vector<value::SlotId> _correlatedSlots;
     const std::unique_ptr<EExpression> _fold;
     const std::unique_ptr<EExpression> _final;
     const boost::optional<size_t> _nestedArraysDepth;
@@ -61,12 +62,12 @@ class TraverseStage final : public PlanStage {
                   size_t level);
 
 public:
-    std::vector<value::SlotId> _correlatedSlots;
     TraverseStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
                   value::SlotId inField,
                   value::SlotId outField,
                   value::SlotId outFieldInner,
+                  const std::vector<value::SlotId>& outerCorrelated,
                   std::unique_ptr<EExpression> foldExpr,
                   std::unique_ptr<EExpression> finalExpr,
                   boost::optional<size_t> nestedArraysDepth = boost::none);

@@ -117,6 +117,7 @@ struct ProjectionTraversalVisitorContext {
                                                eval->inputSlot,
                                                eval->outputSlot,
                                                eval->outputSlot,
+                                               std::vector<sbe::value::SlotId>{},
                                                nullptr,
                                                nullptr)};
     }
@@ -239,14 +240,15 @@ public:
                                                             _context->topLevel().basePath.top()))));
                                     _context->topLevel().basePath.pop();
 
-                                    inputStage =
-                                        sbe::makeS<sbe::TraverseStage>(std::move(inputStage),
-                                                                       std::move(stage),
-                                                                       eval->inputSlot,
-                                                                       eval->outputSlot,
-                                                                       eval->outputSlot,
-                                                                       nullptr,
-                                                                       nullptr);
+                                    inputStage = sbe::makeS<sbe::TraverseStage>(
+                                        std::move(inputStage),
+                                        std::move(stage),
+                                        eval->inputSlot,
+                                        eval->outputSlot,
+                                        eval->outputSlot,
+                                        std::vector<sbe::value::SlotId>{},
+                                        nullptr,
+                                        nullptr);
                                 }},
                        eval->expr);
         }

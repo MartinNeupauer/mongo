@@ -175,6 +175,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverseH
                                            fieldSlot,
                                            outputSlot,
                                            outputSlot,
+                                           std::vector<sbe::value::SlotId>{},
                                            nullptr,
                                            nullptr,
                                            1)};
@@ -210,6 +211,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverse(
                                                inputSlot,
                                                outputSlot,
                                                innerBranchOutputSlot,
+                                               std::vector<sbe::value::SlotId>{},
                                                nullptr,
                                                nullptr)};
     }

@@ -186,6 +186,7 @@ class Parser {
     std::unique_ptr<PlanStage> walkPathValue(AstQuery& ast,
                                              value::SlotId inputSlot,
                                              std::unique_ptr<PlanStage> inputStage,
+                                             std::vector<value::SlotId> correlated,
                                              value::SlotId outputSlot);
 
 public:

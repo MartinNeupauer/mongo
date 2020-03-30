@@ -36,6 +36,7 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
                              value::SlotId inField,
                              value::SlotId outField,
                              value::SlotId outFieldInner,
+                             const std::vector<value::SlotId>& outerCorrelated,
                              std::unique_ptr<EExpression> foldExpr,
                              std::unique_ptr<EExpression> finalExpr,
                              boost::optional<size_t> nestedArraysDepth)
@@ -43,6 +44,7 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
       _inField(inField),
       _outField(outField),
       _outFieldInner(outFieldInner),
+      _correlatedSlots(outerCorrelated),
       _fold(std::move(foldExpr)),
       _final(std::move(finalExpr)),
       _nestedArraysDepth(nestedArraysDepth) {
@@ -59,6 +61,7 @@ std::unique_ptr<PlanStage> TraverseStage::clone() {
                                            _inField,
                                            _outField,
                                            _outFieldInner,
+                                           _correlatedSlots,
                                            _fold ? _fold->clone() : nullptr,
                                            _final ? _final->clone() : nullptr);
 }
@@ -273,6 +276,16 @@ std::vector<DebugPrinter::Block> TraverseStage::debugPrint() {
     DebugPrinter::addIdentifier(ret, _outFieldInner);
     DebugPrinter::addIdentifier(ret, _inField);
 
+    if (_correlatedSlots.size()) {
+        ret.emplace_back("[`");
+        for (size_t idx = 0; idx < _correlatedSlots.size(); ++idx) {
+            if (idx) {
+                ret.emplace_back(DebugPrinter::Block("`,"));
+            }
+            DebugPrinter::addIdentifier(ret, _correlatedSlots[idx]);
+        }
+        ret.emplace_back("`]");
+    }
     if (_fold) {
         ret.emplace_back("{`");
         DebugPrinter::addBlocks(ret, _fold->debugPrint());

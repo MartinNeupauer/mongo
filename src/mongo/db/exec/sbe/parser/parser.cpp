@@ -94,9 +94,10 @@ static constexpr auto syntax = R"(
                 PROJECT <- 'project' PROJECT_LIST OPERATOR
                 SIMPLE_PROJ <- '$p' IDENT # output
                                     IDENT # input
+                                    IDENT_LIST # correlated slots
                                     PFV # path
                                     OPERATOR # input
-                PFV <- (IDENT '.' PFV) / IDENT
+                PFV <- (IDENT '.' PFV) / ( '|' EXPR / IDENT)
                        
                 FILTER <- 'filter' '{' EXPR '}' OPERATOR
                 CFILTER <- 'cfilter' '{' EXPR '}' OPERATOR
@@ -834,6 +835,7 @@ void Parser::walkTraverse(AstQuery& ast) {
                                      lookupSlotStrict(ast.nodes[2]->identifier),
                                      lookupSlotStrict(ast.nodes[0]->identifier),
                                      lookupSlotStrict(ast.nodes[1]->identifier),
+                                     std::vector<value::SlotId>{},
                                      foldPos ? std::move(ast.nodes[foldPos]->expr) : nullptr,
                                      finalPos ? std::move(ast.nodes[finalPos]->expr) : nullptr);
 }
@@ -875,15 +877,27 @@ void Parser::walkBranch(AstQuery& ast) {
 std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
                                                  value::SlotId inputSlot,
                                                  std::unique_ptr<PlanStage> inputStage,
+                                                 std::vector<value::SlotId> correlated,
                                                  value::SlotId outputSlot) {
     if (ast.nodes.size() == 1) {
-        return makeProjectStage(
-            std::move(inputStage),
-            outputSlot,
-            makeE<EFunction>(
-                "getField"sv,
-                makeEs(makeE<EVariable>(inputSlot), makeE<EConstant>(ast.nodes[0]->identifier))));
+        if (ast.nodes[0]->tag == "EXPR"_) {
+            auto [it, inserted] = _symbolsLookupTable.insert({"__self", inputSlot});
+            invariant(inserted);
+            walk(*ast.nodes[0]);
+            _symbolsLookupTable.erase(it);
+            return makeProjectStage(
+                std::move(inputStage), outputSlot, std::move(ast.nodes[0]->expr));
+        } else {
+            walk(*ast.nodes[0]);
+            return makeProjectStage(
+                std::move(inputStage),
+                outputSlot,
+                makeE<EFunction>("getField"sv,
+                                 makeEs(makeE<EVariable>(inputSlot),
+                                        makeE<EConstant>(ast.nodes[0]->identifier))));
+        }
     } else {
+        walk(*ast.nodes[0]);
         auto traverseIn = _slotIdGenerator->generate();
         auto from =
             makeProjectStage(std::move(inputStage),
@@ -892,25 +906,35 @@ std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
                                               makeEs(makeE<EVariable>(inputSlot),
                                                      makeE<EConstant>(ast.nodes[0]->identifier))));
         auto in = makeS<LimitSkipStage>(makeS<CoScanStage>(), 1, boost::none);
-        return makeS<TraverseStage>(
+        auto stage = makeS<TraverseStage>(
             std::move(from),
-            walkPathValue(*ast.nodes[1], traverseIn, std::move(in), outputSlot),
+            walkPathValue(*ast.nodes[1], traverseIn, std::move(in), {}, outputSlot),
             traverseIn,
             outputSlot,
             outputSlot,
+            correlated,
             nullptr,
             nullptr);
+
+        return stage;
     }
 }
 
 void Parser::walkSimpleProj(AstQuery& ast) {
-    walkChildren(ast);
+    walk(*ast.nodes[0]);
+    walk(*ast.nodes[1]);
+    walk(*ast.nodes[2]);
+    walk(*ast.nodes[4]);
 
-    auto inputStage = std::move(ast.nodes[3]->stage);
+    auto inputStage = std::move(ast.nodes[4]->stage);
     auto outputSlot = lookupSlotStrict(ast.nodes[0]->identifier);
     auto inputSlot = lookupSlotStrict(ast.nodes[1]->identifier);
 
-    ast.stage = walkPathValue(*ast.nodes[2], inputSlot, std::move(inputStage), outputSlot);
+    ast.stage = walkPathValue(*ast.nodes[3],
+                              inputSlot,
+                              std::move(inputStage),
+                              lookupSlots(ast.nodes[2]->identifiers),
+                              outputSlot);
 }
 
 bool needNewObject(AstQuery& ast) {
@@ -1085,6 +1109,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                                              traverseIn,
                                              traverseOut,
                                              traverseOut,
+                                             std::vector<value::SlotId>{},
                                              nullptr,
                                              nullptr);
                     break;
@@ -1135,10 +1160,9 @@ void Parser::walkPFO(AstQuery& ast) {
                                      lookupSlotStrict(ast.nodes[1]->identifier),
                                      lookupSlotStrict(ast.nodes[0]->identifier),
                                      lookupSlotStrict(ast.nodes[0]->identifier),
+                                     lookupSlots(ast.nodes[2]->identifiers),
                                      nullptr,
                                      nullptr);
-    static_cast<TraverseStage*>(ast.stage.get())->_correlatedSlots =
-        lookupSlots(ast.nodes[2]->identifiers);
 }
 void Parser::walk(AstQuery& ast) {
     switch (ast.tag) {

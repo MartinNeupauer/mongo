@@ -366,6 +366,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
                                                     orderBy[idx],
                                                     resultVar,
                                                     innerVar,
+                                                    std::vector<sbe::value::SlotId>{},
                                                     std::move(minmax),
                                                     nullptr);
         orderBy[idx] = resultVar;
