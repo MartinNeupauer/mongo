@@ -1083,4 +1083,89 @@ StatusWith<std::vector<std::unique_ptr<QuerySolution>>> QueryPlanner::plan(
     return {std::move(out)};
 }
 
+StatusWith<QueryPlanner::SubqueriesPlanningResult> QueryPlanner::planSubqueries(
+    OperationContext* opCtx,
+    const Collection* collection,
+    const PlanCache* planCache,
+    const CanonicalQuery& query,
+    const QueryPlannerParams& params) {
+    invariant(query.root()->matchType() == MatchExpression::OR);
+    invariant(query.root()->numChildren(), "Cannot plan subqueries for an $or with no children");
+
+    SubqueriesPlanningResult planningResult{query.root()->shallowClone()};
+    for (size_t i = 0; i < params.indices.size(); ++i) {
+        const IndexEntry& ie = params.indices[i];
+        const auto insertionRes = planningResult.indexMap.insert(std::make_pair(ie.identifier, i));
+        // Be sure the key was not already in the map.
+        invariant(insertionRes.second);
+        LOGV2_DEBUG(20598, 5, "Subplanner: index {i} is {ie}", "i"_attr = i, "ie"_attr = ie);
+    }
+
+    for (size_t i = 0; i < planningResult.orExpression->numChildren(); ++i) {
+        // We need a place to shove the results from planning this branch.
+        planningResult.branches.push_back(
+            std::make_unique<SubqueriesPlanningResult::BranchPlanningResult>());
+        auto branchResult = planningResult.branches.back().get();
+        auto orChild = planningResult.orExpression->getChild(i);
+
+        // Turn the i-th child into its own query.
+        auto statusWithCQ = CanonicalQuery::canonicalize(opCtx, query, orChild);
+        if (!statusWithCQ.isOK()) {
+            str::stream ss;
+            ss << "Can't canonicalize subchild " << orChild->debugString() << " "
+               << statusWithCQ.getStatus().reason();
+            return Status(ErrorCodes::BadValue, ss);
+        }
+
+        branchResult->canonicalQuery = std::move(statusWithCQ.getValue());
+
+        // Plan the i-th child. We might be able to find a plan for the i-th child in the plan
+        // cache. If there's no cached plan, then we generate and rank plans using the MPS.
+
+        // Populate branchResult->cachedSolution if an active cachedSolution entry exists.
+        if (planCache && planCache->shouldCacheQuery(*branchResult->canonicalQuery)) {
+            auto planCacheKey = planCache->computeKey(*branchResult->canonicalQuery);
+            if (auto cachedSol = planCache->getCacheEntryIfActive(planCacheKey)) {
+                // We have a CachedSolution. Store it for later.
+                LOGV2_DEBUG(
+                    20599,
+                    5,
+                    "Subplanner: cached plan found for child {i} of {orExpression_numChildren}",
+                    "i"_attr = i,
+                    "orExpression_numChildren"_attr = planningResult.orExpression->numChildren());
+
+                branchResult->cachedSolution = std::move(cachedSol);
+            }
+        }
+
+        if (!branchResult->cachedSolution) {
+            // No CachedSolution found. We'll have to plan from scratch.
+            LOGV2_DEBUG(20600,
+                        5,
+                        "Subplanner: planning child {i} of {orExpression_numChildren}",
+                        "i"_attr = i,
+                        "orExpression_numChildren"_attr =
+                            planningResult.orExpression->numChildren());
+
+            // We don't set NO_TABLE_SCAN because peeking at the cache data will keep us from
+            // considering any plan that's a collscan.
+            invariant(branchResult->solutions.empty());
+            auto solutions = QueryPlanner::plan(*branchResult->canonicalQuery, params);
+            if (!solutions.isOK()) {
+                str::stream ss;
+                ss << "Can't plan for subchild " << branchResult->canonicalQuery->toString() << " "
+                   << solutions.getStatus().reason();
+                return Status(ErrorCodes::BadValue, ss);
+            }
+            branchResult->solutions = std::move(solutions.getValue());
+
+            LOGV2_DEBUG(20601,
+                        5,
+                        "Subplanner: got {branchResult_solutions_size} solutions",
+                        "branchResult_solutions_size"_attr = branchResult->solutions.size());
+        }
+    }
+
+    return std::move(planningResult);
+}
 }  // namespace mongo

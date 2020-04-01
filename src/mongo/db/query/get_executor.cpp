@@ -84,6 +84,7 @@
 #include "mongo/db/query/query_settings.h"
 #include "mongo/db/query/sbe_cached_solution_planner.h"
 #include "mongo/db/query/sbe_multi_planner.h"
+#include "mongo/db/query/sbe_sub_planner.h"
 #include "mongo/db/query/stage_builder_util.h"
 #include "mongo/db/query/util/make_data_structure.h"
 #include "mongo/db/repl/optime.h"
@@ -354,16 +355,19 @@ struct PrepareExecutionResult {
     PrepareExecutionResult(unique_ptr<CanonicalQuery> canonicalQuery,
                            std::vector<unique_ptr<QuerySolution>> querySolutions,
                            std::vector<unique_ptr<PlanStageType>> roots,
-                           boost::optional<size_t> decisionWorks = boost::none)
+                           boost::optional<size_t> decisionWorks = boost::none,
+                           bool needSubplanning = false)
         : canonicalQuery(std::move(canonicalQuery)),
           querySolutions(std::move(querySolutions)),
           roots(std::move(roots)),
-          decisionWorks(std::move(decisionWorks)) {}
+          decisionWorks(std::move(decisionWorks)),
+          needSubplanning{needSubplanning} {}
 
     unique_ptr<CanonicalQuery> canonicalQuery;
     std::vector<unique_ptr<QuerySolution>> querySolutions;
     std::vector<unique_ptr<PlanStageType>> roots;
     boost::optional<size_t> decisionWorks;
+    bool needSubplanning;
 };
 
 /**
@@ -410,10 +414,9 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
         } else {
             root = std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get());
         }
-        return PrepareExecutionResult(
-            std::move(canonicalQuery),
-            make_vector<std::unique_ptr<QuerySolution>>(std::unique_ptr<QuerySolution>{}),
-            make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
+        return PrepareExecutionResult(std::move(canonicalQuery),
+                                      make_vector<std::unique_ptr<QuerySolution>>(nullptr),
+                                      make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
     }
 
     // Fill out the planning params.  We use these for both cached solutions and non-cached.
@@ -515,7 +518,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
 
             return PrepareExecutionResult(
                 std::move(canonicalQuery),
-                make_vector<std::unique_ptr<QuerySolution>>(std::unique_ptr<QuerySolution>{}),
+                make_vector<std::unique_ptr<QuerySolution>>(nullptr),
                 make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
         }
     }
@@ -583,25 +586,25 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
     }
 
 
-    // Sub-queries are not supported in SBE yet.
-    if constexpr (!isSlotBased) {
-        if (internalQueryPlanOrChildrenIndependently.load() &&
-            SubplanStage::canUseSubplanning(*canonicalQuery)) {
-            LOGV2_DEBUG(20924,
-                        2,
-                        "Running query as sub-queries: {canonicalQuery_Short}",
-                        "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
+    if (internalQueryPlanOrChildrenIndependently.load() &&
+        SubplanStage::canUseSubplanning(*canonicalQuery)) {
+        LOGV2_DEBUG(20924,
+                    2,
+                    "Running query as sub-queries: {canonicalQuery_Short}",
+                    "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
 
+        if constexpr (!isSlotBased) {
             root = std::make_unique<SubplanStage>(canonicalQuery->getExpCtx().get(),
                                                   collection,
                                                   ws,
                                                   plannerParams,
                                                   canonicalQuery.get());
-            return PrepareExecutionResult(
-                std::move(canonicalQuery),
-                make_vector<std::unique_ptr<QuerySolution>>(std::unique_ptr<QuerySolution>{}),
-                make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
         }
+        return PrepareExecutionResult(std::move(canonicalQuery),
+                                      make_vector<std::unique_ptr<QuerySolution>>(nullptr),
+                                      make_vector<std::unique_ptr<PlanStageType>>(std::move(root)),
+                                      boost::none /* decisionWorks */,
+                                      true /* needSubplanning */);
     }
 
     auto statusWithSolutions = QueryPlanner::plan(*canonicalQuery, plannerParams);
@@ -733,10 +736,19 @@ std::unique_ptr<sbe::RuntimePlanner> makeRuntimePlannerIfNeeded(
         // do the runtime planning to check if the cached plan still performs efficiently, or
         // requires re-planning. The 'decisionWorks' is used to determine whether the existing
         // cache entry should be evicted, and the query re-planned.
-        if (result.decisionWorks) {
+        //
+        // If the query can be run as sub-queries, the needSubplanning flag will be set to true
+        // and we'll need to create a runtime planner to build a composite solution and pick the
+        // best plan for each sub-query.
+        if (result.decisionWorks || result.needSubplanning) {
             QueryPlannerParams plannerParams;
             plannerParams.options = plannerOptions;
             fillOutPlannerParams(opCtx, collection, result.canonicalQuery.get(), &plannerParams);
+
+            if (result.needSubplanning) {
+                return std::make_unique<sbe::SubPlanner>(
+                    opCtx, collection, *result.canonicalQuery, plannerParams);
+            }
             return std::make_unique<sbe::CachedSolutionPlanner>(
                 opCtx, collection, *result.canonicalQuery, plannerParams, *result.decisionWorks);
         }

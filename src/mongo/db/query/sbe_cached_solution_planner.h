@@ -32,6 +32,7 @@
 #include "mongo/db/query/sbe_plan_ranker.h"
 #include "mongo/db/query/sbe_runtime_planner.h"
 
+namespace mongo::sbe {
 /**
  * Runs a trial period in order to evaluate the cost of a cached plan. If the cost is unexpectedly
  * high, the plan cache entry is deactivated and we use multi-planning to select an entirely new
@@ -39,7 +40,6 @@
  *
  * TODO: refresh the list of indexes in 'queryParams' during replanning.
  */
-namespace mongo::sbe {
 class CachedSolutionPlanner final : public BaseRuntimePlanner {
 public:
     CachedSolutionPlanner(OperationContext* opCtx,

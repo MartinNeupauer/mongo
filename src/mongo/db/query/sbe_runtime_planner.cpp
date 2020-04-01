@@ -131,6 +131,12 @@ std::vector<plan_ranker::CandidatePlan> BaseRuntimePlanner::collectExecutionStat
                 fetchNextDocument(&candidate, &numFailures) || (numFailures == candidates.size());
         }
     }
+
+    // Make sure we have at least one plan which hasn't failed.
+    uassert(2059102,
+            "Runtime planner encountered a failure while collecting execution stats",
+            numFailures != candidates.size());
+
     return candidates;
 }
 }  // namespace mongo::sbe

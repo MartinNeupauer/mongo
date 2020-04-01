@@ -45,7 +45,6 @@
 #include "mongo/db/query/plan_executor.h"
 #include "mongo/db/query/planner_access.h"
 #include "mongo/db/query/planner_analysis.h"
-#include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_common.h"
 #include "mongo/db/query/stage_builder_util.h"
 #include "mongo/logv2/log.h"
@@ -105,86 +104,7 @@ bool SubplanStage::canUseSubplanning(const CanonicalQuery& query) {
     return MatchExpression::OR == expr->matchType() && expr->numChildren() > 0;
 }
 
-Status SubplanStage::planSubqueries() {
-    _orExpression = _query->root()->shallowClone();
-    for (size_t i = 0; i < _plannerParams.indices.size(); ++i) {
-        const IndexEntry& ie = _plannerParams.indices[i];
-        const auto insertionRes = _indexMap.insert(std::make_pair(ie.identifier, i));
-        // Be sure the key was not already in the map.
-        invariant(insertionRes.second);
-        LOGV2_DEBUG(20598, 5, "Subplanner: index {i} is {ie}", "i"_attr = i, "ie"_attr = ie);
-    }
-
-    for (size_t i = 0; i < _orExpression->numChildren(); ++i) {
-        // We need a place to shove the results from planning this branch.
-        _branchResults.push_back(std::make_unique<BranchPlanningResult>());
-        BranchPlanningResult* branchResult = _branchResults.back().get();
-
-        MatchExpression* orChild = _orExpression->getChild(i);
-
-        // Turn the i-th child into its own query.
-        auto statusWithCQ = CanonicalQuery::canonicalize(opCtx(), *_query, orChild);
-        if (!statusWithCQ.isOK()) {
-            str::stream ss;
-            ss << "Can't canonicalize subchild " << orChild->debugString() << " "
-               << statusWithCQ.getStatus().reason();
-            return Status(ErrorCodes::BadValue, ss);
-        }
-
-        branchResult->canonicalQuery = std::move(statusWithCQ.getValue());
-
-        // Plan the i-th child. We might be able to find a plan for the i-th child in the plan
-        // cache. If there's no cached plan, then we generate and rank plans using the MPS.
-        const auto* planCache = CollectionQueryInfo::get(collection()).getPlanCache();
-
-        // Populate branchResult->cachedSolution if an active cachedSolution entry exists.
-        if (planCache->shouldCacheQuery(*branchResult->canonicalQuery)) {
-            auto planCacheKey = planCache->computeKey(*branchResult->canonicalQuery);
-            if (auto cachedSol = planCache->getCacheEntryIfActive(planCacheKey)) {
-                // We have a CachedSolution. Store it for later.
-                LOGV2_DEBUG(
-                    20599,
-                    5,
-                    "Subplanner: cached plan found for child {i} of {orExpression_numChildren}",
-                    "i"_attr = i,
-                    "orExpression_numChildren"_attr = _orExpression->numChildren());
-
-                branchResult->cachedSolution = std::move(cachedSol);
-            }
-        }
-
-        if (!branchResult->cachedSolution) {
-            // No CachedSolution found. We'll have to plan from scratch.
-            LOGV2_DEBUG(20600,
-                        5,
-                        "Subplanner: planning child {i} of {orExpression_numChildren}",
-                        "i"_attr = i,
-                        "orExpression_numChildren"_attr = _orExpression->numChildren());
-
-            // We don't set NO_TABLE_SCAN because peeking at the cache data will keep us from
-            // considering any plan that's a collscan.
-            invariant(branchResult->solutions.empty());
-            auto solutions = QueryPlanner::plan(*branchResult->canonicalQuery, _plannerParams);
-            if (!solutions.isOK()) {
-                str::stream ss;
-                ss << "Can't plan for subchild " << branchResult->canonicalQuery->toString() << " "
-                   << solutions.getStatus().reason();
-                return Status(ErrorCodes::BadValue, ss);
-            }
-            branchResult->solutions = std::move(solutions.getValue());
-
-            LOGV2_DEBUG(20601,
-                        5,
-                        "Subplanner: got {branchResult_solutions_size} solutions",
-                        "branchResult_solutions_size"_attr = branchResult->solutions.size());
-        }
-    }
-
-    return Status::OK();
-}
-
 namespace {
-
 /**
  * On success, applies the index tags from 'branchCacheData' (which represent the winning
  * plan for 'orChild') to 'compositeCacheData'.
@@ -224,117 +144,87 @@ Status tagOrChildAccordingToCache(PlanCacheIndexTree* compositeCacheData,
 
     return Status::OK();
 }
-
 }  // namespace
 
-Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
+StatusWith<std::unique_ptr<QuerySolution>> choosePlanForSubqueries(
+    const CanonicalQuery& query,
+    const QueryPlannerParams& params,
+    QueryPlanner::SubqueriesPlanningResult planningResult,
+    std::function<Status(CanonicalQuery* cq,
+                         std::vector<unique_ptr<QuerySolution>>,
+                         std::function<Status(QuerySolution*)>)> multiplanCallback) {
     // This is the skeleton of index selections that is inserted into the cache.
     std::unique_ptr<PlanCacheIndexTree> cacheData(new PlanCacheIndexTree());
 
-    for (size_t i = 0; i < _orExpression->numChildren(); ++i) {
-        MatchExpression* orChild = _orExpression->getChild(i);
-        BranchPlanningResult* branchResult = _branchResults[i].get();
+    for (size_t i = 0; i < planningResult.orExpression->numChildren(); ++i) {
+        auto orChild = planningResult.orExpression->getChild(i);
+        auto branchResult = planningResult.branches[i].get();
 
         if (branchResult->cachedSolution.get()) {
             // We can get the index tags we need out of the cache.
-            Status tagStatus = tagOrChildAccordingToCache(
-                cacheData.get(), branchResult->cachedSolution->plannerData[0], orChild, _indexMap);
+            Status tagStatus =
+                tagOrChildAccordingToCache(cacheData.get(),
+                                           branchResult->cachedSolution->plannerData[0],
+                                           orChild,
+                                           planningResult.indexMap);
             if (!tagStatus.isOK()) {
                 return tagStatus;
             }
         } else if (1 == branchResult->solutions.size()) {
             QuerySolution* soln = branchResult->solutions.front().get();
             Status tagStatus = tagOrChildAccordingToCache(
-                cacheData.get(), soln->cacheData.get(), orChild, _indexMap);
+                cacheData.get(), soln->cacheData.get(), orChild, planningResult.indexMap);
             if (!tagStatus.isOK()) {
                 return tagStatus;
             }
         } else {
             // N solutions, rank them.
 
-            // We already checked for zero solutions in planSubqueries(...).
             invariant(!branchResult->solutions.empty());
 
-            _ws->clear();
+            auto multiPlanStatus = multiplanCallback(
+                branchResult->canonicalQuery.get(),
+                std::move(branchResult->solutions),
+                [&](QuerySolution* bestSoln) {
+                    // Check that we have good cache data. For example, we don't cache things
+                    // for 2d indices.
+                    if (nullptr == bestSoln->cacheData.get()) {
+                        str::stream ss;
+                        ss << "No cache data for subchild " << orChild->debugString();
+                        return Status(ErrorCodes::NoQueryExecutionPlans, ss);
+                    }
 
-            // We pass the SometimesCache option to the MPS because the SubplanStage currently does
-            // not use the CachedPlanStage's eviction mechanism. We therefore are more conservative
-            // about putting a potentially bad plan into the cache in the subplan path.  We
-            // temporarily add the MPS to _children to ensure that we pass down all save/restore
-            // messages that can be generated if pickBestPlan yields.
-            invariant(_children.empty());
-            _children.emplace_back(
-                std::make_unique<MultiPlanStage>(expCtx(),
-                                                 collection(),
-                                                 branchResult->canonicalQuery.get(),
-                                                 PlanCachingMode::SometimesCache));
-            ON_BLOCK_EXIT([&] {
-                invariant(_children.size() == 1);  // Make sure nothing else was added to _children.
-                _children.pop_back();
-            });
-            MultiPlanStage* multiPlanStage = static_cast<MultiPlanStage*>(child().get());
+                    if (SolutionCacheData::USE_INDEX_TAGS_SOLN != bestSoln->cacheData->solnType) {
+                        str::stream ss;
+                        ss << "No indexed cache data for subchild " << orChild->debugString();
+                        return Status(ErrorCodes::NoQueryExecutionPlans, ss);
+                    }
 
-            // Dump all the solutions into the MPS.
-            for (size_t ix = 0; ix < branchResult->solutions.size(); ++ix) {
-                auto nextPlanRoot =
-                    stage_builder::buildExecutableTree<PlanStage>(expCtx()->opCtx,
-                                                                  collection(),
-                                                                  *branchResult->canonicalQuery,
-                                                                  *branchResult->solutions[ix],
-                                                                  _ws);
+                    // Add the index assignments to our original query.
+                    Status tagStatus = QueryPlanner::tagAccordingToCache(
+                        orChild, bestSoln->cacheData->tree.get(), planningResult.indexMap);
 
-                multiPlanStage->addPlan(
-                    std::move(branchResult->solutions[ix]), std::move(nextPlanRoot), _ws);
+                    if (!tagStatus.isOK()) {
+                        str::stream ss;
+                        ss << "Failed to extract indices from subchild " << orChild->debugString();
+                        return tagStatus.withContext(ss);
+                    }
+
+                    cacheData->children.push_back(bestSoln->cacheData->tree->clone());
+                    return Status::OK();
+                });
+            if (!multiPlanStatus.isOK()) {
+                return multiPlanStatus;
             }
-
-            Status planSelectStat = multiPlanStage->pickBestPlan(yieldPolicy);
-            if (!planSelectStat.isOK()) {
-                return planSelectStat;
-            }
-
-            if (!multiPlanStage->bestPlanChosen()) {
-                str::stream ss;
-                ss << "Failed to pick best plan for subchild "
-                   << branchResult->canonicalQuery->toString();
-                return Status(ErrorCodes::NoQueryExecutionPlans, ss);
-            }
-
-            QuerySolution* bestSoln = multiPlanStage->bestSolution();
-
-            // Check that we have good cache data. For example, we don't cache things
-            // for 2d indices.
-            if (nullptr == bestSoln->cacheData.get()) {
-                str::stream ss;
-                ss << "No cache data for subchild " << orChild->debugString();
-                return Status(ErrorCodes::NoQueryExecutionPlans, ss);
-            }
-
-            if (SolutionCacheData::USE_INDEX_TAGS_SOLN != bestSoln->cacheData->solnType) {
-                str::stream ss;
-                ss << "No indexed cache data for subchild " << orChild->debugString();
-                return Status(ErrorCodes::NoQueryExecutionPlans, ss);
-            }
-
-            // Add the index assignments to our original query.
-            Status tagStatus = QueryPlanner::tagAccordingToCache(
-                orChild, bestSoln->cacheData->tree.get(), _indexMap);
-
-            if (!tagStatus.isOK()) {
-                str::stream ss;
-                ss << "Failed to extract indices from subchild " << orChild->debugString();
-                return tagStatus.withContext(ss);
-            }
-
-            cacheData->children.push_back(bestSoln->cacheData->tree->clone());
         }
     }
 
     // Must do this before using the planner functionality.
-    prepareForAccessPlanning(_orExpression.get());
+    prepareForAccessPlanning(planningResult.orExpression.get());
 
     // Use the cached index assignments to build solnRoot. Takes ownership of '_orExpression'.
     std::unique_ptr<QuerySolutionNode> solnRoot(QueryPlannerAccess::buildIndexedDataAccess(
-        *_query, std::move(_orExpression), _plannerParams.indices, _plannerParams));
+        query, std::move(planningResult.orExpression), params.indices, params));
 
     if (!solnRoot) {
         str::stream ss;
@@ -347,10 +237,10 @@ Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
                 "Subplanner: fully tagged tree is {solnRoot}",
                 "solnRoot"_attr = redact(solnRoot->toString()));
 
-    _compositeSolution =
-        QueryPlannerAnalysis::analyzeDataAccess(*_query, _plannerParams, std::move(solnRoot));
+    auto compositeSolution =
+        QueryPlannerAnalysis::analyzeDataAccess(query, params, std::move(solnRoot));
 
-    if (nullptr == _compositeSolution.get()) {
+    if (nullptr == compositeSolution.get()) {
         str::stream ss;
         ss << "Failed to analyze subplanned query";
         return Status(ErrorCodes::NoQueryExecutionPlans, ss);
@@ -359,17 +249,9 @@ Status SubplanStage::choosePlanForSubqueries(PlanYieldPolicy* yieldPolicy) {
     LOGV2_DEBUG(20603,
                 5,
                 "Subplanner: Composite solution is {compositeSolution}",
-                "compositeSolution"_attr = redact(_compositeSolution->toString()));
+                "compositeSolution"_attr = redact(compositeSolution->toString()));
 
-    // Use the index tags from planning each branch to construct the composite solution,
-    // and set that solution as our child stage.
-    _ws->clear();
-    auto root = stage_builder::buildExecutableTree<PlanStage>(
-        expCtx()->opCtx, collection(), *_query, *_compositeSolution.get(), _ws);
-    invariant(_children.empty());
-    _children.emplace_back(std::move(root));
-
-    return Status::OK();
+    return std::move(compositeSolution);
 }
 
 Status SubplanStage::choosePlanWholeQuery(PlanYieldPolicy* yieldPolicy) {
@@ -438,23 +320,83 @@ Status SubplanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     ON_BLOCK_EXIT([this] { releaseAllIndicesRequirement(); });
 
     // Plan each branch of the $or.
-    Status subplanningStatus = planSubqueries();
+    auto subplanningStatus =
+        QueryPlanner::planSubqueries(expCtx()->opCtx,
+                                     collection(),
+                                     CollectionQueryInfo::get(collection()).getPlanCache(),
+                                     *_query,
+                                     _plannerParams);
     if (!subplanningStatus.isOK()) {
         return choosePlanWholeQuery(yieldPolicy);
     }
 
+    // Remember whether each branch of the $or was planned from a cached solution.
+    auto subplanningResult = std::move(subplanningStatus.getValue());
+    _branchPlannedFromCache.clear();
+    for (auto&& branch : subplanningResult.branches) {
+        _branchPlannedFromCache.push_back(branch->cachedSolution != nullptr);
+    }
+
     // Use the multi plan stage to select a winning plan for each branch, and then construct
     // the overall winning plan from the resulting index tags.
-    Status subplanSelectStat = choosePlanForSubqueries(yieldPolicy);
+    auto multiplanCallback = [&](CanonicalQuery* cq,
+                                 std::vector<std::unique_ptr<QuerySolution>> solutions,
+                                 std::function<Status(QuerySolution*)> bestSolutionCallback) {
+        _ws->clear();
+
+        // We pass the SometimesCache option to the MPS because the SubplanStage currently does
+        // not use the CachedPlanStage's eviction mechanism. We therefore are more conservative
+        // about putting a potentially bad plan into the cache in the subplan path.
+        //
+        // We temporarily add the MPS to _children to ensure that we pass down all save/restore
+        // messages that can be generated if pickBestPlan yields.
+        invariant(_children.empty());
+        _children.emplace_back(std::make_unique<MultiPlanStage>(
+            expCtx(), collection(), cq, PlanCachingMode::SometimesCache));
+        ON_BLOCK_EXIT([&] {
+            invariant(_children.size() == 1);  // Make sure nothing else was added to _children.
+            _children.pop_back();
+        });
+        MultiPlanStage* multiPlanStage = static_cast<MultiPlanStage*>(child().get());
+
+        // Dump all the solutions into the MPS.
+        for (size_t ix = 0; ix < solutions.size(); ++ix) {
+            auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+                expCtx()->opCtx, collection(), *cq, *solutions[ix], _ws);
+
+            multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
+        }
+
+        Status planSelectStat = multiPlanStage->pickBestPlan(yieldPolicy);
+        if (!planSelectStat.isOK()) {
+            return planSelectStat;
+        }
+
+        if (!multiPlanStage->bestPlanChosen()) {
+            str::stream ss;
+            ss << "Failed to pick best plan for subchild " << cq->toString();
+            return Status(ErrorCodes::NoQueryExecutionPlans, ss);
+        }
+        return bestSolutionCallback(multiPlanStage->bestSolution());
+    };
+    auto subplanSelectStat = choosePlanForSubqueries(
+        *_query, _plannerParams, std::move(subplanningResult), multiplanCallback);
     if (!subplanSelectStat.isOK()) {
         if (subplanSelectStat != ErrorCodes::NoQueryExecutionPlans) {
             // Query planning can continue if we failed to find a solution for one of the
             // children. Otherwise, it cannot, as it may no longer be safe to access the collection
             // (and index may have been dropped, we may have exceeded the time limit, etc).
-            return subplanSelectStat;
+            return subplanSelectStat.getStatus();
         }
         return choosePlanWholeQuery(yieldPolicy);
     }
+
+    // Build a plan stage tree from the the composite solution and it as our child stage.
+    _compositeSolution = std::move(subplanSelectStat.getValue());
+    invariant(_children.empty());
+    _children.emplace_back(stage_builder::buildExecutableTree<PlanStage>(
+        expCtx()->opCtx, collection(), *_query, *_compositeSolution, _ws));
+    _ws->clear();
 
     return Status::OK();
 }
@@ -481,12 +423,7 @@ unique_ptr<PlanStageStats> SubplanStage::getStats() {
     return ret;
 }
 
-bool SubplanStage::branchPlannedFromCache(size_t i) const {
-    return nullptr != _branchResults[i]->cachedSolution.get();
-}
-
 const SpecificStats* SubplanStage::getSpecificStats() const {
     return nullptr;
 }
-
 }  // namespace mongo

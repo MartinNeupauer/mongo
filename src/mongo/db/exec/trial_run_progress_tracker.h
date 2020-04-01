@@ -40,7 +40,11 @@ class TrialRunProgressTracker final {
 public:
     // A special exception which can be raised during a trial run by a plan stage to let the
     // runtime planner know that a candidate plan has completed the trial run early.
-    struct EarlyExitException {};
+    struct EarlyExitException : std::exception {
+        const char* what() const noexcept final {
+            return "Trial run progress tracker early exit exception";
+        }
+    };
 
     // The type of metric which can be collected and tracked during a trial run.
     enum TrialRunMetric : uint8_t {

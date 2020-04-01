@@ -57,6 +57,7 @@ private:
     std::unique_ptr<sbe::PlanStage> buildSortKeyGeneraror(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildOr(const QuerySolutionNode* root);
 
     boost::optional<long long> _limit;
 };

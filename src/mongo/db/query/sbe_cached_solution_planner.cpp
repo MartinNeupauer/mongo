@@ -51,7 +51,6 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::plan(
         invariant(candidates.size() == 1);
         return std::move(candidates[0]);
     }();
-    auto stats = candidate.root->getStats();
 
     if (candidate.failed) {
         // On failure, fall back to replanning the whole query. We neither evict the existing cache
@@ -66,6 +65,7 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::plan(
         return replan(false);
     }
 
+    auto stats{candidate.root->getStats()};
     auto numReads{calculateNumberOfReads(stats.get())};
     // If the cached plan hit EOF quickly enough, or still is efficient as before, then no need to
     // replan. Finalize the cached plan and return it.
@@ -119,8 +119,8 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
     auto solutions = uassertStatusOK(QueryPlanner::plan(_cq, _queryParams));
     if (solutions.size() == 1) {
         // Only one possible plan. Build the stages from the solution.
-        auto root = stage_builder::buildExecutableTree<PlanStage>(
-            _opCtx, _collection, _cq, *solutions[0], nullptr /* ws, not used in SBE */);
+        auto root =
+            stage_builder::buildExecutableTree<PlanStage>(_opCtx, _collection, _cq, *solutions[0]);
         auto [slots, _] = prepareExecutionPlan(root.get());
         LOGV2_DEBUG(
             2058101,

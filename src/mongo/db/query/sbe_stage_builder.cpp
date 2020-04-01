@@ -46,6 +46,7 @@
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/exec/sbe/stages/union.h"
 #include "mongo/db/index/index_access_method.h"
 #include "mongo/db/query/index_bounds_builder.h"
 #include "mongo/db/query/sbe_stage_builder_filter.h"
@@ -439,6 +440,36 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionDefault(
     return std::move(stage);
 }
 
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySolutionNode* root) {
+    std::vector<std::unique_ptr<sbe::PlanStage>> inputStages;
+    std::vector<std::vector<sbe::value::SlotId>> inputSlots;
+
+    auto orn = static_cast<const OrNode*>(root);
+    for (auto&& child : orn->children) {
+        inputStages.push_back(build(child));
+        invariant(_recordIdSlot);
+        inputSlots.push_back({*_recordIdSlot});
+    }
+
+    _recordIdSlot = _slotIdGenerator->generate();
+    std::vector<sbe::value::SlotId> outputSlots{*_recordIdSlot};
+    auto stage = sbe::makeS<sbe::UnionStage>(std::move(inputStages), inputSlots, outputSlots);
+
+    if (orn->dedup) {
+        stage = sbe::makeS<sbe::HashAggStage>(
+            std::move(stage),
+            outputSlots,
+            std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>>{});
+    }
+
+    if (orn->filter) {
+        stage = generateFilter(
+            orn->filter.get(), std::move(stage), _slotIdGenerator.get(), *_resultSlot);
+    }
+
+    return stage;
+}
+
 // Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
 // could not be constructed.
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
@@ -455,8 +486,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
             {STAGE_SORT_DEFAULT, std::mem_fn(&SlotBasedStageBuilder::buildSort)},
             {STAGE_SORT_KEY_GENERATOR, std::mem_fn(&SlotBasedStageBuilder::buildSortKeyGeneraror)},
             {STAGE_PROJECTION_SIMPLE, std::mem_fn(&SlotBasedStageBuilder::buildProjectionSimple)},
-            {STAGE_PROJECTION_DEFAULT,
-             std::mem_fn(&SlotBasedStageBuilder::buildProjectionDefault)}};
+            {STAGE_PROJECTION_DEFAULT, std::mem_fn(&SlotBasedStageBuilder::buildProjectionDefault)},
+            {STAGE_OR, &SlotBasedStageBuilder::buildOr}};
 
     uassert(ErrorCodes::InternalErrorNotSupported,
             str::stream() << "Can't build exec tree for node: " << root->toString(),

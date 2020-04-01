@@ -317,7 +317,7 @@ const SpecificStats* CachedPlanStage::getSpecificStats() const {
 
 void CachedPlanStage::updatePlanCache() {
     auto ranker{plan_ranker::makePlanRanker()};
-    auto stats = getStats();
+    auto stats{getStats()};
     updatePlanCacheFeedback(
         collection(), *_canonicalQuery, ranker->calculateRank(stats->children[0].get()));
 }

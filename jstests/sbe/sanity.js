@@ -32,7 +32,7 @@ assert.commandWorked(coll.insert([
     {_id: 23, x: [[{y: {z: 1}}, {y: 2}], {y: 3}, {y: {z: 2}}, [[[{y: 5}, {y: {z: 3}}]]], {y: 6}]},
     {_id: 24, tf: [true, false], ff: [false, false], t: true, f: false, n: null, a: 1, b: 0},
     {_id: 25, i1: NumberInt(1), i2: NumberInt(-1), i3: NumberInt(-2147483648)},
-    {_id: 26, l1: NumberLong("12345678900"), l1: NumberLong("-12345678900")},
+    {_id: 26, l1: NumberLong("12345678900"), l2: NumberLong("-12345678900")},
     {_id: 27, s: "string", l: NumberLong("-9223372036854775808"), n: null},
     {_id: 28, d1: 4.6, d2: -4.6, dec1: NumberDecimal("4.6"), dec2: NumberDecimal("-4.6")}
 ]));
