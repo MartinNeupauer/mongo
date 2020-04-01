@@ -28,6 +28,7 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/free_vars.h"
 #include "mongo/db/exec/sbe/parser/parser.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
@@ -169,13 +170,23 @@ TEST(SBE_Parser, Basic) {
 }
 
 TEST(SBE_abt, Basic) {
-    auto a = abt::make<abt::NoType>();
+    auto a = abt::makeT<abt::NoType>();
     ASSERT_TRUE(a.is<abt::NoType>());
-    ASSERT_TRUE(a.is<abt::TypeSyntaxSort>());
 }
 
 TEST(SBE_abt, PathIdentity) {
     auto a = abt::make<abt::PathIdentity>(abt::notype());
     ASSERT_TRUE(a.is<abt::PathIdentity>());
     ASSERT_TRUE(a.is<abt::PathSyntaxSort>());
+}
+
+TEST(SBE_free_vars, Basic) {
+    using namespace mongo;
+    NamespaceStringOrUUID name{NamespaceString{"db.c"_sd}};
+    auto a = abt::make<abt::Scan>(
+        name, abt::make<abt::ValueBinder>(std::vector<abt::VarId>{}, std::vector<abt::ABT>{}));
+
+    abt::FreeVariables fv;
+
+    algebra::transport<true>(a, fv);
 }

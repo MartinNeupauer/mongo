@@ -34,34 +34,43 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-/**
- * Type sort
- */
-class NoType;
-class VariantType;
-class FunctionType;
+using VarId = int64_t;
 
 /**
  * Path sort
  */
 class PathIdentity;
-class PathExpression;
-class PathRestrict;
-class PathFieldApply;
-class PathObject;
-class PathValue;
 /**
  * Value sort
  */
-using ABT = algebra::PolyValue<NoType,
-                               VariantType,
-                               FunctionType,
+class Constant;
+class Variable;
+/**
+ * Relational operators/boxes sort
+ */
+class Scan;
+class Unwind;
+class Join;
+class Filter;
+class Group;
+class Facet;
+class Sort;
+class Exchange;
+
+class ValueBinder;
+
+using ABT = algebra::PolyValue<Constant,
+                               Variable,
                                PathIdentity,
-                               PathExpression,
-                               PathRestrict,
-                               PathFieldApply,
-                               PathObject,
-                               PathValue>;
+                               Scan,
+                               Unwind,
+                               Join,
+                               Filter,
+                               Group,
+                               Facet,
+                               Sort,
+                               Exchange,
+                               ValueBinder>;
 
 template <typename Derived, size_t Arity>
 using Operator = algebra::OpSpecificArity<ABT, Derived, Arity>;
@@ -74,9 +83,11 @@ inline auto make(Args&&... args) {
     return ABT::make<T>(std::forward<Args>(args)...);
 }
 
-class TypeSyntaxSort {};
 class ValueSyntaxSort {};
-class PathSyntaxSort;
+class OpSyntaxSort {};
+
+void checkValueSyntaxSort(const std::vector<ABT>& n);
+void checkOpSyntaxSort(const std::vector<ABT>& n);
 
 }  // namespace abt
 }  // namespace sbe

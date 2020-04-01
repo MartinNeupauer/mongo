@@ -27,18 +27,24 @@
  *    it in the license file.
  */
 
-#pragma once
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/util/assert_util.h"
 
-#include "mongo/db/exec/sbe/abt/binder.h"
-#include "mongo/db/exec/sbe/abt/constant.h"
-#include "mongo/db/exec/sbe/abt/exchange.h"
-#include "mongo/db/exec/sbe/abt/facet.h"
-#include "mongo/db/exec/sbe/abt/filter.h"
-#include "mongo/db/exec/sbe/abt/group.h"
-#include "mongo/db/exec/sbe/abt/join.h"
-#include "mongo/db/exec/sbe/abt/path.h"
-#include "mongo/db/exec/sbe/abt/scan.h"
-#include "mongo/db/exec/sbe/abt/sort.h"
-#include "mongo/db/exec/sbe/abt/type.h"
-#include "mongo/db/exec/sbe/abt/unwind.h"
-#include "mongo/db/exec/sbe/abt/variable.h"
+namespace mongo {
+namespace sbe {
+namespace abt {
+Constant::Constant(Type typeIn) : _type(std::move(typeIn)) {
+    uassert(ErrorCodes::InternalError, "only value variant types are allowed in a constant", _type.is<VariantType>());
+}
+
+/**
+ * Free variables
+ */
+ABT* FreeVariables::transport(ABT& e, Constant& op) {
+    return &e;
+}
+
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

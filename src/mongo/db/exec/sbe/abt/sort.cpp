@@ -27,18 +27,20 @@
  *    it in the license file.
  */
 
-#pragma once
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/util/assert_util.h"
 
-#include "mongo/db/exec/sbe/abt/binder.h"
-#include "mongo/db/exec/sbe/abt/constant.h"
-#include "mongo/db/exec/sbe/abt/exchange.h"
-#include "mongo/db/exec/sbe/abt/facet.h"
-#include "mongo/db/exec/sbe/abt/filter.h"
-#include "mongo/db/exec/sbe/abt/group.h"
-#include "mongo/db/exec/sbe/abt/join.h"
-#include "mongo/db/exec/sbe/abt/path.h"
-#include "mongo/db/exec/sbe/abt/scan.h"
-#include "mongo/db/exec/sbe/abt/sort.h"
-#include "mongo/db/exec/sbe/abt/type.h"
-#include "mongo/db/exec/sbe/abt/unwind.h"
-#include "mongo/db/exec/sbe/abt/variable.h"
+namespace mongo {
+namespace sbe {
+namespace abt {
+/**
+ * Free variables
+ */
+ABT* FreeVariables::transport(ABT& e, Sort& op, std::vector<ABT*> deps, ABT* body) {
+    return &e;
+}
+
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

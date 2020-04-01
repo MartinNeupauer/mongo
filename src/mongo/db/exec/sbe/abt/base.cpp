@@ -27,18 +27,22 @@
  *    it in the license file.
  */
 
-#pragma once
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/util/assert_util.h"
 
-#include "mongo/db/exec/sbe/abt/binder.h"
-#include "mongo/db/exec/sbe/abt/constant.h"
-#include "mongo/db/exec/sbe/abt/exchange.h"
-#include "mongo/db/exec/sbe/abt/facet.h"
-#include "mongo/db/exec/sbe/abt/filter.h"
-#include "mongo/db/exec/sbe/abt/group.h"
-#include "mongo/db/exec/sbe/abt/join.h"
-#include "mongo/db/exec/sbe/abt/path.h"
-#include "mongo/db/exec/sbe/abt/scan.h"
-#include "mongo/db/exec/sbe/abt/sort.h"
-#include "mongo/db/exec/sbe/abt/type.h"
-#include "mongo/db/exec/sbe/abt/unwind.h"
-#include "mongo/db/exec/sbe/abt/variable.h"
+namespace mongo {
+namespace sbe {
+namespace abt {
+void checkValueSyntaxSort(const std::vector<ABT>& n) {
+    for (const auto& e : n) {
+        uassert(ErrorCodes::InternalError, "Value syntactic sort expected", e.is<ValueSyntaxSort>());
+    }
+}
+void checkOpSyntaxSort(const std::vector<ABT>& n) {
+    for (const auto& e : n) {
+        uassert(ErrorCodes::InternalError, "Op syntactic sort expected", e.is<OpSyntaxSort>());
+    }
+}
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

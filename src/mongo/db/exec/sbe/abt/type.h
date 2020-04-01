@@ -34,33 +34,72 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-class NoType : public Operator<NoType, 0>, public TypeSyntaxSort {
+using RowsetId = int64_t;
+/**
+ * Type sort
+ */
+class NoType;
+class VariantType;
+class FunctionType;
+class RowsetType;
+
+using Type = algebra::PolyValue<NoType, VariantType, FunctionType, RowsetType>;
+
+template <typename Derived, size_t Arity>
+using TypeOperator = algebra::OpSpecificArity<Type, Derived, Arity>;
+
+template <typename Derived, size_t Arity>
+using TypeOperatorDynamic = algebra::OpSpecificDynamicArity<Type, Derived, Arity>;
+
+template <typename T, typename... Args>
+inline auto makeT(Args&&... args) {
+    return Type::make<T>(std::forward<Args>(args)...);
+}
+
+class NoType final : public TypeOperator<NoType, 0> {
 public:
-    bool operator==(const NoType&) const {
+    bool operator==(const NoType&) const noexcept {
         return true;
     }
 };
 
 // Variant type - "atomic" types only, does not admit function values
-class VariantType : public Operator<VariantType, 0>, public TypeSyntaxSort {
+class VariantType final : public TypeOperator<VariantType, 0> {
 public:
-    bool operator==(const NoType&) const {
+    bool operator==(const VariantType&) const noexcept {
         return true;
     }
 };
 
-class FunctionType : public Operator<FunctionType, 2>, public TypeSyntaxSort {
-    using Base = Operator<FunctionType, 2>;
+class FunctionType final : public TypeOperator<FunctionType, 2> {
+    using Base = TypeOperator<FunctionType, 2>;
 
 public:
-    FunctionType(ABT lhs, ABT rhs) : Base(std::move(lhs), std::move(rhs)) {}
+    FunctionType(Type lhs, Type rhs) : Base(std::move(lhs), std::move(rhs)) {}
+
+    bool operator==(const FunctionType& rhs) const noexcept {
+        return get<0>() == rhs.get<0>() && get<1>() == rhs.get<1>();
+    }
+};
+
+class RowsetType final : public TypeOperator<RowsetType, 0> {
+    RowsetId _id;
+    // CONSIDER - should we track more info here (e.g. asc/desc direction?)
+public:
+    RowsetType(RowsetId id) : _id(id) {}
+    bool operator==(const RowsetType& rhs) const noexcept {
+        return _id == rhs._id;
+    }
 };
 
 inline auto notype() {
-    return make<NoType>();
+    return makeT<NoType>();
 }
 inline auto varianttype() {
-    return make<VariantType>();
+    return makeT<VariantType>();
+}
+inline auto rowsetType(RowsetId id) {
+    return makeT<RowsetType>(id);
 }
 }  // namespace abt
 }  // namespace sbe

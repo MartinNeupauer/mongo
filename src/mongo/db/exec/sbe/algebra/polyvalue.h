@@ -145,14 +145,23 @@ class ControlBlockVTable {
      *
      * The concrete control block for every type T of Ts.
      *
-     * It derives from the ControlBlock and T. All methods are private and only
+     * It derives from the ControlBlock. All methods are private and only
      * the friend class ControlBlockVTable can call them.
      *
      */
-    class ConcreteType : public AbstractType, public T {
+    class ConcreteType : public AbstractType {
+        T _t;
+
     public:
         template <typename... Args>
-        ConcreteType(Args&&... args) : AbstractType(_staticTag), T(std::forward<Args>(args)...) {}
+        ConcreteType(Args&&... args) : AbstractType(_staticTag), _t(std::forward<Args>(args)...) {}
+
+        const T* getPtr() const {
+            return &_t;
+        }
+        T* getPtr() {
+            return &_t;
+        }
     };
 
     static constexpr auto concrete(AbstractType* block) noexcept {
@@ -177,13 +186,20 @@ public:
         delete concrete(block);
     }
 
+    static bool compareEq(AbstractType* blockLhs, AbstractType* blockRhs) noexcept {
+        if (blockLhs->getRuntimeTag() == blockRhs->getRuntimeTag()) {
+            return *castConst<T>(blockLhs) == *castConst<T>(blockRhs);
+        }
+        return false;
+    }
+
     template <typename U>
-    static constexpr bool is_v = std::is_base_of_v<U, ConcreteType>;
+    static constexpr bool is_v = std::is_base_of_v<U, T>;
 
     template <typename U>
     static U* cast(AbstractType* block) {
         if constexpr (is_v<U>) {
-            return static_cast<U*>(concrete(block));
+            return static_cast<U*>(concrete(block)->getPtr());
         } else {
             // gcc bug 81676
             (void)block;
@@ -194,7 +210,7 @@ public:
     template <typename U>
     static const U* castConst(const AbstractType* block) {
         if constexpr (is_v<U>) {
-            return static_cast<const U*>(concrete(block));
+            return static_cast<const U*>(concrete(block)->getPtr());
         } else {
             // gcc bug 81676
             (void)block;
@@ -335,6 +351,11 @@ public:
 
     void swap(PolyValue& other) noexcept {
         std::swap(other._object, _object);
+    }
+
+    bool operator==(const PolyValue& rhs) const noexcept {
+        static constexpr std::array cmp = {ControlBlockVTable<Ts, Ts...>::compareEq...};
+        return cmp[tag()](_object, rhs._object);
     }
 };
 

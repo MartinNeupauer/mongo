@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/type.h"
 #include "mongo/util/assert_util.h"
 
 #include <string>
@@ -41,125 +41,26 @@ namespace abt {
 class PathSyntaxSort {
 public:
     virtual ~PathSyntaxSort() {}
-    virtual const ABT& type() const = 0;
+    virtual const Type& type() const = 0;
 };
 /**
  * Reflects path selected values, not the paths themselves.
  * This could also be modeled as \x->x but we would need lambda expressions and it would complicate
  * patter matching during optimization.
  */
-class PathIdentity : public Operator<PathIdentity, 1>, public PathSyntaxSort {
-    using Base = Operator<PathIdentity, 1>;
+class PathIdentity final : public Operator<PathIdentity, 0>, public PathSyntaxSort {
+    using Base = Operator<PathIdentity, 0>;
+    Type _type;
 
 public:
-    const ABT& type() const override {
-        return get<0>();
+    const Type& type() const override {
+        return _type;
     }
 
-    PathIdentity(ABT typeIn) : Base(std::move(typeIn)) {
-        invariant(type().is<TypeSyntaxSort>());
+    PathIdentity(Type typeIn) : _type(std::move(typeIn)) {
     }
 };
 
-/**
- * Path selected value is expression.
- * Type V - simply evaluate V.
- * Type V->V - pass the current selected value and evaluate the function.
- */
-class PathExpression : public Operator<PathExpression, 2>, public PathSyntaxSort {
-    using Base = Operator<PathExpression, 2>;
-
-public:
-    const ABT& type() const override {
-        return get<0>();
-    }
-    const auto& expr() const {
-        return get<1>();
-    }
-    PathExpression(ABT typeIn, ABT exprIn) : Base(std::move(typeIn), std::move(exprIn)) {
-        invariant(type().is<TypeSyntaxSort>());
-        invariant(expr().is<ValueSyntaxSort>());
-    }
-};
-
-/**
- * Drop/restrict the value. Could be modeled as \_->Nothing
- */
-class PathRestrict : public Operator<PathRestrict, 1>, public PathSyntaxSort {
-    using Base = Operator<PathRestrict, 1>;
-
-public:
-    const ABT& type() const override {
-        return get<0>();
-    }
-
-    PathRestrict(ABT typeIn) : Base(std::move(typeIn)) {
-        invariant(type().is<TypeSyntaxSort>());
-    }
-};
-
-enum class FieldSelector { direct, traverseDeep, traverseShallow };
-enum class FieldApply { always, ifObject };
-
-class PathFieldApply : public Operator<PathFieldApply, 1>, public PathSyntaxSort {
-    using Base = Operator<PathFieldApply, 1>;
-
-    std::string _fieldName;
-    FieldSelector _traverseType;
-    FieldApply _applyType;
-
-public:
-    const auto& apply() const {
-        return get<0>();
-    }
-
-    const ABT& type() const override {
-        return apply().cast<PathSyntaxSort>()->type();
-    }
-
-    PathFieldApply(std::string fieldNameIn,
-                   FieldSelector traverseTypeIn,
-                   FieldApply applyTypeIn,
-                   ABT applyIn)
-        : Base(std::move(applyIn)),
-          _fieldName(std::move(fieldNameIn)),
-          _traverseType(traverseTypeIn),
-          _applyType(applyTypeIn) {
-        invariant(apply().is<PathSyntaxSort>());
-    }
-};
-
-class PathObject : public OperatorDynamic<PathObject, 0>, public PathSyntaxSort {
-    using Base = OperatorDynamic<PathObject, 0>;
-
-public:
-    const auto& selectors() const {
-        return nodes();
-    }
-
-    // const ABT& type() const override {/* ??? */}
-
-    PathObject(std::vector<ABT> fieldsIn) : Base(std::move(fieldsIn)) {
-        for (const auto& s : selectors()) {
-            invariant(s.is<PathFieldApply>());
-        }
-    }
-};
-
-class PathValue : public Operator<PathValue, 1>, public PathSyntaxSort {
-    using Base = Operator<PathValue, 1>;
-
-public:
-    const auto& selector() const {
-        return get<0>();
-    }
-
-    // const ABT& type() const override {/* ??? */}
-
-    PathValue(ABT fieldIn) : Base(std::move(fieldIn)) {
-        invariant(selector().is<PathFieldApply>());
-    }
-};
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

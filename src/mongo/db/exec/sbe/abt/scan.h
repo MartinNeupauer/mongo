@@ -29,16 +29,21 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/binder.h"
-#include "mongo/db/exec/sbe/abt/constant.h"
-#include "mongo/db/exec/sbe/abt/exchange.h"
-#include "mongo/db/exec/sbe/abt/facet.h"
-#include "mongo/db/exec/sbe/abt/filter.h"
-#include "mongo/db/exec/sbe/abt/group.h"
-#include "mongo/db/exec/sbe/abt/join.h"
-#include "mongo/db/exec/sbe/abt/path.h"
-#include "mongo/db/exec/sbe/abt/scan.h"
-#include "mongo/db/exec/sbe/abt/sort.h"
+#include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/db/exec/sbe/abt/type.h"
-#include "mongo/db/exec/sbe/abt/unwind.h"
-#include "mongo/db/exec/sbe/abt/variable.h"
+#include "mongo/db/namespace_string.h"
+
+namespace mongo {
+namespace sbe {
+namespace abt {
+class Scan final : public Operator<Scan, 1>, public OpSyntaxSort {
+    using Base = Operator<Scan, 1>;
+
+    const NamespaceStringOrUUID _name;
+
+public:
+    Scan(const NamespaceStringOrUUID& name, ABT body) : Base(std::move(body)), _name(name) {}
+};
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo

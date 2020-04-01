@@ -28,17 +28,33 @@
  */
 
 #pragma once
+#include "mongo/db/exec/sbe/abt/base.h"
 
-#include "mongo/db/exec/sbe/abt/binder.h"
-#include "mongo/db/exec/sbe/abt/constant.h"
-#include "mongo/db/exec/sbe/abt/exchange.h"
-#include "mongo/db/exec/sbe/abt/facet.h"
-#include "mongo/db/exec/sbe/abt/filter.h"
-#include "mongo/db/exec/sbe/abt/group.h"
-#include "mongo/db/exec/sbe/abt/join.h"
-#include "mongo/db/exec/sbe/abt/path.h"
-#include "mongo/db/exec/sbe/abt/scan.h"
-#include "mongo/db/exec/sbe/abt/sort.h"
-#include "mongo/db/exec/sbe/abt/type.h"
-#include "mongo/db/exec/sbe/abt/unwind.h"
-#include "mongo/db/exec/sbe/abt/variable.h"
+namespace mongo {
+namespace sbe {
+namespace abt {
+/**
+ * Free variables tracking
+ */
+class FreeVariables {
+    // free variables
+
+    // defined variables
+
+public:
+    ABT* transport(ABT& e, Constant& op);
+    ABT* transport(ABT& e, Variable& op);
+    ABT* transport(ABT& e, PathIdentity& op);
+    ABT* transport(ABT& e, Scan& op, ABT* body);
+    ABT* transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Join& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Filter& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Facet& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Sort& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, Exchange& op, std::vector<ABT*> deps, ABT* body);
+    ABT* transport(ABT& e, ValueBinder& op, std::vector<ABT*> binds);
+};
+}  // namespace abt
+}  // namespace sbe
+}  // namespace mongo
