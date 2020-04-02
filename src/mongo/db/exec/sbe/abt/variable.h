@@ -39,9 +39,22 @@ class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
     Type _type;
     VarId _id;
 
+    ValueBinder* _binding{nullptr};
+
 public:
+    auto id() const {
+        return _id;
+    }
+
     Variable(Type typeIn, VarId idIn) : _type(std::move(typeIn)), _id(idIn) {}
+    ~Variable();
+
+    void rebind(ValueBinder* b);
 };
+
+inline auto valVar(VarId id) {
+    return make<Variable>(variantType(), id);
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

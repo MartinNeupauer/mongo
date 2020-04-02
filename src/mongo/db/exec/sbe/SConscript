@@ -11,6 +11,8 @@ env.Library(
         'abt/exchange.cpp',
         'abt/facet.cpp',
         'abt/filter.cpp',
+        'abt/free_vars.cpp',
+        'abt/functional.cpp',
         'abt/group.cpp',
         'abt/join.cpp',
         'abt/path.cpp',

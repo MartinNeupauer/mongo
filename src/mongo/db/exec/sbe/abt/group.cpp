@@ -38,6 +38,21 @@ namespace abt {
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* body) {
+    mergeVarsHelper(&e, deps);
+    uassert(ErrorCodes::InternalError, "Group has free variables", !hasFreeVars());
+
+    mergeFreeVars(&e, body);
+
+    // resolve free variables against current set of defined variables
+    resolveVars(&e, &e);
+
+    // no defined variables from below the group are accessible from above
+    resetDefinedVars(&e);
+
+    // only variables defined in the body are accessible
+    mergeDefinedVars(&e, body);
+    resolveVars(&e, &e);
+
     return &e;
 }
 

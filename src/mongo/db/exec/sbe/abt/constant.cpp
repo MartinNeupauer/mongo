@@ -34,14 +34,22 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-Constant::Constant(Type typeIn) : _type(std::move(typeIn)) {
-    uassert(ErrorCodes::InternalError, "only value variant types are allowed in a constant", _type.is<VariantType>());
+Constant::Constant(value::TypeTags tag, value::Value val)
+    : _type(variantType()), _tag(tag), _val(val) {}
+
+Constant::~Constant() {
+    value::releaseValue(_tag, _val);
 }
+
+ConstantMagic::ConstantMagic(Type typeIn) : _type(std::move(typeIn)) {}
 
 /**
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Constant& op) {
+    return &e;
+}
+ABT* FreeVariables::transport(ABT& e, ConstantMagic& op) {
     return &e;
 }
 

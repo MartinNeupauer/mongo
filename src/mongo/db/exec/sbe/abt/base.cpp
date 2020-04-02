@@ -33,14 +33,24 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+void checkValueSyntaxSort(const ABT& n) {
+    uassert(ErrorCodes::InternalError, "Value syntactic sort expected", n.is<ValueSyntaxSort>());
+}
+void checkOpSyntaxSort(const ABT& n) {
+    uassert(ErrorCodes::InternalError, "Op syntactic sort expected", n.is<OpSyntaxSort>());
+}
+void checkPathSyntaxSort(const ABT& n) {
+    uassert(ErrorCodes::InternalError, "Path syntactic sort expected", n.is<PathSyntaxSort>());
+}
+
 void checkValueSyntaxSort(const std::vector<ABT>& n) {
     for (const auto& e : n) {
-        uassert(ErrorCodes::InternalError, "Value syntactic sort expected", e.is<ValueSyntaxSort>());
+        checkValueSyntaxSort(e);
     }
 }
 void checkOpSyntaxSort(const std::vector<ABT>& n) {
     for (const auto& e : n) {
-        uassert(ErrorCodes::InternalError, "Op syntactic sort expected", e.is<OpSyntaxSort>());
+        checkOpSyntaxSort(e);
     }
 }
 }  // namespace abt

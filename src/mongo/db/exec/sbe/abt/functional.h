@@ -27,21 +27,35 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
-#include "mongo/util/assert_util.h"
+#pragma once
+
+#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/type.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-/**
- * Free variables
- */
-ABT* FreeVariables::transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body) {
-    mergeVarsHelper(&e, deps);
-    mergeVarsHelper(&e, body);
+class FDep final : public OperatorDynamic<FDep, 0>, public ValueSyntaxSort {
+    using Base = OperatorDynamic<FDep, 0>;
 
-    return &e;
+    Type _type;
+
+public:
+    FDep(Type type, std::vector<ABT> deps);
+};
+
+class EvalPath final : public Operator<EvalPath, 2>, public ValueSyntaxSort {
+    using Base = Operator<EvalPath, 2>;
+
+    Type _type;
+
+public:
+    EvalPath(ABT path, ABT input);
+};
+
+template <typename... Args>
+inline auto makeDep(Type type, Args&&... args) {
+    return make<FDep>(std::move(type), makeSeq(std::forward<Args>(args)...));
 }
 
 }  // namespace abt

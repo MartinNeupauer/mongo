@@ -38,6 +38,10 @@ namespace abt {
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Facet& op, std::vector<ABT*> deps, ABT* body) {
+    // TODO check for circular dependencies
+    mergeVarsHelper(&e, deps);
+    mergeVarsHelper(&e, body);
+
     return &e;
 }
 

@@ -34,12 +34,92 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+PathConstant::PathConstant(ABT c) : Base(std::move(c)) {
+    checkValueSyntaxSort(get<0>());
+
+    // TODO check the type
+}
+
+PathLambda::PathLambda(ABT c) : Base(std::move(c)) {
+    checkValueSyntaxSort(get<0>());
+
+    // TODO check the type
+}
+
+PathTraverse::PathTraverse(ABT c) : Base(std::move(c)) {
+    checkPathSyntaxSort(get<0>());
+}
+
+PathField::PathField(std::string nameIn, ABT c) : Base(std::move(c)), _name(nameIn) {
+    checkPathSyntaxSort(get<0>());
+}
+
+PathGet::PathGet(std::string nameIn, ABT c) : Base(std::move(c)), _name(nameIn) {
+    checkPathSyntaxSort(get<0>());
+}
+
+PathCompose::PathCompose(ABT t2In, ABT t1In) : Base(std::move(t2In), std::move(t1In)) {
+    checkPathSyntaxSort(get<0>());
+    checkPathSyntaxSort(get<1>());
+
+    checkTypes(t2().cast<PathSyntaxSort>()->type(), t1().cast<PathSyntaxSort>()->type());
+}
 /**
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, PathIdentity& op) {
     return &e;
 }
+
+ABT* FreeVariables::transport(ABT& e, PathConstant& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathLambda& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathDrop& op) {
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathKeep& op) {
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathObj& op) {
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathTraverse& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathField& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathGet& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, PathCompose& op, ABT* t2, ABT* t1) {
+    mergeVarsHelper(&e, t2);
+    mergeVarsHelper(&e, t1);
+
+    return &e;
+}
+
 
 }  // namespace abt
 }  // namespace sbe

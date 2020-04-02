@@ -40,11 +40,23 @@ using VarId = int64_t;
  * Path sort
  */
 class PathIdentity;
+class PathConstant;
+class PathLambda;
+class PathDrop;
+class PathKeep;
+class PathObj;
+class PathTraverse;
+class PathField;
+class PathGet;
+class PathCompose;
 /**
  * Value sort
  */
 class Constant;
+class ConstantMagic;
 class Variable;
+class EvalPath;
+class FDep;  // functional dependency
 /**
  * Relational operators/boxes sort
  */
@@ -60,8 +72,22 @@ class Exchange;
 class ValueBinder;
 
 using ABT = algebra::PolyValue<Constant,
+                               ConstantMagic,
                                Variable,
+                               EvalPath,
+                               FDep,
+
                                PathIdentity,
+                               PathConstant,
+                               PathLambda,
+                               PathDrop,
+                               PathKeep,
+                               PathObj,
+                               PathTraverse,
+                               PathField,
+                               PathGet,
+                               PathCompose,
+
                                Scan,
                                Unwind,
                                Join,
@@ -83,9 +109,18 @@ inline auto make(Args&&... args) {
     return ABT::make<T>(std::forward<Args>(args)...);
 }
 
+template <typename... Args>
+inline auto makeSeq(Args&&... args) {
+    std::vector<ABT> seq;
+    (seq.emplace_back(std::forward<Args>(args)), ...);
+    return seq;
+}
 class ValueSyntaxSort {};
 class OpSyntaxSort {};
 
+void checkValueSyntaxSort(const ABT& n);
+void checkOpSyntaxSort(const ABT& n);
+void checkPathSyntaxSort(const ABT& n);
 void checkValueSyntaxSort(const std::vector<ABT>& n);
 void checkOpSyntaxSort(const std::vector<ABT>& n);
 

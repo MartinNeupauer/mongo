@@ -38,6 +38,10 @@ namespace abt {
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Scan& op, ABT* body) {
+    // pull out free and defined variables for a child
+    mergeFreeVars(&e, body);
+    mergeDefinedVars(&e, body);
+
     return &e;
 }
 }  // namespace abt

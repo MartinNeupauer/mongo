@@ -38,6 +38,9 @@ namespace abt {
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Filter& op, std::vector<ABT*> deps, ABT* body) {
+    mergeVarsHelper(&e, deps);
+    mergeVarsHelper(&e, body);
+
     return &e;
 }
 

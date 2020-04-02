@@ -34,12 +34,24 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+FDep::FDep(Type type, std::vector<ABT> deps) : Base(std::move(deps)), _type(std::move(type)) {
+    checkValueSyntaxSort(nodes());
+}
+
+EvalPath::EvalPath(ABT path, ABT input)
+    : Base(std::move(path), std::move(input)), _type(variantType()) {}
 /**
  * Free variables
  */
-ABT* FreeVariables::transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body) {
+ABT* FreeVariables::transport(ABT& e, FDep& op, std::vector<ABT*> deps) {
     mergeVarsHelper(&e, deps);
-    mergeVarsHelper(&e, body);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, EvalPath& op, ABT* path, ABT* input) {
+    mergeVarsHelper(&e, path);
+    mergeVarsHelper(&e, input);
 
     return &e;
 }

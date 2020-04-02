@@ -39,11 +39,71 @@ ValueBinder::ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds)
     checkValueSyntaxSort(nodes());
     uassert(ErrorCodes::InternalError, "mismatched ids and binds", _ids.size() == nodes().size());
 }
+ValueBinder::~ValueBinder() {
+    clear();
+}
+void ValueBinder::addReference(Variable* v) {
+    // check that v is actually defined by this binder
+    bool found = false;
+    for (auto id : _ids) {
+        if (id == v->id()) {
+            found = true;
+            break;
+        }
+    }
+    uassert(ErrorCodes::InternalError, "unknown variable", found);
 
+    auto [it, inserted] = _references[v->id()].emplace(v);
+    uassert(ErrorCodes::InternalError, "duplicate variable reference", inserted);
+}
+
+void ValueBinder::removeReference(Variable* v) {
+    auto it = _references.find(v->id());
+    uassert(ErrorCodes::InternalError, "unknown variable", it != _references.end());
+
+    auto itSet = it->second.find(v);
+    uassert(ErrorCodes::InternalError, "unknown variable", itSet != it->second.end());
+    it->second.erase(itSet);
+
+    if (it->second.empty()) {
+        _references.erase(it);
+    }
+}
+
+void ValueBinder::clear() {
+    if (!_references.empty()) {
+        // make a copy for stability
+        auto copy = _references;
+
+        for (auto&& [id, varSet] : copy) {
+            for (auto v : varSet) {
+                v->rebind(nullptr);
+            }
+        }
+    }
+}
 /**
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, ValueBinder& op, std::vector<ABT*> binds) {
+    // make the transport idempotent.
+    op.clear();
+
+    for (size_t idx = 0; idx < binds.size(); ++idx) {
+        // pull out free and defined variables for a child
+        mergeFreeVars(&e, binds[idx]);
+        mergeDefinedVars(&e, binds[idx]);
+
+        // resolve free variables against current set of defined variables
+        resolveVars(&e, &e);
+
+        // check for circular dependency; i.e. we are trying to define a variable that we are
+        // already dependent on
+        uassert(ErrorCodes::InternalError, "Circular dependency", !isFreeVar(&e, op.ids()[idx]));
+
+        // and finally define a new variable
+        addDefinedVar(&e, op.ids()[idx]);
+    }
     return &e;
 }
 

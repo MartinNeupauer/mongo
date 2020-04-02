@@ -71,14 +71,22 @@ public:
     }
 };
 
-class FunctionType final : public TypeOperator<FunctionType, 2> {
-    using Base = TypeOperator<FunctionType, 2>;
+class FunctionType final : public TypeOperatorDynamic<FunctionType, 1> {
+    using Base = TypeOperatorDynamic<FunctionType, 1>;
 
 public:
-    FunctionType(Type lhs, Type rhs) : Base(std::move(lhs), std::move(rhs)) {}
+    FunctionType(Type ret, std::vector<Type> args) : Base(std::move(args), std::move(ret)) {}
 
     bool operator==(const FunctionType& rhs) const noexcept {
-        return get<0>() == rhs.get<0>() && get<1>() == rhs.get<1>();
+        if (nodes().size() != rhs.nodes().size()) {
+            return false;
+        }
+        for (size_t idx = 0; idx < nodes().size(); ++idx) {
+            if (!(nodes()[idx] == rhs.nodes()[idx])) {
+                return false;
+            }
+        }
+        return get<0>() == rhs.get<0>();
     }
 };
 
@@ -92,15 +100,28 @@ public:
     }
 };
 
-inline auto notype() {
+inline auto noType() {
     return makeT<NoType>();
 }
-inline auto varianttype() {
+inline auto variantType() {
     return makeT<VariantType>();
 }
 inline auto rowsetType(RowsetId id) {
     return makeT<RowsetType>(id);
 }
+template <typename R, typename... Args>
+inline auto funType(R&& r, Args&&... a) {
+    std::vector<Type> seq;
+    (seq.emplace_back(std::forward<Args>(a)), ...);
+
+    return makeT<FunctionType>(std::forward<R>(r), std::move(seq));
+}
+
+void checkTypes(const Type& lhs, const Type& rhs);
+
+extern const Type kNoType;
+extern const Type kVariantType;
+
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

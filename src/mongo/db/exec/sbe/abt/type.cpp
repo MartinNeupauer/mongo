@@ -32,6 +32,13 @@
 
 namespace mongo {
 namespace sbe {
-namespace abt {}  // namespace abt
+namespace abt {
+const Type kNoType = noType();
+const Type kVariantType = variantType();
+
+void checkTypes(const Type& lhs, const Type& rhs) {
+    uassert(ErrorCodes::InternalError, "type mismatch", lhs == rhs);
+}
+}  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

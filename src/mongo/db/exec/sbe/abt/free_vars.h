@@ -28,7 +28,10 @@
  */
 
 #pragma once
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 
 namespace mongo {
 namespace sbe {
@@ -37,14 +40,50 @@ namespace abt {
  * Free variables tracking
  */
 class FreeVariables {
+    using VarMultiSet = std::unordered_multimap<VarId, Variable*>;
+    using BindVarMap = std::unordered_map<VarId, ValueBinder*>;
+
     // free variables
+    std::unordered_map<ABT*, VarMultiSet> _freeVars;
 
     // defined variables
+    std::unordered_map<ABT*, BindVarMap> _definedVars;
+
+    void addFreeVar(ABT* e);
+    void mergeFreeVars(ABT* current, ABT* other);
+
+    void addDefinedVar(ABT* e, VarId id);
+    void mergeDefinedVars(ABT* current, ABT* other);
+    void resetDefinedVars(ABT* e);
+
+    void resolveVars(ABT* free, ABT* def);
+    bool isFreeVar(ABT* e, VarId id);
+
+    void mergeVarsHelper(ABT* current, ABT* other);
+    void mergeVarsHelper(ABT* current, std::vector<ABT*>& other);
 
 public:
+    void compute(ABT& e) {
+        algebra::transport<true>(e, *this);
+    }
+    bool hasFreeVars() const {
+        return !_freeVars.empty();
+    }
     ABT* transport(ABT& e, Constant& op);
+    ABT* transport(ABT& e, ConstantMagic& op);
     ABT* transport(ABT& e, Variable& op);
+    ABT* transport(ABT& e, EvalPath& op, ABT* path, ABT* input);
+    ABT* transport(ABT& e, FDep& op, std::vector<ABT*> deps);
     ABT* transport(ABT& e, PathIdentity& op);
+    ABT* transport(ABT& e, PathConstant& op, ABT* c);
+    ABT* transport(ABT& e, PathLambda& op, ABT* c);
+    ABT* transport(ABT& e, PathDrop& op);
+    ABT* transport(ABT& e, PathKeep& op);
+    ABT* transport(ABT& e, PathObj& op);
+    ABT* transport(ABT& e, PathTraverse& op, ABT* c);
+    ABT* transport(ABT& e, PathField& op, ABT* c);
+    ABT* transport(ABT& e, PathGet& op, ABT* c);
+    ABT* transport(ABT& e, PathCompose& op, ABT* t2, ABT* t1);
     ABT* transport(ABT& e, Scan& op, ABT* body);
     ABT* transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Join& op, std::vector<ABT*> deps, ABT* body);

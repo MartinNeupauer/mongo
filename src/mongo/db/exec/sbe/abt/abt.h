@@ -34,6 +34,7 @@
 #include "mongo/db/exec/sbe/abt/exchange.h"
 #include "mongo/db/exec/sbe/abt/facet.h"
 #include "mongo/db/exec/sbe/abt/filter.h"
+#include "mongo/db/exec/sbe/abt/functional.h"
 #include "mongo/db/exec/sbe/abt/group.h"
 #include "mongo/db/exec/sbe/abt/join.h"
 #include "mongo/db/exec/sbe/abt/path.h"

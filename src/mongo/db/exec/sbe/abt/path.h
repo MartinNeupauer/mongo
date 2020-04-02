@@ -33,6 +33,7 @@
 #include "mongo/util/assert_util.h"
 
 #include <string>
+#include <unordered_set>
 
 namespace mongo {
 namespace sbe {
@@ -45,20 +46,168 @@ public:
 };
 /**
  * Reflects path selected values, not the paths themselves.
- * This could also be modeled as \x->x but we would need lambda expressions and it would complicate
- * patter matching during optimization.
+ * This could also be modeled as \x->x but it would complicate patter matching during
+ * optimization.
  */
 class PathIdentity final : public Operator<PathIdentity, 0>, public PathSyntaxSort {
     using Base = Operator<PathIdentity, 0>;
-    Type _type;
 
 public:
     const Type& type() const override {
-        return _type;
+        return kVariantType;
     }
 
-    PathIdentity(Type typeIn) : _type(std::move(typeIn)) {
+    PathIdentity() {}
+};
+
+/**
+ * This could also be modeled as \_->c but it would complicate patter matching during
+ * optimization. The c can be any expression returning a variant value.
+ */
+class PathConstant final : public Operator<PathConstant, 1>, public PathSyntaxSort {
+    using Base = Operator<PathConstant, 1>;
+
+public:
+    const Type& type() const override {
+        return kVariantType;
     }
+
+    PathConstant(ABT c);
+};
+
+/**
+ * The generic \x->... The c must be V->V lambda abstraction.
+ */
+class PathLambda final : public Operator<PathLambda, 1>, public PathSyntaxSort {
+    using Base = Operator<PathLambda, 1>;
+
+public:
+    const Type& type() const override {
+        return kVariantType;
+    }
+
+    PathLambda(ABT c);
+};
+
+/**
+ * Drop the fields _names from the input.
+ */
+class PathDrop final : public Operator<PathDrop, 0>, public PathSyntaxSort {
+    using Base = Operator<PathDrop, 0>;
+
+    std::unordered_set<std::string> _names;
+
+public:
+    const Type& type() const override {
+        return kVariantType;
+    }
+
+    PathDrop(std::unordered_set<std::string> names) : _names(std::move(names)) {}
+};
+
+/**
+ * Keep the fields _names from the input and drop the rest.
+ */
+class PathKeep final : public Operator<PathKeep, 0>, public PathSyntaxSort {
+    using Base = Operator<PathKeep, 0>;
+
+    std::unordered_set<std::string> _names;
+
+public:
+    const Type& type() const override {
+        return kVariantType;
+    }
+
+    PathKeep(std::unordered_set<std::string> names) : _names(std::move(names)) {}
+};
+
+/**
+ * Force the path to always evalute to an object.
+ */
+class PathObj final : public Operator<PathObj, 0>, public PathSyntaxSort {
+    using Base = Operator<PathObj, 0>;
+
+public:
+    const Type& type() const override {
+        return kVariantType;
+    }
+
+    PathObj() {}
+};
+
+/**
+ * Nested arrays traversals.
+ */
+class PathTraverse final : public Operator<PathTraverse, 1>, public PathSyntaxSort {
+    using Base = Operator<PathTraverse, 1>;
+
+public:
+    const auto& t() const {
+        return get<0>();
+    }
+    const Type& type() const override {
+        return t().cast<PathSyntaxSort>()->type();
+    }
+
+    PathTraverse(ABT c);
+};
+
+/**
+ * Follow the field.
+ */
+class PathField final : public Operator<PathField, 1>, public PathSyntaxSort {
+    using Base = Operator<PathField, 1>;
+
+    std::string _name;
+
+public:
+    const auto& t() const {
+        return get<0>();
+    }
+    const Type& type() const override {
+        return t().cast<PathSyntaxSort>()->type();
+    }
+
+    PathField(std::string nameIn, ABT c);
+};
+
+/**
+ * Get the field value.
+ */
+class PathGet final : public Operator<PathGet, 1>, public PathSyntaxSort {
+    using Base = Operator<PathGet, 1>;
+
+    std::string _name;
+
+public:
+    const auto& t() const {
+        return get<0>();
+    }
+    const Type& type() const override {
+        return t().cast<PathSyntaxSort>()->type();
+    }
+
+    PathGet(std::string nameIn, ABT c);
+};
+
+/**
+ * Path composition.
+ */
+class PathCompose final : public Operator<PathCompose, 2>, public PathSyntaxSort {
+    using Base = Operator<PathCompose, 2>;
+
+public:
+    const auto& t2() const {
+        return get<0>();
+    }
+    const auto& t1() const {
+        return get<1>();
+    }
+    const Type& type() const override {
+        return t1().cast<PathSyntaxSort>()->type();
+    }
+
+    PathCompose(ABT t2In, ABT t1In);
 };
 
 }  // namespace abt

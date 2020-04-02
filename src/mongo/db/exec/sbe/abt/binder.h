@@ -31,6 +31,8 @@
 
 #include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/db/exec/sbe/abt/type.h"
+#include <unordered_map>
+#include <unordered_set>
 
 namespace mongo {
 namespace sbe {
@@ -39,8 +41,23 @@ class ValueBinder final : public OperatorDynamic<ValueBinder, 0> {
     using Base = OperatorDynamic<ValueBinder, 0>;
     std::vector<VarId> _ids;
 
+    // TODO - copying ValueBinder is problematic
+    std::unordered_map<VarId, std::unordered_set<Variable*>> _references;
+
+    void addReference(Variable* v);
+    void removeReference(Variable* v);
+
+    // Only variables can manipulate references
+    friend class Variable;
+
 public:
+    auto& ids() const {
+        return _ids;
+    }
     ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds);
+    ~ValueBinder();
+
+    void clear();
 };
 }  // namespace abt
 }  // namespace sbe

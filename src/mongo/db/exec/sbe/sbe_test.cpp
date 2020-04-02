@@ -175,7 +175,7 @@ TEST(SBE_abt, Basic) {
 }
 
 TEST(SBE_abt, PathIdentity) {
-    auto a = abt::make<abt::PathIdentity>(abt::notype());
+    auto a = abt::make<abt::PathIdentity>();
     ASSERT_TRUE(a.is<abt::PathIdentity>());
     ASSERT_TRUE(a.is<abt::PathSyntaxSort>());
 }
@@ -184,9 +184,36 @@ TEST(SBE_free_vars, Basic) {
     using namespace mongo;
     NamespaceStringOrUUID name{NamespaceString{"db.c"_sd}};
     auto a = abt::make<abt::Scan>(
-        name, abt::make<abt::ValueBinder>(std::vector<abt::VarId>{}, std::vector<abt::ABT>{}));
+        name,
+        abt::make<abt::ValueBinder>(
+            std::vector<abt::VarId>{0, 1, 2},
+            abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10),
+                         abt::valVar(0),
+                         abt::make<abt::ConstantMagic>(abt::rowsetType(100)))));
+
+    {
+        abt::FreeVariables fv;
+        fv.compute(a);
+        ASSERT_FALSE(fv.hasFreeVars());
+    }
+    // make sure that the algo is idempotent
+    {
+        abt::FreeVariables fv;
+        fv.compute(a);
+        ASSERT_FALSE(fv.hasFreeVars());
+    }
+}
+
+TEST(SBE_free_vars, Circular) {
+    auto a = abt::make<abt::ValueBinder>(std::vector<abt::VarId>{0, 1},
+                                         abt::makeSeq(abt::valVar(1), abt::valVar(0)));
 
     abt::FreeVariables fv;
+    ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);
+}
 
-    algebra::transport<true>(a, fv);
+TEST(SBE_free_vars, FDep) {
+    auto r1 = abt::makeRowset(100);
+    auto r2 = abt::makeRowset(200);
+    auto dep = abt::makeDep(abt::rowsetType(300), r1, r2);
 }

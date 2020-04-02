@@ -31,6 +31,7 @@
 
 #include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/db/exec/sbe/abt/type.h"
+#include "mongo/db/exec/sbe/values/value.h"
 
 namespace mongo {
 namespace sbe {
@@ -38,9 +39,28 @@ namespace abt {
 class Constant final : public Operator<Constant, 0>, public ValueSyntaxSort {
     Type _type;
 
+    // Values are always owned
+    value::TypeTags _tag;
+    value::Value _val;
+
 public:
-    Constant(Type typeIn);
+    Constant(value::TypeTags tag, value::Value val);
+    ~Constant();
 };
+
+class ConstantMagic final : public Operator<ConstantMagic, 0>, public ValueSyntaxSort {
+    Type _type;
+
+public:
+    ConstantMagic(Type typeIn);
+};
+
+inline auto makeConst(value::TypeTags tag, value::Value val) {
+    return make<Constant>(tag, val);
+}
+inline auto makeRowset(RowsetId id) {
+    return make<ConstantMagic>(rowsetType(id));
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

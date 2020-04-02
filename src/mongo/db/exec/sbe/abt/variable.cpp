@@ -34,10 +34,26 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+Variable::~Variable() {
+    rebind(nullptr);
+}
+void Variable::rebind(ValueBinder* b) {
+    if (_binding) {
+        _binding->removeReference(this);
+    }
+    if (b) {
+        b->addReference(this);
+    }
+
+    _binding = b;
+}
 /**
  * Free variables
  */
 ABT* FreeVariables::transport(ABT& e, Variable& op) {
+    // Add this variable to the list of free variables.
+    addFreeVar(&e);
+
     return &e;
 }
 
