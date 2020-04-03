@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/algebra/operator.h"
+#include "mongo/db/exec/sbe/abt/type.h"
 
 namespace mongo {
 namespace sbe {
@@ -57,6 +57,13 @@ class ConstantMagic;
 class Variable;
 class EvalPath;
 class FDep;  // functional dependency
+class FunctionCall;
+class If;
+class BinaryOp;
+class UnaryOp;
+class LocalBind;
+class LambdaAbstraction;
+class BoundParameter;
 /**
  * Relational operators/boxes sort
  */
@@ -76,6 +83,13 @@ using ABT = algebra::PolyValue<Constant,
                                Variable,
                                EvalPath,
                                FDep,
+                               FunctionCall,
+                               If,
+                               BinaryOp,
+                               UnaryOp,
+                               LocalBind,
+                               LambdaAbstraction,
+                               BoundParameter,
 
                                PathIdentity,
                                PathConstant,
@@ -115,7 +129,11 @@ inline auto makeSeq(Args&&... args) {
     (seq.emplace_back(std::forward<Args>(args)), ...);
     return seq;
 }
-class ValueSyntaxSort {};
+class ValueSyntaxSort {
+public:
+    virtual ~ValueSyntaxSort() {}
+    virtual const Type& type() const = 0;
+};
 class OpSyntaxSort {};
 
 void checkValueSyntaxSort(const ABT& n);

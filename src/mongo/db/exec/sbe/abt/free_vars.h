@@ -74,6 +74,13 @@ public:
     ABT* transport(ABT& e, Variable& op);
     ABT* transport(ABT& e, EvalPath& op, ABT* path, ABT* input);
     ABT* transport(ABT& e, FDep& op, std::vector<ABT*> deps);
+    ABT* transport(ABT& e, FunctionCall& op, std::vector<ABT*> args);
+    ABT* transport(ABT& e, If& op, ABT* cond, ABT* thenBranch, ABT* elseBranch);
+    ABT* transport(ABT& e, BinaryOp& op, ABT* lhs, ABT* rhs);
+    ABT* transport(ABT& e, UnaryOp& op, ABT* arg);
+    ABT* transport(ABT& e, LocalBind& op, ABT* bind, ABT* in);
+    ABT* transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* body);
+    ABT* transport(ABT& e, BoundParameter& op);
     ABT* transport(ABT& e, PathIdentity& op);
     ABT* transport(ABT& e, PathConstant& op, ABT* c);
     ABT* transport(ABT& e, PathLambda& op, ABT* c);

@@ -40,6 +40,5 @@
 #include "mongo/db/exec/sbe/abt/path.h"
 #include "mongo/db/exec/sbe/abt/scan.h"
 #include "mongo/db/exec/sbe/abt/sort.h"
-#include "mongo/db/exec/sbe/abt/type.h"
 #include "mongo/db/exec/sbe/abt/unwind.h"
 #include "mongo/db/exec/sbe/abt/variable.h"

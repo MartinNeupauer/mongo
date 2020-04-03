@@ -30,7 +30,6 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
-#include "mongo/db/exec/sbe/abt/type.h"
 
 namespace mongo {
 namespace sbe {
@@ -42,6 +41,10 @@ class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
     ValueBinder* _binding{nullptr};
 
 public:
+    const Type& type() const override {
+        return _type;
+    }
+
     auto id() const {
         return _id;
     }

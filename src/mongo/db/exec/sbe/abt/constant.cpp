@@ -34,8 +34,7 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-Constant::Constant(value::TypeTags tag, value::Value val)
-    : _type(variantType()), _tag(tag), _val(val) {}
+Constant::Constant(value::TypeTags tag, value::Value val) : _tag(tag), _val(val) {}
 
 Constant::~Constant() {
     value::releaseValue(_tag, _val);

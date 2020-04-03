@@ -30,7 +30,6 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
-#include "mongo/db/exec/sbe/abt/type.h"
 
 namespace mongo {
 namespace sbe {

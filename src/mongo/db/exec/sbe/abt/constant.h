@@ -30,20 +30,21 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
-#include "mongo/db/exec/sbe/abt/type.h"
 #include "mongo/db/exec/sbe/values/value.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
 class Constant final : public Operator<Constant, 0>, public ValueSyntaxSort {
-    Type _type;
-
     // Values are always owned
     value::TypeTags _tag;
     value::Value _val;
 
 public:
+    const Type& type() const override {
+        return kVariantType;
+    }
+
     Constant(value::TypeTags tag, value::Value val);
     ~Constant();
 };
@@ -52,6 +53,10 @@ class ConstantMagic final : public Operator<ConstantMagic, 0>, public ValueSynta
     Type _type;
 
 public:
+    const Type& type() const override {
+        return _type;
+    }
+
     ConstantMagic(Type typeIn);
 };
 

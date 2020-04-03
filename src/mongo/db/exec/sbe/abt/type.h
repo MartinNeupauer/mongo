@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/algebra/operator.h"
 
 namespace mongo {
 namespace sbe {

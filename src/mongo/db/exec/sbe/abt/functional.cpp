@@ -34,12 +34,48 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-FDep::FDep(Type type, std::vector<ABT> deps) : Base(std::move(deps)), _type(std::move(type)) {
+FDep::FDep(Type typeIn, std::vector<ABT> deps) : Base(std::move(deps)), _type(std::move(typeIn)) {
     checkValueSyntaxSort(nodes());
 }
 
-EvalPath::EvalPath(ABT path, ABT input)
-    : Base(std::move(path), std::move(input)), _type(variantType()) {}
+EvalPath::EvalPath(ABT pathIn, ABT inputIn)
+    : Base(std::move(pathIn), std::move(inputIn)), _type(variantType()) {
+    checkPathSyntaxSort(path());
+    checkValueSyntaxSort(input());
+}
+
+FunctionCall::FunctionCall(Type typeIn, std::string nameIn, std::vector<ABT> argsIn)
+    : Base(std::move(argsIn)), _type(std::move(typeIn)), _name(std::move(nameIn)) {
+    checkValueSyntaxSort(nodes());
+}
+
+If::If(ABT condIn, ABT thenIn, ABT elseIn)
+    : Base(std::move(condIn), std::move(thenIn), std::move(elseIn)) {
+    checkValueSyntaxSort(get<0>());
+    checkValueSyntaxSort(get<1>());
+    checkValueSyntaxSort(get<2>());
+}
+
+BinaryOp::BinaryOp(Op opIn, ABT lhs, ABT rhs)
+    : Base(std::move(lhs), std::move(rhs)), _type(kNoType), _op(opIn) {
+    checkValueSyntaxSort(get<0>());
+    checkValueSyntaxSort(get<1>());
+}
+
+UnaryOp::UnaryOp(Op opIn, ABT arg) : Base(std::move(arg)), _type(kNoType), _op(opIn) {
+    checkValueSyntaxSort(get<0>());
+}
+
+LocalBind::LocalBind(ABT bindIn, ABT inIn) : Base(std::move(bindIn), std::move(inIn)) {
+    uassert(ErrorCodes::InternalError, "binder expected", get<0>().is<ValueBinder>());
+    checkValueSyntaxSort(get<1>());
+}
+
+LambdaAbstraction::LambdaAbstraction(ABT paramIn, ABT bodyIn)
+    : Base(std::move(paramIn), std::move(bodyIn)), _type(kNoType) {
+    uassert(ErrorCodes::InternalError, "binder expected", get<0>().is<ValueBinder>());
+    checkValueSyntaxSort(get<1>());
+}
 /**
  * Free variables
  */
@@ -55,7 +91,62 @@ ABT* FreeVariables::transport(ABT& e, EvalPath& op, ABT* path, ABT* input) {
 
     return &e;
 }
+ABT* FreeVariables::transport(ABT& e, FunctionCall& op, std::vector<ABT*> args) {
+    mergeVarsHelper(&e, args);
 
+    return &e;
+}
+ABT* FreeVariables::transport(ABT& e, If& op, ABT* cond, ABT* thenBranch, ABT* elseBranch) {
+    mergeVarsHelper(&e, cond);
+    mergeVarsHelper(&e, thenBranch);
+    mergeVarsHelper(&e, elseBranch);
+
+    return &e;
+}
+ABT* FreeVariables::transport(ABT& e, BinaryOp& op, ABT* lhs, ABT* rhs) {
+    mergeVarsHelper(&e, lhs);
+    mergeVarsHelper(&e, rhs);
+
+    return &e;
+}
+ABT* FreeVariables::transport(ABT& e, UnaryOp& op, ABT* arg) {
+    mergeVarsHelper(&e, arg);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, LocalBind& op, ABT* bind, ABT* in) {
+    mergeVarsHelper(&e, bind);
+    // pull out free variables from the in expression
+    mergeFreeVars(&e, in);
+    // resolve free variables against current set of defined variables
+    resolveVars(&e, &e);
+    // drop locally bound variables as they cannot escape (good old lexical scoping)
+    resetDefinedVars(&e);
+
+    // this should be always empty?
+    mergeDefinedVars(&e, in);
+
+    return &e;
+}
+
+ABT* FreeVariables::transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* body) {
+    mergeVarsHelper(&e, param);
+    // pull out free variables from the in expression
+    mergeFreeVars(&e, body);
+    // resolve free variables against current set of defined variables
+    resolveVars(&e, &e);
+    // drop locally bound variables as they cannot escape (good old lexical scoping)
+    resetDefinedVars(&e);
+
+    // this should be always empty?
+    mergeDefinedVars(&e, body);
+
+    return &e;
+}
+ABT* FreeVariables::transport(ABT& e, BoundParameter& op) {
+    return &e;
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

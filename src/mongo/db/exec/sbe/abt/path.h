@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/type.h"
+#include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/util/assert_util.h"
 
 #include <string>

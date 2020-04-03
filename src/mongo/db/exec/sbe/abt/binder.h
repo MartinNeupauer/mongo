@@ -30,7 +30,7 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
-#include "mongo/db/exec/sbe/abt/type.h"
+
 #include <unordered_map>
 #include <unordered_set>
 
