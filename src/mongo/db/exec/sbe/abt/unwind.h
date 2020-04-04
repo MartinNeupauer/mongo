@@ -40,11 +40,11 @@ class Unwind final : public OperatorDynamic<Unwind, 1>, public OpSyntaxSort {
     const bool _preserveNullAndEmptyArrays;
 
 public:
-    Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps)
-        : Base(std::move(deps), std::move(body)),
-          _preserveNullAndEmptyArrays(preserveNullAndEmptyArrays) {
-        checkOpSyntaxSort(nodes());
+    auto preserveNullAndEmptyArrays() const {
+        return _preserveNullAndEmptyArrays;
     }
+
+    Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps);
 };
 }  // namespace abt
 }  // namespace sbe

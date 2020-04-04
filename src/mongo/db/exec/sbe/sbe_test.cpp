@@ -188,7 +188,7 @@ TEST(SBE_free_vars, Basic) {
         abt::make<abt::ValueBinder>(
             std::vector<abt::VarId>{0, 1, 2},
             abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10),
-                         abt::valVar(0),
+                         abt::var(0),
                          abt::make<abt::ConstantMagic>(abt::rowsetType(100)))));
 
     {
@@ -206,7 +206,7 @@ TEST(SBE_free_vars, Basic) {
 
 TEST(SBE_free_vars, Circular) {
     auto a = abt::make<abt::ValueBinder>(std::vector<abt::VarId>{0, 1},
-                                         abt::makeSeq(abt::valVar(1), abt::valVar(0)));
+                                         abt::makeSeq(abt::var(1), abt::var(0)));
 
     abt::FreeVariables fv;
     ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);
@@ -215,5 +215,5 @@ TEST(SBE_free_vars, Circular) {
 TEST(SBE_free_vars, FDep) {
     auto r1 = abt::makeRowset(100);
     auto r2 = abt::makeRowset(200);
-    auto dep = abt::makeDep(abt::rowsetType(300), r1, r2);
+    auto dep = abt::fdep(abt::rowsetType(300), r1, r2);
 }

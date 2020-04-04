@@ -27,36 +27,18 @@
  *    it in the license file.
  */
 
-#pragma once
-
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
-    VarId _id;
-
-    ValueBinder* _binding{nullptr};
-
-public:
-    const Type& type() const override {
-        return kNoType;
-    }
-
-    auto id() const {
-        return _id;
-    }
-
-    Variable(VarId idIn) : _id(idIn) {}
-    ~Variable();
-
-    void rebind(ValueBinder* b);
-};
-
-inline auto var(VarId id) {
-    return make<Variable>(id);
+void ExeGenerator::generate(const ABT& e) {
+    algebra::walk(e, *this);
 }
+
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

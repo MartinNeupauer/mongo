@@ -77,7 +77,7 @@ public:
         return _type;
     }
 
-    FunctionCall(Type typeIn, std::string nameIn, std::vector<ABT> argsIn);
+    FunctionCall(std::string nameIn, std::vector<ABT> argsIn);
 };
 
 class If final : public Operator<If, 3>, public ValueSyntaxSort {
@@ -169,11 +169,57 @@ public:
     BoundParameter(Type typeIn) : _type(std::move(typeIn)) {}
 };
 
+/**
+ * The optimization fence.
+ */
+class OptFence : public Operator<OptFence, 1>, public ValueSyntaxSort {
+    using Base = Operator<OptFence, 1>;
+
+public:
+    const Type& type() const override {
+        return get<0>().cast<ValueSyntaxSort>()->type();
+    }
+
+    OptFence(ABT input);
+};
+
+/**
+ * Simple single argument lambda
+ */
+template <typename T>
+inline auto lam(VarId p, T&& body) {
+    return make<LambdaAbstraction>(makeBinder(p, make<BoundParameter>(kVariantType)),
+                                   std::forward<T>(body));
+}
+
 template <typename... Args>
-inline auto makeDep(Type type, Args&&... args) {
+inline auto fdep(Type type, Args&&... args) {
     return make<FDep>(std::move(type), makeSeq(std::forward<Args>(args)...));
 }
 
+template <typename... Args>
+inline auto fun(std::string name, Args&&... args) {
+    return make<FunctionCall>(std::move(name), makeSeq(std::forward<Args>(args)...));
+}
+template <typename T>
+inline auto _if(T&& cond, T&& t, T&& e) {
+    return make<If>(std::forward<T>(cond), std::forward<T>(t), std::forward<T>(e));
+}
+
+template <typename T>
+inline auto op(BinaryOp::Op op, T&& l, T&& r) {
+    return make<BinaryOp>(op, std::forward<T>(l), std::forward<T>(r));
+}
+
+template <typename T>
+inline auto op(UnaryOp::Op op, T&& l) {
+    return make<UnaryOp>(op, std::forward<T>(l));
+}
+
+template <typename T>
+inline auto fence(T&& input) {
+    return make<OptFence>(std::forward<T>(input));
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

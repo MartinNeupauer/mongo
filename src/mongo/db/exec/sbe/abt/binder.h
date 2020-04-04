@@ -59,6 +59,33 @@ public:
 
     void clear();
 };
+
+namespace detail {
+// base case
+inline auto makeBinder_unwind(std::vector<VarId>& ids,
+                              std::vector<ABT> binds /*, VarId id, ABT bind*/) {
+    /*ids.emplace_back(id);
+    binds.emplace_back(std::move(bind));*/
+
+    return make<ValueBinder>(std::move(ids), std::move(binds));
+}
+// recursive case
+template <typename... Ts>
+inline auto makeBinder_unwind(
+    std::vector<VarId>& ids, std::vector<ABT> binds, VarId id, ABT bind, Ts&&... rest) {
+    ids.emplace_back(id);
+    binds.emplace_back(std::move(bind));
+
+    return makeBinder_unwind(ids, binds, std::forward<Ts>(rest)...);
+}
+}  // namespace detail
+
+template <typename... Ts>
+inline auto makeBinder(Ts&&... pack) {
+    std::vector<VarId> ids;
+    std::vector<ABT> binds;
+    return detail::makeBinder_unwind(ids, binds, std::forward<Ts>(pack)...);
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

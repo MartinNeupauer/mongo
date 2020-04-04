@@ -34,29 +34,13 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
-    VarId _id;
-
-    ValueBinder* _binding{nullptr};
-
+/**
+ * ABT type checker
+ */
+class TypeChecker {
 public:
-    const Type& type() const override {
-        return kNoType;
-    }
-
-    auto id() const {
-        return _id;
-    }
-
-    Variable(VarId idIn) : _id(idIn) {}
-    ~Variable();
-
-    void rebind(ValueBinder* b);
+    void check(ABT& e);
 };
-
-inline auto var(VarId id) {
-    return make<Variable>(id);
-}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

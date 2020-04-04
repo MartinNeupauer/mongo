@@ -58,6 +58,78 @@
 #include "mongo/db/query/sbe_stage_builder_projection.h"
 
 namespace mongo::stage_builder {
+std::unordered_map<std::type_index, ABTBuilder::BuilderFnType> ABTBuilder::kStageBuilders;
+
+MONGO_INITIALIZER(RegisterABTBuilders)(InitializerContext*) {
+
+    ABTBuilder::registerBuilder<DocumentSourceUnwind>(std::mem_fn(&ABTBuilder::buildUnwind));
+
+    return Status::OK();
+}
+
+DSABT ABTBuilder::buildUnwind(const DocumentSource* root) {
+    using namespace sbe::abt;
+
+    const auto un = static_cast<const DocumentSourceUnwind*>(root);
+    auto input = build(un->getSource());
+
+    auto rowsetTypeId = _rowsetIdGen.generate();
+    auto rowsetVarId = _varIdGen.generate();
+    auto docVarId = _varIdGen.generate();
+    auto inputToUnwind = _varIdGen.generate();
+    auto outputFromUnwind = _varIdGen.generate();
+
+    // Project out the unwind field
+    auto& path = un->unwindPath();
+    auto abtPath = make<PathIdentity>();
+    for (size_t idx = path.getPathLength(); idx-- > 0;) {
+        abtPath = make<PathGet>(path.getSubpath(idx).toString(), std::move(abtPath));
+    }
+    abtPath = make<EvalPath>(std::move(abtPath), var(input.doc));
+
+    auto x = _varIdGen.generate();
+    auto abtPathOut = make<PathLambda>(lam(x,
+                                           _if(op(BinaryOp::logicAnd,
+                                                  fun("exists", var(inputToUnwind)),
+                                                  fun("isArray", var(inputToUnwind))),
+                                               var(outputFromUnwind),
+                                               var(x))));
+    abtPathOut = make<PathField>(path.back().toString(), std::move(abtPathOut));
+    for (size_t idx = path.getPathLength() - 1; idx-- > 0;) {
+        abtPathOut = make<PathTraverse>(std::move(abtPathOut));
+        abtPathOut = make<PathField>(path.getSubpath(idx).toString(), std::move(abtPathOut));
+    }
+    abtPathOut = make<EvalPath>(std::move(abtPathOut), var(input.doc));
+
+    auto body = makeBinder(rowsetVarId,
+                           fence(fdep(rowsetType(rowsetTypeId), var(input.rowset))),
+                           outputFromUnwind,
+                           fence(make<ConstantMagic>(kVariantType)),
+                           inputToUnwind,
+                           fence(std::move(abtPath)),
+                           docVarId,
+                           std::move(abtPathOut));
+
+    return {make<Unwind>(
+                un->preserveNullAndEmptyArrays(), std::move(body), makeSeq(std::move(input.op))),
+            rowsetVarId,
+            docVarId};
+}
+
+DSABT ABTBuilder::build(const DocumentSource* root) {
+    uassert(ErrorCodes::InternalErrorNotSupported,
+            str::stream() << "Can't build exec tree for node: " << root->getSourceName(),
+            kStageBuilders.find(typeid(*root)) != kStageBuilders.end());
+
+    return std::invoke(kStageBuilders.at(typeid(*root)), *this, root);
+}
+
+DSABT ABTBuilder::build(const Pipeline* pipeline) {
+    auto stage = build(pipeline->getSources().back().get());
+
+    return stage;
+}
+
 std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
     DocumentSourceSlotBasedStageBuilder::kStageBuilders;
 
@@ -227,15 +299,15 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind
 
     // Project out the unwind field
     auto& path = un->unwindPath();
-    uassert(ErrorCodes::InternalErrorNotSupported,
+    /*uassert(ErrorCodes::InternalErrorNotSupported,
             str::stream() << "Dotted paths in unwind not supported: " << path.fullPath(),
             path.getPathLength() == 1);
-
+    */
     auto slot = _slotIdGenerator->generate();
-    auto getFieldFn =
-        sbe::makeE<sbe::EFunction>("getField"sv,
-                                   sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
-                                               sbe::makeE<sbe::EConstant>(path.fullPath())));
+    auto getFieldFn = sbe::makeE<sbe::EFunction>(
+        "getField"sv,
+        sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                    sbe::makeE<sbe::EConstant>(path.getSubpath(0).toString())));
 
     inputStage = sbe::makeProjectStage(std::move(inputStage), slot, std::move(getFieldFn));
 

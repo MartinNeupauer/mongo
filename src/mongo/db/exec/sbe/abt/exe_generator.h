@@ -30,33 +30,40 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/values/slot_id_generator.h"
 
 namespace mongo {
 namespace sbe {
+class PlanStage;
+class EExpression;
 namespace abt {
-class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
-    VarId _id;
+/**
+ * SBE execution plan generator
+ */
+class ExeGenerator {
+    struct GenResult {
+        std::unique_ptr<PlanStage> stage;
+        std::unique_ptr<EExpression> expr;
+    };
 
-    ValueBinder* _binding{nullptr};
+    value::IdGenerator<value::SlotId> _slotIdGen;
 
 public:
-    const Type& type() const override {
-        return kNoType;
+    // Quick and dirty hack - sometime we link with the storage engine and sometime not.
+    using ScanWalkFnType = std::function<GenResult(ExeGenerator&, const Scan& op, const ABT& body)>;
+    static ScanWalkFnType _scanImpl;
+
+    void generate(const ABT& e);
+
+    template <typename T, typename... Ts>
+    GenResult walk(const T& op, Ts&&... ts) {
+        return GenResult();
     }
+    GenResult walk(const Scan& op, const ABT& body);
+    GenResult walk(const Unwind& op, const std::vector<ABT>& deps, const ABT& body);
 
-    auto id() const {
-        return _id;
-    }
-
-    Variable(VarId idIn) : _id(idIn) {}
-    ~Variable();
-
-    void rebind(ValueBinder* b);
+    GenResult walkImpl(const Scan& op, const ABT& body);
 };
-
-inline auto var(VarId id) {
-    return make<Variable>(id);
-}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

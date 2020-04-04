@@ -28,22 +28,35 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-/**
- * Free variables
- */
-ABT* FreeVariables::transport(ABT& e, Scan& op, ABT* body) {
-    // pull out free and defined variables for a child
-    mergeFreeVars(&e, body);
-    mergeDefinedVars(&e, body);
 
-    return &e;
+ExeGenerator::ScanWalkFnType ExeGenerator::_scanImpl{nullptr};
+Scan::Scan(const NamespaceStringOrUUID& name, ABT body) : Base(std::move(body)), _name(name) {
+    checkBinder(get<0>());
 }
+Scan::Scan(const char* bsonBegin, const char* bsonEnd, ABT body)
+    : Base(std::move(body)), _bsonBegin(bsonBegin), _bsonEnd(bsonEnd) {
+    checkBinder(get<0>());
+}
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const Scan& op, const ABT& body) {
+    if (_scanImpl) {
+        return std::invoke(_scanImpl, *this, op, body);
+    }
+
+    uasserted(ErrorCodes::InternalError, "no storage");
+    MONGO_UNREACHABLE;
+}
+
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

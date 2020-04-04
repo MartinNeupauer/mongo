@@ -60,7 +60,7 @@ class FreeVariables {
     bool isFreeVar(ABT* e, VarId id);
 
     void mergeVarsHelper(ABT* current, ABT* other);
-    void mergeVarsHelper(ABT* current, std::vector<ABT*>& other);
+    void mergeVarsHelper(ABT* current, const std::vector<ABT*>& other);
 
 public:
     void compute(ABT& e) {
@@ -69,32 +69,17 @@ public:
     bool hasFreeVars() const {
         return !_freeVars.empty();
     }
-    ABT* transport(ABT& e, Constant& op);
-    ABT* transport(ABT& e, ConstantMagic& op);
+    // Default implementation that simply merges its children
+    template <typename T, typename... Ts>
+    ABT* transport(ABT& e, T&, Ts&&... ts) {
+        (mergeVarsHelper(&e, ts), ...);
+        return &e;
+    }
+    // Specialized implementations
     ABT* transport(ABT& e, Variable& op);
-    ABT* transport(ABT& e, EvalPath& op, ABT* path, ABT* input);
-    ABT* transport(ABT& e, FDep& op, std::vector<ABT*> deps);
-    ABT* transport(ABT& e, FunctionCall& op, std::vector<ABT*> args);
-    ABT* transport(ABT& e, If& op, ABT* cond, ABT* thenBranch, ABT* elseBranch);
-    ABT* transport(ABT& e, BinaryOp& op, ABT* lhs, ABT* rhs);
-    ABT* transport(ABT& e, UnaryOp& op, ABT* arg);
     ABT* transport(ABT& e, LocalBind& op, ABT* bind, ABT* in);
     ABT* transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* body);
-    ABT* transport(ABT& e, BoundParameter& op);
-    ABT* transport(ABT& e, PathIdentity& op);
-    ABT* transport(ABT& e, PathConstant& op, ABT* c);
-    ABT* transport(ABT& e, PathLambda& op, ABT* c);
-    ABT* transport(ABT& e, PathDrop& op);
-    ABT* transport(ABT& e, PathKeep& op);
-    ABT* transport(ABT& e, PathObj& op);
-    ABT* transport(ABT& e, PathTraverse& op, ABT* c);
-    ABT* transport(ABT& e, PathField& op, ABT* c);
-    ABT* transport(ABT& e, PathGet& op, ABT* c);
-    ABT* transport(ABT& e, PathCompose& op, ABT* t2, ABT* t1);
-    ABT* transport(ABT& e, Scan& op, ABT* body);
-    ABT* transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Join& op, std::vector<ABT*> deps, ABT* body);
-    ABT* transport(ABT& e, Filter& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Facet& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Sort& op, std::vector<ABT*> deps, ABT* body);

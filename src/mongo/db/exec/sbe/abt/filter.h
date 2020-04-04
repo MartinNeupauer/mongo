@@ -38,9 +38,7 @@ class Filter final : public OperatorDynamic<Filter, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Filter, 1>;
 
 public:
-    Filter(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
-        checkOpSyntaxSort(nodes());
-    }
+    Filter(ABT body, std::vector<ABT> deps);
 };
 }  // namespace abt
 }  // namespace sbe

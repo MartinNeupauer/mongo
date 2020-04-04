@@ -41,17 +41,6 @@ Constant::~Constant() {
 }
 
 ConstantMagic::ConstantMagic(Type typeIn) : _type(std::move(typeIn)) {}
-
-/**
- * Free variables
- */
-ABT* FreeVariables::transport(ABT& e, Constant& op) {
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, ConstantMagic& op) {
-    return &e;
-}
-
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

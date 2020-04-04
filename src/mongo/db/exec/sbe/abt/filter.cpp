@@ -34,16 +34,9 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-/**
- * Free variables
- */
-ABT* FreeVariables::transport(ABT& e, Filter& op, std::vector<ABT*> deps, ABT* body) {
-    mergeVarsHelper(&e, deps);
-    mergeVarsHelper(&e, body);
-
-    return &e;
+Filter::Filter(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    checkOpSyntaxSort(nodes());
 }
-
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

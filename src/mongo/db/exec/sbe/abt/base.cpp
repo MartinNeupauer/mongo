@@ -42,7 +42,9 @@ void checkOpSyntaxSort(const ABT& n) {
 void checkPathSyntaxSort(const ABT& n) {
     uassert(ErrorCodes::InternalError, "Path syntactic sort expected", n.is<PathSyntaxSort>());
 }
-
+void checkBinder(const ABT& n) {
+    uassert(ErrorCodes::InternalError, "ValueBinder syntactic sort expected", n.is<ValueBinder>());
+}
 void checkValueSyntaxSort(const std::vector<ABT>& n) {
     for (const auto& e : n) {
         checkValueSyntaxSort(e);

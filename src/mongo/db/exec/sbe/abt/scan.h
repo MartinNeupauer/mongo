@@ -32,16 +32,32 @@
 #include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/db/namespace_string.h"
 
+#include <boost/optional.hpp>
+
 namespace mongo {
 namespace sbe {
 namespace abt {
 class Scan final : public Operator<Scan, 1>, public OpSyntaxSort {
     using Base = Operator<Scan, 1>;
 
-    const NamespaceStringOrUUID _name;
+    const boost::optional<NamespaceStringOrUUID> _name;
+
+    // TODO - this is temporary from MH bson file scan
+    const char* const _bsonBegin{nullptr};
+    const char* const _bsonEnd{nullptr};
 
 public:
-    Scan(const NamespaceStringOrUUID& name, ABT body) : Base(std::move(body)), _name(name) {}
+    const auto& name() const {
+        return _name;
+    }
+    auto bsonBegin() const {
+        return _bsonBegin;
+    }
+    auto bsonEnd() const {
+        return _bsonEnd;
+    }
+    Scan(const NamespaceStringOrUUID& name, ABT body);
+    Scan(const char* bsonBegin, const char* bsonEnd, ABT body);
 };
 }  // namespace abt
 }  // namespace sbe

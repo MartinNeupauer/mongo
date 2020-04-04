@@ -27,36 +27,45 @@
  *    it in the license file.
  */
 
-#pragma once
-
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/bson_scan.h"
+#include "mongo/db/exec/sbe/stages/scan.h"
+#include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
-    VarId _id;
+MONGO_INITIALIZER(RegisterScanImpl)(InitializerContext*) {
+    ExeGenerator::_scanImpl = std::mem_fn(&ExeGenerator::walkImpl);
 
-    ValueBinder* _binding{nullptr};
-
-public:
-    const Type& type() const override {
-        return kNoType;
-    }
-
-    auto id() const {
-        return _id;
-    }
-
-    Variable(VarId idIn) : _id(idIn) {}
-    ~Variable();
-
-    void rebind(ValueBinder* b);
-};
-
-inline auto var(VarId id) {
-    return make<Variable>(id);
+    return Status::OK();
 }
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walkImpl(const Scan& op, const ABT& body) {
+    auto resultBody = algebra::walk(body, *this);
+
+    GenResult result;
+    if (op.name()) {
+        result.stage = makeS<ScanStage>(*op.name(),
+                                        boost::none,
+                                        boost::none,
+                                        std::vector<std::string>{},
+                                        std::vector<value::SlotId>{},
+                                        boost::none);
+    } else {
+        result.stage = makeS<BSONScanStage>(op.bsonBegin(),
+                                            op.bsonEnd(),
+                                            boost::none,
+                                            std::vector<std::string>{},
+                                            std::vector<value::SlotId>{});
+    }
+    return result;
+}
+
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

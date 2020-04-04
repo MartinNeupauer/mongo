@@ -64,6 +64,7 @@ class UnaryOp;
 class LocalBind;
 class LambdaAbstraction;
 class BoundParameter;
+class OptFence;
 /**
  * Relational operators/boxes sort
  */
@@ -90,6 +91,7 @@ using ABT = algebra::PolyValue<Constant,
                                LocalBind,
                                LambdaAbstraction,
                                BoundParameter,
+                               OptFence,
 
                                PathIdentity,
                                PathConstant,
@@ -139,6 +141,7 @@ class OpSyntaxSort {};
 void checkValueSyntaxSort(const ABT& n);
 void checkOpSyntaxSort(const ABT& n);
 void checkPathSyntaxSort(const ABT& n);
+void checkBinder(const ABT& n);
 void checkValueSyntaxSort(const std::vector<ABT>& n);
 void checkOpSyntaxSort(const std::vector<ABT>& n);
 

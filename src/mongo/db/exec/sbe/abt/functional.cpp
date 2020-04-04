@@ -44,8 +44,8 @@ EvalPath::EvalPath(ABT pathIn, ABT inputIn)
     checkValueSyntaxSort(input());
 }
 
-FunctionCall::FunctionCall(Type typeIn, std::string nameIn, std::vector<ABT> argsIn)
-    : Base(std::move(argsIn)), _type(std::move(typeIn)), _name(std::move(nameIn)) {
+FunctionCall::FunctionCall(std::string nameIn, std::vector<ABT> argsIn)
+    : Base(std::move(argsIn)), _type(kNoType), _name(std::move(nameIn)) {
     checkValueSyntaxSort(nodes());
 }
 
@@ -76,45 +76,14 @@ LambdaAbstraction::LambdaAbstraction(ABT paramIn, ABT bodyIn)
     uassert(ErrorCodes::InternalError, "binder expected", get<0>().is<ValueBinder>());
     checkValueSyntaxSort(get<1>());
 }
+
+OptFence::OptFence(ABT input) : Base(std::move(input)) {
+    checkValueSyntaxSort(get<0>());
+}
+
 /**
  * Free variables
  */
-ABT* FreeVariables::transport(ABT& e, FDep& op, std::vector<ABT*> deps) {
-    mergeVarsHelper(&e, deps);
-
-    return &e;
-}
-
-ABT* FreeVariables::transport(ABT& e, EvalPath& op, ABT* path, ABT* input) {
-    mergeVarsHelper(&e, path);
-    mergeVarsHelper(&e, input);
-
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, FunctionCall& op, std::vector<ABT*> args) {
-    mergeVarsHelper(&e, args);
-
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, If& op, ABT* cond, ABT* thenBranch, ABT* elseBranch) {
-    mergeVarsHelper(&e, cond);
-    mergeVarsHelper(&e, thenBranch);
-    mergeVarsHelper(&e, elseBranch);
-
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, BinaryOp& op, ABT* lhs, ABT* rhs) {
-    mergeVarsHelper(&e, lhs);
-    mergeVarsHelper(&e, rhs);
-
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, UnaryOp& op, ABT* arg) {
-    mergeVarsHelper(&e, arg);
-
-    return &e;
-}
-
 ABT* FreeVariables::transport(ABT& e, LocalBind& op, ABT* bind, ABT* in) {
     mergeVarsHelper(&e, bind);
     // pull out free variables from the in expression
@@ -142,9 +111,6 @@ ABT* FreeVariables::transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* bo
     // this should be always empty?
     mergeDefinedVars(&e, body);
 
-    return &e;
-}
-ABT* FreeVariables::transport(ABT& e, BoundParameter& op) {
     return &e;
 }
 }  // namespace abt

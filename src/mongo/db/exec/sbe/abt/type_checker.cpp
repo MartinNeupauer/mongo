@@ -27,36 +27,13 @@
  *    it in the license file.
  */
 
-#pragma once
-
-#include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/db/exec/sbe/abt/type_checker.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
-    VarId _id;
+void TypeChecker::check(ABT& e) {}
 
-    ValueBinder* _binding{nullptr};
-
-public:
-    const Type& type() const override {
-        return kNoType;
-    }
-
-    auto id() const {
-        return _id;
-    }
-
-    Variable(VarId idIn) : _id(idIn) {}
-    ~Variable();
-
-    void rebind(ValueBinder* b);
-};
-
-inline auto var(VarId id) {
-    return make<Variable>(id);
-}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

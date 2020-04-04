@@ -109,11 +109,12 @@ void FreeVariables::mergeVarsHelper(ABT* current, ABT* other) {
     // resolve free variables against current set of defined variables
     resolveVars(current, current);
 }
-void FreeVariables::mergeVarsHelper(ABT* current, std::vector<ABT*>& other) {
+void FreeVariables::mergeVarsHelper(ABT* current, const std::vector<ABT*>& other) {
     for (auto o : other) {
         mergeVarsHelper(current, o);
     }
 }
+
 bool FreeVariables::isFreeVar(ABT* e, VarId id) {
     if (auto it = _freeVars.find(e); it != _freeVars.end()) {
         return it->second.count(id) > 0;

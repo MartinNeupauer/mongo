@@ -27,23 +27,37 @@
  *    it in the license file.
  */
 
+#include "mongo/db/exec/sbe/stages/unwind.h"
 #include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
 namespace sbe {
 namespace abt {
-/**
- * Free variables
- */
-ABT* FreeVariables::transport(ABT& e, Unwind& op, std::vector<ABT*> deps, ABT* body) {
-    mergeVarsHelper(&e, deps);
-    mergeVarsHelper(&e, body);
-
-    return &e;
+Unwind::Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps)
+    : Base(std::move(deps), std::move(body)),
+      _preserveNullAndEmptyArrays(preserveNullAndEmptyArrays) {
+    checkOpSyntaxSort(nodes());
 }
 
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const Unwind& op,
+                                           const std::vector<ABT>& deps,
+                                           const ABT& body) {
+    std::vector<GenResult> resultDeps;
+    for (const auto& d : deps) {
+        resultDeps.emplace_back(algebra::walk(d, *this));
+    }
+    auto resultBody = algebra::walk(body, *this);
+
+    GenResult result;
+    result.stage = makeS<UnwindStage>(nullptr, 0, 1, 2, op.preserveNullAndEmptyArrays());
+    return GenResult{};
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

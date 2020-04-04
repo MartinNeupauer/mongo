@@ -94,6 +94,18 @@ private:
     T _incrementStep;
 };
 
+template <class T>
+class IdGenerator : IncrementingIdGenerator<T> {
+public:
+    IdGenerator(T startingId = 0, T incrementStep = 1)
+        : IncrementingIdGenerator<T>(startingId, incrementStep) {}
+
+    T generate() {
+        return this->generateByIncrementing();
+    }
+};
+
+
 class IncrementingSlotIdGenerator : IncrementingIdGenerator<value::SlotId>, public SlotIdGenerator {
 public:
     IncrementingSlotIdGenerator(int64_t startingSlotId, int64_t incrementStep)
