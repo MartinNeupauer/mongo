@@ -38,7 +38,10 @@ class Join final : public OperatorDynamic<Join, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Join, 1>;
 
 public:
-    Join(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    ABT& body() override {
+        return get<0>();
+    }
+    Join(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
         checkOpSyntaxSort(nodes());
     }
 };

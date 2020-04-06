@@ -28,7 +28,10 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
 #include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -112,6 +115,134 @@ ABT* FreeVariables::transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* bo
     mergeDefinedVars(&e, body);
 
     return &e;
+}
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const FDep& op, const std::vector<ABT>& deps) {
+    // dont generate anything for deps
+    return {};
+}
+ExeGenerator::GenResult ExeGenerator::walk(const EvalPath& op, const ABT& path, const ABT& input) {
+
+    auto inputRes = generate(input);
+    invariant(inputRes.expr);
+    auto inputSlot = _slotIdGen.generate();
+    _currentStage = makeProjectStage(std::move(_currentStage), inputSlot, std::move(inputRes.expr));
+
+    auto saveCtx = std::move(_pathCtx);
+    _pathCtx = std::make_unique<PathContext>();
+    _pathCtx->topLevelTraverse = true;
+    _pathCtx->expr = makeE<EVariable>(inputSlot);
+    _pathCtx->slot = inputSlot;
+
+    if (path.is<PathGet>()) {
+        // return a value
+        auto pathRes = generate(path);
+    } else {
+        // return an object/document
+        auto pathRes = generate(path);
+        generatePathMkObj(inputSlot);
+    }
+
+    GenResult result;
+    result.expr = std::move(_pathCtx->expr);
+    _pathCtx = std::move(saveCtx);
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const FunctionCall& op, const std::vector<ABT>& args) {
+    std::vector<std::unique_ptr<EExpression>> argExprs;
+    for (const auto& a : args) {
+        auto r = generate(a);
+        invariant(r.expr);
+        argExprs.emplace_back(std::move(r.expr));
+    }
+    GenResult result;
+    result.expr = makeE<EFunction>(op.name(), std::move(argExprs));
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const If& op,
+                                           const ABT& cond,
+                                           const ABT& thenBranch,
+                                           const ABT& elseBranch) {
+    auto condResult = generate(cond);
+    invariant(condResult.expr);
+    auto thenResult = generate(thenBranch);
+    invariant(thenResult.expr);
+    auto elseResult = generate(elseBranch);
+    invariant(elseResult.expr);
+
+    GenResult result;
+    result.expr = makeE<EIf>(
+        std::move(condResult.expr), std::move(thenResult.expr), std::move(elseResult.expr));
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const BinaryOp& op, const ABT& lhs, const ABT& rhs) {
+    auto lhsResult = generate(lhs);
+    invariant(lhsResult.expr);
+    auto rhsResult = generate(rhs);
+    invariant(rhsResult.expr);
+
+    auto sbeOp = [](const BinaryOp::Op op) {
+        switch (op) {
+            case BinaryOp::logicAnd:
+                return EPrimBinary::logicAnd;
+            case BinaryOp::logicOr:
+                return EPrimBinary::logicOr;
+            default:;
+        }
+        MONGO_UNREACHABLE;
+    }(op.op());
+
+    GenResult result;
+    result.expr = makeE<EPrimBinary>(sbeOp, std::move(lhsResult.expr), std::move(rhsResult.expr));
+    return result;
+}
+
+ExeGenerator::GenResult ExeGenerator::walk(const UnaryOp& op, const ABT& arg) {
+    auto argResult = generate(arg);
+    invariant(argResult.expr);
+
+    auto sbeOp = [](const UnaryOp::Op op) {
+        switch (op) {
+            case UnaryOp::logicNot:
+                return EPrimUnary::logicNot;
+            default:;
+        }
+        MONGO_UNREACHABLE;
+    }(op.op());
+
+    GenResult result;
+    result.expr = makeE<EPrimUnary>(sbeOp, std::move(argResult.expr));
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const LocalBind& op, const ABT& bind, const ABT& in) {
+    GenResult result;
+
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const LambdaAbstraction& op,
+                                           const ABT& param,
+                                           const ABT& in) {
+    auto binder = param.cast<ValueBinder>();
+    auto it = _slots.find(binder);
+    invariant(it != _slots.end());
+    auto paramRes = generate(param);
+    auto inRes = generate(in);
+    GenResult result;
+    result.expr =
+        makeE<ELocalBind>(*it->second[0].frame, std::move(paramRes.exprs), std::move(inRes.expr));
+
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const BoundParameter& op) {
+    invariant(_lambdaCtx);
+    GenResult result;
+    result.expr = std::move(_lambdaCtx->at(op.position()));
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const OptFence& op, const ABT& arg) {
+    return generate(arg);
 }
 }  // namespace abt
 }  // namespace sbe

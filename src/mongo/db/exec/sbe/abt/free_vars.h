@@ -69,6 +69,8 @@ public:
     bool hasFreeVars() const {
         return !_freeVars.empty();
     }
+    const VarMultiSet& getFreeVars() const;
+
     // Default implementation that simply merges its children
     template <typename T, typename... Ts>
     ABT* transport(ABT& e, T&, Ts&&... ts) {

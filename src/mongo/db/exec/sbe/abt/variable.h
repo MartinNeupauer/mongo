@@ -34,6 +34,13 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+class Blackhole final : public Operator<Blackhole, 0>, public ValueSyntaxSort {
+public:
+    const Type& type() const override {
+        return kNoType;
+    }
+};
+
 class Variable final : public Operator<Variable, 0>, public ValueSyntaxSort {
     VarId _id;
 
@@ -48,6 +55,9 @@ public:
         return _id;
     }
 
+    const auto binding() const {
+        return _binding;
+    }
     Variable(VarId idIn) : _id(idIn) {}
     ~Variable();
 

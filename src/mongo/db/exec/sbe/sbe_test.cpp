@@ -185,6 +185,8 @@ TEST(SBE_free_vars, Basic) {
     NamespaceStringOrUUID name{NamespaceString{"db.c"_sd}};
     auto a = abt::make<abt::Scan>(
         name,
+        0,
+        1,
         abt::make<abt::ValueBinder>(
             std::vector<abt::VarId>{0, 1, 2},
             abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10),
@@ -207,6 +209,25 @@ TEST(SBE_free_vars, Basic) {
 TEST(SBE_free_vars, Circular) {
     auto a = abt::make<abt::ValueBinder>(std::vector<abt::VarId>{0, 1},
                                          abt::makeSeq(abt::var(1), abt::var(0)));
+
+    abt::FreeVariables fv;
+    ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);
+}
+
+TEST(SBE_free_vars, GoodOrder) {
+    auto a = abt::make<abt::ValueBinder>(
+        std::vector<abt::VarId>{0, 1},
+        abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10), abt::var(0)));
+
+    abt::FreeVariables fv;
+    fv.compute(a);
+    ASSERT_FALSE(fv.hasFreeVars());
+}
+
+TEST(SBE_free_vars, WrongOrder) {
+    auto a = abt::make<abt::ValueBinder>(
+        std::vector<abt::VarId>{0, 1},
+        abt::makeSeq(abt::var(1), abt::makeConst(value::TypeTags::NumberInt64, 10)));
 
     abt::FreeVariables fv;
     ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);

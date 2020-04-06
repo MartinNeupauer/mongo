@@ -28,9 +28,10 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/assert_util.h"
-
 namespace mongo {
 namespace sbe {
 namespace abt {
@@ -41,6 +42,21 @@ Constant::~Constant() {
 }
 
 ConstantMagic::ConstantMagic(Type typeIn) : _type(std::move(typeIn)) {}
+
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const Constant& op) {
+    auto [tag, val] = op.val();
+    auto [copyTag, copyVal] = value::copyValue(tag, val);
+
+    GenResult result;
+    result.expr = makeE<EConstant>(copyTag, copyVal);
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const ConstantMagic& op) {
+    return {};
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

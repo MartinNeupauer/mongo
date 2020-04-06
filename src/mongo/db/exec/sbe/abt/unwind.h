@@ -38,13 +38,32 @@ class Unwind final : public OperatorDynamic<Unwind, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Unwind, 1>;
 
     const bool _preserveNullAndEmptyArrays;
+    const VarId _rowsetVar;
+    const VarId _inputVar;
+    const VarId _outputVar;
 
 public:
     auto preserveNullAndEmptyArrays() const {
         return _preserveNullAndEmptyArrays;
     }
-
-    Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps);
+    auto rowsetVar() const {
+        return _rowsetVar;
+    }
+    auto inputVar() const {
+        return _inputVar;
+    }
+    auto outputVar() const {
+        return _outputVar;
+    }
+    ABT& body() override {
+        return get<0>();
+    }
+    Unwind(bool preserveNullAndEmptyArrays,
+           VarId rowsetVar,
+           VarId inputVar,
+           VarId outputVar,
+           ABT bodyIn,
+           std::vector<ABT> deps);
 };
 }  // namespace abt
 }  // namespace sbe

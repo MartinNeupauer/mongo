@@ -28,7 +28,10 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
 #include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -38,19 +41,35 @@ ValueBinder::ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds)
     : Base(std::move(binds)), _ids(std::move(ids)) {
     checkValueSyntaxSort(nodes());
     uassert(ErrorCodes::InternalError, "mismatched ids and binds", _ids.size() == nodes().size());
+    for (size_t idx = 0; idx < _ids.size(); ++idx) {
+        auto [it, inserted] = _indexes.emplace(_ids[idx], idx);
+        uassert(ErrorCodes::InternalError, "duplicate variable id", inserted);
+    }
 }
 ValueBinder::~ValueBinder() {
     clear();
 }
+
+size_t ValueBinder::index(VarId id) const {
+    auto it = _indexes.find(id);
+    uassert(ErrorCodes::InternalError, "variable not found", it != _indexes.end());
+
+    return it->second;
+}
+bool ValueBinder::isUsed(VarId id) const {
+    auto idx = index(id);
+    auto it = _references.find(id);
+    // we will 'assume' that anything rooted in OptFence is 'used' and hence will not be optimized
+    // away
+    if (nodes()[idx].is<OptFence>() || it != _references.end()) {
+        return true;
+    }
+
+    return false;
+}
 void ValueBinder::addReference(Variable* v) {
     // check that v is actually defined by this binder
-    bool found = false;
-    for (auto id : _ids) {
-        if (id == v->id()) {
-            found = true;
-            break;
-        }
-    }
+    bool found = _indexes.count(v->id()) > 0;
     uassert(ErrorCodes::InternalError, "unknown variable", found);
 
     auto [it, inserted] = _references[v->id()].emplace(v);
@@ -107,6 +126,23 @@ ABT* FreeVariables::transport(ABT& e, ValueBinder& op, std::vector<ABT*> binds) 
     return &e;
 }
 
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const ValueBinder& op, const std::vector<ABT>& binds) {
+    auto it = _slots.find(&op);
+    invariant(it != _slots.end());
+
+    GenResult result;
+    for (size_t idx = 0; idx < binds.size(); ++idx) {
+        invariant(_currentStage);
+        auto bindResult = generateBind(true, it->second[idx], binds[idx]);
+        invariant(!_currentStage);
+        _currentStage = std::move(bindResult.stage);
+        result.exprs.emplace_back(std::move(bindResult.expr));
+    }
+    return result;
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

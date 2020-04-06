@@ -38,7 +38,10 @@ class Facet final : public OperatorDynamic<Facet, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Facet, 1>;
 
 public:
-    Facet(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    ABT& body() override {
+        return get<0>();
+    }
+    Facet(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
         checkOpSyntaxSort(nodes());
     }
 };

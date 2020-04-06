@@ -30,6 +30,7 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/pipeline/document_source.h"
 #include "mongo/db/query/sbe_stage_builder_common.h"
 

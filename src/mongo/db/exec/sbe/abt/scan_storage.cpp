@@ -46,23 +46,34 @@ MONGO_INITIALIZER(RegisterScanImpl)(InitializerContext*) {
  * ExeGenerator
  */
 ExeGenerator::GenResult ExeGenerator::walkImpl(const Scan& op, const ABT& body) {
-    auto resultBody = algebra::walk(body, *this);
+    invariant(!_currentStage);
+    auto resultInput = generateInputPhase(op.rowsetVar(), body);
+    _currentStage = std::move(resultInput.stage);
+
+
+    auto binder = body.cast<ValueBinder>();
+    auto outputSlot = binder->isUsed(op.outputVar())
+        ? boost::optional<value::SlotId>{getSlot(binder, op.outputVar())}
+        : boost::none;
+    if (op.name()) {
+        _currentStage = makeS<ScanStage>(*op.name(),
+                                         outputSlot,
+                                         boost::none,
+                                         std::vector<std::string>{},
+                                         std::vector<value::SlotId>{},
+                                         boost::none);
+    } else {
+        _currentStage = makeS<BSONScanStage>(op.bsonBegin(),
+                                             op.bsonEnd(),
+                                             outputSlot,
+                                             std::vector<std::string>{},
+                                             std::vector<value::SlotId>{});
+    }
+
+    auto resultOutput = generateOutputPhase(op.rowsetVar(), body);
 
     GenResult result;
-    if (op.name()) {
-        result.stage = makeS<ScanStage>(*op.name(),
-                                        boost::none,
-                                        boost::none,
-                                        std::vector<std::string>{},
-                                        std::vector<value::SlotId>{},
-                                        boost::none);
-    } else {
-        result.stage = makeS<BSONScanStage>(op.bsonBegin(),
-                                            op.bsonEnd(),
-                                            boost::none,
-                                            std::vector<std::string>{},
-                                            std::vector<value::SlotId>{});
-    }
+    result.stage = std::move(resultOutput.stage);
     return result;
 }
 

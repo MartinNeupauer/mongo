@@ -44,7 +44,9 @@ public:
     const Type& type() const override {
         return kVariantType;
     }
-
+    std::pair<value::TypeTags, value::Value> val() const {
+        return {_tag, _val};
+    }
     Constant(value::TypeTags tag, value::Value val);
     ~Constant();
 };

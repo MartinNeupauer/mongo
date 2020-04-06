@@ -40,6 +40,7 @@ namespace abt {
 class ValueBinder final : public OperatorDynamic<ValueBinder, 0> {
     using Base = OperatorDynamic<ValueBinder, 0>;
     std::vector<VarId> _ids;
+    std::unordered_map<VarId, size_t> _indexes;
 
     // TODO - copying ValueBinder is problematic
     std::unordered_map<VarId, std::unordered_set<Variable*>> _references;
@@ -54,6 +55,15 @@ public:
     auto& ids() const {
         return _ids;
     }
+    auto& binds() const {
+        return nodes();
+    }
+    auto& binds() {
+        return nodes();
+    }
+    size_t index(VarId id) const;
+    bool isUsed(VarId id) const;
+
     ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds);
     ~ValueBinder();
 

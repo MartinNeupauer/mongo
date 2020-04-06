@@ -28,7 +28,10 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
 #include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -57,6 +60,29 @@ ABT* FreeVariables::transport(ABT& e, Variable& op) {
     return &e;
 }
 
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const Variable& op) {
+    invariant(op.binding());
+    auto it = _slots.find(op.binding());
+    invariant(it != _slots.end());
+
+    auto& info = it->second[op.binding()->index(op.id())];
+    invariant(info.slot);
+
+    GenResult result;
+    if (info.frame) {
+        result.expr = makeE<EVariable>(*info.frame, *info.slot);
+    } else {
+        result.expr = makeE<EVariable>(*info.slot);
+    }
+    return result;
+}
+ExeGenerator::GenResult ExeGenerator::walk(const Blackhole& op) {
+    uasserted(ErrorCodes::InternalError, "unexpected blackhole");
+    MONGO_UNREACHABLE;
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

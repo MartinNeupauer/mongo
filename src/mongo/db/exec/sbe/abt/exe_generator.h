@@ -41,26 +41,101 @@ namespace abt {
  * SBE execution plan generator
  */
 class ExeGenerator {
+    struct SlotInfo {
+        boost::optional<value::SlotId> slot;
+        boost::optional<FrameId> frame;
+    };
     struct GenResult {
         std::unique_ptr<PlanStage> stage;
         std::unique_ptr<EExpression> expr;
+        std::vector<std::unique_ptr<EExpression>> exprs;
     };
 
+    struct PathContext {
+        std::unique_ptr<EExpression> expr;
+        boost::optional<value::SlotId> slot;
+
+        bool topLevelTraverse{false};
+
+        std::vector<std::string> restrictFields;
+        std::vector<std::string> projectFields;
+        std::vector<value::SlotId> projectVars;
+        bool forceNewObject{false};
+        bool returnOldObject{true};
+    };
+    const ABT& _root;
+
     value::IdGenerator<value::SlotId> _slotIdGen;
+    value::IdGenerator<FrameId> _frameIdGen;
+    std::unique_ptr<PathContext> _pathCtx;
+    std::unique_ptr<std::vector<std::unique_ptr<EExpression>>> _lambdaCtx;
+
+    std::unique_ptr<PlanStage> _currentStage;
+    std::unordered_map<const ValueBinder*, std::vector<SlotInfo>> _slots;
+
+    friend class SlotAllocator;
+
+    GenResult generateInputPhase(VarId id, const ABT& body);
+    GenResult generateOutputPhase(VarId id, const ABT& body);
+    auto generateDeps(const std::vector<ABT>& deps) {
+        std::vector<GenResult> resultDeps;
+        for (const auto& d : deps) {
+            resultDeps.emplace_back(generate(d));
+        }
+        return resultDeps;
+    }
+    GenResult generateBind(bool asExpression, const SlotInfo& info, const ABT& e);
+    void generatePathMkObj(value::SlotId inputSlot);
+
 
 public:
+    value::SlotId getSlot(const ValueBinder*, VarId id);
+
+    ExeGenerator(const ABT& root) : _root(root) {}
+
     // Quick and dirty hack - sometime we link with the storage engine and sometime not.
     using ScanWalkFnType = std::function<GenResult(ExeGenerator&, const Scan& op, const ABT& body)>;
     static ScanWalkFnType _scanImpl;
 
-    void generate(const ABT& e);
+    GenResult generate(const ABT& e);
+    GenResult generate();
 
-    template <typename T, typename... Ts>
-    GenResult walk(const T& op, Ts&&... ts) {
-        return GenResult();
-    }
+    GenResult walk(const Blackhole& op);
+    GenResult walk(const Constant& op);
+    GenResult walk(const ConstantMagic& op);
+    GenResult walk(const FDep& op, const std::vector<ABT>& deps);
+    GenResult walk(const EvalPath& op, const ABT& path, const ABT& input);
+    GenResult walk(const FunctionCall& op, const std::vector<ABT>& args);
+    GenResult walk(const If& op, const ABT& cond, const ABT& thenBranch, const ABT& elseBranch);
+    GenResult walk(const BinaryOp& op, const ABT& lhs, const ABT& rhs);
+    GenResult walk(const UnaryOp& op, const ABT& arg);
+    GenResult walk(const LocalBind& op, const ABT& bind, const ABT& in);
+    GenResult walk(const LambdaAbstraction& op, const ABT& param, const ABT& in);
+    GenResult walk(const BoundParameter& op);
+    GenResult walk(const OptFence& op, const ABT& arg);
+    GenResult walk(const Variable& op);
+
+    GenResult walk(const ValueBinder& op, const std::vector<ABT>& binds);
+
+    GenResult walk(const PathIdentity& op);
+    GenResult walk(const PathConstant& op, const ABT& c);
+    GenResult walk(const PathLambda& op, const ABT& lam);
+    GenResult walk(const PathDrop& op);
+    GenResult walk(const PathKeep& op);
+    GenResult walk(const PathObj& op);
+    GenResult walk(const PathTraverse& op, const ABT& c);
+    GenResult walk(const PathField& op, const ABT& c);
+    GenResult walk(const PathGet& op, const ABT& c);
+    GenResult walk(const PathCompose& op, const ABT& t2, const ABT& t1);
+
     GenResult walk(const Scan& op, const ABT& body);
     GenResult walk(const Unwind& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Join& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Filter& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Group& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Facet& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Sort& op, const std::vector<ABT>& deps, const ABT& body);
+    GenResult walk(const Exchange& op, const std::vector<ABT>& deps, const ABT& body);
 
     GenResult walkImpl(const Scan& op, const ABT& body);
 };

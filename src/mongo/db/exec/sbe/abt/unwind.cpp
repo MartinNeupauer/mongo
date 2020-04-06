@@ -36,9 +36,17 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
-Unwind::Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps)
-    : Base(std::move(deps), std::move(body)),
-      _preserveNullAndEmptyArrays(preserveNullAndEmptyArrays) {
+Unwind::Unwind(bool preserveNullAndEmptyArrays,
+               VarId rowsetVar,
+               VarId inputVar,
+               VarId outputVar,
+               ABT bodyIn,
+               std::vector<ABT> deps)
+    : Base(std::move(deps), std::move(bodyIn)),
+      _preserveNullAndEmptyArrays(preserveNullAndEmptyArrays),
+      _rowsetVar(rowsetVar),
+      _inputVar(inputVar),
+      _outputVar(outputVar) {
     checkOpSyntaxSort(nodes());
 }
 
@@ -48,15 +56,28 @@ Unwind::Unwind(bool preserveNullAndEmptyArrays, ABT body, std::vector<ABT> deps)
 ExeGenerator::GenResult ExeGenerator::walk(const Unwind& op,
                                            const std::vector<ABT>& deps,
                                            const ABT& body) {
-    std::vector<GenResult> resultDeps;
-    for (const auto& d : deps) {
-        resultDeps.emplace_back(algebra::walk(d, *this));
-    }
-    auto resultBody = algebra::walk(body, *this);
+    auto resultDeps = generateDeps(deps);
+    invariant(resultDeps.size() == 1);
+    invariant(!_currentStage);
+
+    _currentStage = std::move(resultDeps[0].stage);
+    invariant(_currentStage);
+
+    auto resultInput = generateInputPhase(op.rowsetVar(), body);
+    _currentStage = std::move(resultInput.stage);
+
+    auto binder = body.cast<ValueBinder>();
+    _currentStage = makeS<UnwindStage>(std::move(_currentStage),
+                                       getSlot(binder, op.inputVar()),
+                                       getSlot(binder, op.outputVar()),
+                                       _slotIdGen.generate(),
+                                       op.preserveNullAndEmptyArrays());
+
+    auto resultOutput = generateOutputPhase(op.rowsetVar(), body);
 
     GenResult result;
-    result.stage = makeS<UnwindStage>(nullptr, 0, 1, 2, op.preserveNullAndEmptyArrays());
-    return GenResult{};
+    result.stage = std::move(resultOutput.stage);
+    return result;
 }
 }  // namespace abt
 }  // namespace sbe

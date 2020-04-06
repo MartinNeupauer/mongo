@@ -188,7 +188,7 @@ class OpTransporter {
     template <typename N, typename T, size_t... I>
     void transportUnpackVoid(N&& slot, T&& op, std::index_sequence<I...>) {
         (op.template get<I>().visit(*this), ...);
-        return transformStep(std::forward<N>(slot), std::forward<T>(op));
+        return transformStep(std::forward<N>(slot), std::forward<T>(op), op.template get<I>()...);
     }
     template <typename N, typename T, size_t... I>
     void transportDynamicUnpackVoid(N&& slot, T&& op, std::index_sequence<I...>) {
@@ -196,7 +196,8 @@ class OpTransporter {
             node.visit(*this);
         }
         (op.template get<I>().visit(*this), ...);
-        return transformStep(std::forward<N>(slot), std::forward<T>(op));
+        return transformStep(
+            std::forward<N>(slot), std::forward<T>(op), op.nodes(), op.template get<I>()...);
     }
 
 public:

@@ -52,6 +52,7 @@ class PathCompose;
 /**
  * Value sort
  */
+class Blackhole;
 class Constant;
 class ConstantMagic;
 class Variable;
@@ -79,7 +80,8 @@ class Exchange;
 
 class ValueBinder;
 
-using ABT = algebra::PolyValue<Constant,
+using ABT = algebra::PolyValue<Blackhole,
+                               Constant,
                                ConstantMagic,
                                Variable,
                                EvalPath,
@@ -136,7 +138,11 @@ public:
     virtual ~ValueSyntaxSort() {}
     virtual const Type& type() const = 0;
 };
-class OpSyntaxSort {};
+class OpSyntaxSort {
+public:
+    virtual ~OpSyntaxSort() {}
+    virtual ABT& body() = 0;
+};
 
 void checkValueSyntaxSort(const ABT& n);
 void checkOpSyntaxSort(const ABT& n);

@@ -38,7 +38,10 @@ class Exchange final : public OperatorDynamic<Exchange, 1>, public OpSyntaxSort 
     using Base = OperatorDynamic<Exchange, 1>;
 
 public:
-    Exchange(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    ABT& body() override {
+        return get<0>();
+    }
+    Exchange(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
         checkOpSyntaxSort(nodes());
     }
 };

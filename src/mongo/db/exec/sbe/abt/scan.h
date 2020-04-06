@@ -40,6 +40,8 @@ namespace abt {
 class Scan final : public Operator<Scan, 1>, public OpSyntaxSort {
     using Base = Operator<Scan, 1>;
 
+    const VarId _rowsetVar;
+    const VarId _outputVar;
     const boost::optional<NamespaceStringOrUUID> _name;
 
     // TODO - this is temporary from MH bson file scan
@@ -56,8 +58,19 @@ public:
     auto bsonEnd() const {
         return _bsonEnd;
     }
-    Scan(const NamespaceStringOrUUID& name, ABT body);
-    Scan(const char* bsonBegin, const char* bsonEnd, ABT body);
+
+    auto rowsetVar() const {
+        return _rowsetVar;
+    }
+    auto outputVar() const {
+        return _outputVar;
+    }
+    ABT& body() override {
+        return get<0>();
+    }
+
+    Scan(const NamespaceStringOrUUID& name, VarId rowsetVar, VarId outputVar, ABT bodyIn);
+    Scan(const char* bsonBegin, const char* bsonEnd, VarId rowsetVar, VarId outputVar, ABT bodyIn);
 };
 }  // namespace abt
 }  // namespace sbe

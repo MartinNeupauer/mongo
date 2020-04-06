@@ -102,6 +102,9 @@ public:
         return kVariantType;
     }
 
+    const auto& names() const {
+        return _names;
+    }
     PathDrop(std::unordered_set<std::string> names) : _names(std::move(names)) {}
 };
 
@@ -167,6 +170,9 @@ public:
     const Type& type() const override {
         return t().cast<PathSyntaxSort>()->type();
     }
+    const auto& name() const {
+        return _name;
+    }
 
     PathField(std::string nameIn, ABT c);
 };
@@ -186,7 +192,9 @@ public:
     const Type& type() const override {
         return t().cast<PathSyntaxSort>()->type();
     }
-
+    const auto& name() const {
+        return _name;
+    }
     PathGet(std::string nameIn, ABT c);
 };
 

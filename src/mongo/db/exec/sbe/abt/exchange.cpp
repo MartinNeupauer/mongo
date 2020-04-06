@@ -28,7 +28,10 @@
  */
 
 #include "mongo/db/exec/sbe/abt/abt.h"
+#include "mongo/db/exec/sbe/abt/exe_generator.h"
 #include "mongo/db/exec/sbe/abt/free_vars.h"
+#include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -54,6 +57,17 @@ ABT* FreeVariables::transport(ABT& e, Exchange& op, std::vector<ABT*> deps, ABT*
     resolveVars(&e, &e);
 
     return &e;
+}
+
+/**
+ * ExeGenerator
+ */
+ExeGenerator::GenResult ExeGenerator::walk(const Exchange& op,
+                                           const std::vector<ABT>& deps,
+                                           const ABT& body) {
+    GenResult result;
+
+    return result;
 }
 
 }  // namespace abt

@@ -38,11 +38,16 @@ namespace sbe {
 namespace abt {
 
 ExeGenerator::ScanWalkFnType ExeGenerator::_scanImpl{nullptr};
-Scan::Scan(const NamespaceStringOrUUID& name, ABT body) : Base(std::move(body)), _name(name) {
+Scan::Scan(const NamespaceStringOrUUID& name, VarId rowsetVar, VarId outputVar, ABT bodyIn)
+    : Base(std::move(bodyIn)), _rowsetVar(rowsetVar), _outputVar(outputVar), _name(name) {
     checkBinder(get<0>());
 }
-Scan::Scan(const char* bsonBegin, const char* bsonEnd, ABT body)
-    : Base(std::move(body)), _bsonBegin(bsonBegin), _bsonEnd(bsonEnd) {
+Scan::Scan(const char* bsonBegin, const char* bsonEnd, VarId rowsetVar, VarId outputVar, ABT bodyIn)
+    : Base(std::move(bodyIn)),
+      _rowsetVar(rowsetVar),
+      _outputVar(outputVar),
+      _bsonBegin(bsonBegin),
+      _bsonEnd(bsonEnd) {
     checkBinder(get<0>());
 }
 /**

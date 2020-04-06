@@ -83,7 +83,7 @@ DSABT ABTBuilder::buildUnwind(const DocumentSource* root) {
     auto& path = un->unwindPath();
     auto abtPath = make<PathIdentity>();
     for (size_t idx = path.getPathLength(); idx-- > 0;) {
-        abtPath = make<PathGet>(path.getSubpath(idx).toString(), std::move(abtPath));
+        abtPath = make<PathGet>(path.getFieldName(idx).toString(), std::move(abtPath));
     }
     abtPath = make<EvalPath>(std::move(abtPath), var(input.doc));
 
@@ -94,24 +94,29 @@ DSABT ABTBuilder::buildUnwind(const DocumentSource* root) {
                                                   fun("isArray", var(inputToUnwind))),
                                                var(outputFromUnwind),
                                                var(x))));
+
     abtPathOut = make<PathField>(path.back().toString(), std::move(abtPathOut));
     for (size_t idx = path.getPathLength() - 1; idx-- > 0;) {
         abtPathOut = make<PathTraverse>(std::move(abtPathOut));
-        abtPathOut = make<PathField>(path.getSubpath(idx).toString(), std::move(abtPathOut));
+        abtPathOut = make<PathField>(path.getFieldName(idx).toString(), std::move(abtPathOut));
     }
     abtPathOut = make<EvalPath>(std::move(abtPathOut), var(input.doc));
 
-    auto body = makeBinder(rowsetVarId,
+    auto body = makeBinder(inputToUnwind,
+                           fence(std::move(abtPath)),
+                           rowsetVarId,
                            fence(fdep(rowsetType(rowsetTypeId), var(input.rowset))),
                            outputFromUnwind,
                            fence(make<ConstantMagic>(kVariantType)),
-                           inputToUnwind,
-                           fence(std::move(abtPath)),
                            docVarId,
                            std::move(abtPathOut));
 
-    return {make<Unwind>(
-                un->preserveNullAndEmptyArrays(), std::move(body), makeSeq(std::move(input.op))),
+    return {make<Unwind>(un->preserveNullAndEmptyArrays(),
+                         rowsetVarId,
+                         inputToUnwind,
+                         outputFromUnwind,
+                         std::move(body),
+                         makeSeq(std::move(input.op))),
             rowsetVarId,
             docVarId};
 }
@@ -126,6 +131,12 @@ DSABT ABTBuilder::build(const DocumentSource* root) {
 
 DSABT ABTBuilder::build(const Pipeline* pipeline) {
     auto stage = build(pipeline->getSources().back().get());
+
+    // fence the output so it is not optimized away as it is not internally referenced
+    auto& body = stage.op.cast<sbe::abt::OpSyntaxSort>()->body();
+    auto binder = body.cast<sbe::abt::ValueBinder>();
+    auto idx = binder->index(stage.doc);
+    binder->binds()[idx] = sbe::abt::fence(std::move(binder->binds()[idx]));
 
     return stage;
 }

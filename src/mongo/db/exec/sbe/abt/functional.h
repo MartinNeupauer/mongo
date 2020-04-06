@@ -77,6 +77,9 @@ public:
         return _type;
     }
 
+    const auto& name() const {
+        return _name;
+    }
     FunctionCall(std::string nameIn, std::vector<ABT> argsIn);
 };
 
@@ -106,7 +109,9 @@ public:
     const Type& type() const override {
         return _type;
     }
-
+    auto op() const {
+        return _op;
+    }
     BinaryOp(Op opIn, ABT lhs, ABT rhs);
 };
 
@@ -125,6 +130,9 @@ public:
     const Type& type() const override {
         return _type;
     }
+    auto op() const {
+        return _op;
+    }
 
     UnaryOp(Op opIn, ABT arg);
 };
@@ -135,6 +143,10 @@ class LocalBind : public Operator<LocalBind, 2>, public ValueSyntaxSort {
 public:
     const Type& type() const override {
         return get<1>().cast<ValueSyntaxSort>()->type();
+    }
+
+    const auto& bind() const {
+        return get<0>();
     }
 
     LocalBind(ABT bindIn, ABT inIn);
@@ -151,7 +163,9 @@ public:
     const Type& type() const override {
         return _type;
     }
-
+    const auto& param() const {
+        return get<0>();
+    }
     LambdaAbstraction(ABT paramIn, ABT bodyIn);
 };
 
@@ -160,13 +174,16 @@ public:
  */
 class BoundParameter : public Operator<BoundParameter, 0>, public ValueSyntaxSort {
     Type _type;
+    size_t _pos;
 
 public:
     const Type& type() const override {
         return _type;
     }
-
-    BoundParameter(Type typeIn) : _type(std::move(typeIn)) {}
+    auto position() const {
+        return _pos;
+    }
+    BoundParameter(Type typeIn, size_t pos) : _type(std::move(typeIn)), _pos(pos) {}
 };
 
 /**
@@ -188,7 +205,7 @@ public:
  */
 template <typename T>
 inline auto lam(VarId p, T&& body) {
-    return make<LambdaAbstraction>(makeBinder(p, make<BoundParameter>(kVariantType)),
+    return make<LambdaAbstraction>(makeBinder(p, make<BoundParameter>(kVariantType, 0)),
                                    std::forward<T>(body));
 }
 

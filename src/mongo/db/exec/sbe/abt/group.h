@@ -38,7 +38,10 @@ class Group final : public OperatorDynamic<Group, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Group, 1>;
 
 public:
-    Group(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    ABT& body() override {
+        return get<0>();
+    }
+    Group(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
         checkOpSyntaxSort(nodes());
     }
 };

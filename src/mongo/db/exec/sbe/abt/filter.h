@@ -38,7 +38,10 @@ class Filter final : public OperatorDynamic<Filter, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Filter, 1>;
 
 public:
-    Filter(ABT body, std::vector<ABT> deps);
+    ABT& body() override {
+        return get<0>();
+    }
+    Filter(ABT bodyIn, std::vector<ABT> deps);
 };
 }  // namespace abt
 }  // namespace sbe

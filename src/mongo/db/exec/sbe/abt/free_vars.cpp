@@ -123,6 +123,11 @@ bool FreeVariables::isFreeVar(ABT* e, VarId id) {
     return false;
 }
 
+const FreeVariables::VarMultiSet& FreeVariables::getFreeVars() const {
+    uassert(ErrorCodes::InternalError, "Inconsistent free vars", _freeVars.size() == 1);
+
+    return _freeVars.begin()->second;
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

@@ -38,7 +38,10 @@ class Sort final : public OperatorDynamic<Sort, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Sort, 1>;
 
 public:
-    Sort(ABT body, std::vector<ABT> deps) : Base(std::move(deps), std::move(body)) {
+    ABT& body() override {
+        return get<0>();
+    }
+    Sort(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
         checkOpSyntaxSort(nodes());
     }
 };
