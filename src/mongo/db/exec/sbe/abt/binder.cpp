@@ -46,6 +46,11 @@ ValueBinder::ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds)
         uassert(ErrorCodes::InternalError, "duplicate variable id", inserted);
     }
 }
+ValueBinder::ValueBinder(const ValueBinder& other)
+    : Base(other), _ids(other._ids), _indexes(other._indexes) {
+    // TODO fix references
+}
+
 ValueBinder::~ValueBinder() {
     clear();
 }
@@ -135,11 +140,15 @@ ExeGenerator::GenResult ExeGenerator::walk(const ValueBinder& op, const std::vec
 
     GenResult result;
     for (size_t idx = 0; idx < binds.size(); ++idx) {
-        invariant(_currentStage);
-        auto bindResult = generateBind(true, it->second[idx], binds[idx]);
-        invariant(!_currentStage);
-        _currentStage = std::move(bindResult.stage);
-        result.exprs.emplace_back(std::move(bindResult.expr));
+        if (op.isUsed(op.ids()[idx])) {
+            invariant(_currentStage);
+            auto bindResult = generateBind(it->second[idx], binds[idx]);
+            invariant(!_currentStage);
+            _currentStage = std::move(bindResult.stage);
+            result.exprs.emplace_back(std::move(bindResult.expr));
+        } else {
+            result.exprs.emplace_back(makeE<EConstant>(value::TypeTags::Nothing, 0));
+        }
     }
     return result;
 }

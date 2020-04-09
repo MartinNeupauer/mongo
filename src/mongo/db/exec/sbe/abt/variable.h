@@ -58,7 +58,12 @@ public:
     const auto binding() const {
         return _binding;
     }
+
+    const ABT& followVar() const;
+    ABT& followVar();
+
     Variable(VarId idIn) : _id(idIn) {}
+    Variable(const Variable& other);
     ~Variable();
 
     void rebind(ValueBinder* b);

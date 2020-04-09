@@ -42,7 +42,7 @@ namespace abt {
  */
 ABT* FreeVariables::transport(ABT& e, Sort& op, std::vector<ABT*> deps, ABT* body) {
     mergeVarsHelper(&e, deps);
-    uassert(ErrorCodes::InternalError, "Sort has free variables", !hasFreeVars());
+    uassert(ErrorCodes::InternalError, "Sort has free variables", !hasFreeVars(&e));
 
     mergeFreeVars(&e, body);
 

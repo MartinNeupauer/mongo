@@ -60,7 +60,13 @@ public:
     const auto& path() const {
         return get<0>();
     }
+    auto& path() {
+        return get<0>();
+    }
     const auto& input() const {
+        return get<1>();
+    }
+    auto& input() {
         return get<1>();
     }
     EvalPath(ABT pathIn, ABT inputIn);
@@ -196,6 +202,8 @@ public:
     const Type& type() const override {
         return get<0>().cast<ValueSyntaxSort>()->type();
     }
+    const ABT& followFence() const;
+    ABT& followFence();
 
     OptFence(ABT input);
 };

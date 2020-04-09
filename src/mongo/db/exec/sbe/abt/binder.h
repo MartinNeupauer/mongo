@@ -65,6 +65,7 @@ public:
     bool isUsed(VarId id) const;
 
     ValueBinder(std::vector<VarId> ids, std::vector<ABT> binds);
+    ValueBinder(const ValueBinder& other);
     ~ValueBinder();
 
     void clear();
@@ -72,8 +73,7 @@ public:
 
 namespace detail {
 // base case
-inline auto makeBinder_unwind(std::vector<VarId>& ids,
-                              std::vector<ABT> binds /*, VarId id, ABT bind*/) {
+inline auto makeBinder_unwind(std::vector<VarId>& ids, std::vector<ABT>& binds) {
     /*ids.emplace_back(id);
     binds.emplace_back(std::move(bind));*/
 
@@ -82,7 +82,7 @@ inline auto makeBinder_unwind(std::vector<VarId>& ids,
 // recursive case
 template <typename... Ts>
 inline auto makeBinder_unwind(
-    std::vector<VarId>& ids, std::vector<ABT> binds, VarId id, ABT bind, Ts&&... rest) {
+    std::vector<VarId>& ids, std::vector<ABT>& binds, VarId id, ABT bind, Ts&&... rest) {
     ids.emplace_back(id);
     binds.emplace_back(std::move(bind));
 

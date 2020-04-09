@@ -49,6 +49,7 @@ class ExeGenerator {
         std::unique_ptr<PlanStage> stage;
         std::unique_ptr<EExpression> expr;
         std::vector<std::unique_ptr<EExpression>> exprs;
+        boost::optional<value::SlotId> slot;
     };
 
     struct PathContext {
@@ -56,6 +57,26 @@ class ExeGenerator {
         boost::optional<value::SlotId> slot;
 
         bool topLevelTraverse{false};
+
+        boost::optional<value::SlotId> inputMkObjSlot;
+        std::vector<std::string> restrictFields;
+        std::vector<std::string> projectFields;
+        std::vector<value::SlotId> projectVars;
+        bool forceNewObject{false};
+        bool returnOldObject{true};
+    };
+
+    struct PathContext2 {
+        // These 3 fields cannot be set at the same time.
+        std::unique_ptr<EExpression> inputExpr;
+        boost::optional<value::SlotId> inputSlot;
+        boost::optional<value::SlotId> inputMkObjSlot;
+
+        // Optionally, a path may request the ouput to be put in a specific slot
+        boost::optional<value::SlotId> requestedOutputSlot;
+
+        std::unique_ptr<EExpression> outputExpr;
+        boost::optional<value::SlotId> outputSlot;
 
         std::vector<std::string> restrictFields;
         std::vector<std::string> projectFields;
@@ -67,8 +88,8 @@ class ExeGenerator {
 
     value::IdGenerator<value::SlotId> _slotIdGen;
     value::IdGenerator<FrameId> _frameIdGen;
-    std::unique_ptr<PathContext> _pathCtx;
-    std::unique_ptr<std::vector<std::unique_ptr<EExpression>>> _lambdaCtx;
+    PathContext* _pathCtx{nullptr};
+    std::vector<std::unique_ptr<EExpression>>* _lambdaCtx{nullptr};
 
     std::unique_ptr<PlanStage> _currentStage;
     std::unordered_map<const ValueBinder*, std::vector<SlotInfo>> _slots;
@@ -84,8 +105,8 @@ class ExeGenerator {
         }
         return resultDeps;
     }
-    GenResult generateBind(bool asExpression, const SlotInfo& info, const ABT& e);
-    void generatePathMkObj(value::SlotId inputSlot);
+    GenResult generateBind(const SlotInfo& info, const ABT& e);
+    void generatePathMkObj();
 
 
 public:

@@ -27,49 +27,43 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/exe_generator.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
-#include "mongo/db/exec/sbe/expressions/expression.h"
-#include "mongo/db/exec/sbe/stages/stages.h"
-#include "mongo/util/assert_util.h"
+#pragma once
+
+#include "mongo/db/exec/sbe/abt/base.h"
+
+#include <unordered_map>
+#include <unordered_set>
 
 namespace mongo {
 namespace sbe {
 namespace abt {
 /**
- * Free variables
+ * DCE
  */
-ABT* FreeVariables::transport(ABT& e, Exchange& op, std::vector<ABT*> deps, ABT* body) {
-    mergeVarsHelper(&e, deps);
-    uassert(ErrorCodes::InternalError, "Exchange has free variables", !hasFreeVars(&e));
+class DeadCodeElimination {
+    bool _changed{false};
 
-    mergeFreeVars(&e, body);
+public:
+    void optimize(ABT& root);
 
-    // resolve free variables against current set of defined variables
-    resolveVars(&e, &e);
+    template <typename... Ts>
+    void transport(Ts&&...) {}
 
-    // no defined variables from below the exchange are accessible from above
-    resetDefinedVars(&e);
+    void transport(ValueBinder& op, std::vector<ABT>& binds);
+};
 
-    // only variables defined in the body are accessible
-    mergeDefinedVars(&e, body);
-    resolveVars(&e, &e);
+class PathFusion {
+    bool _changed{false};
+    bool fuse(ABT& lhs, ABT& rhs);
 
-    return &e;
-}
+public:
+    void optimize(ABT& root);
 
-/**
- * ExeGenerator
- */
-ExeGenerator::GenResult ExeGenerator::walk(const Exchange& op,
-                                           const std::vector<ABT>& deps,
-                                           const ABT& body) {
-    GenResult result;
+    template <typename... Ts>
+    void transport(Ts&&...) {}
 
-    return result;
-}
-
+    void transport(EvalPath& op, ABT& path, ABT& input);
+};
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

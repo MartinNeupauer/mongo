@@ -84,6 +84,12 @@ OptFence::OptFence(ABT input) : Base(std::move(input)) {
     checkValueSyntaxSort(get<0>());
 }
 
+const ABT& OptFence::followFence() const {
+    return follow(get<0>());
+}
+ABT& OptFence::followFence() {
+    return follow(get<0>());
+}
 /**
  * Free variables
  */
@@ -127,14 +133,22 @@ ExeGenerator::GenResult ExeGenerator::walk(const EvalPath& op, const ABT& path, 
 
     auto inputRes = generate(input);
     invariant(inputRes.expr);
-    auto inputSlot = _slotIdGen.generate();
-    _currentStage = makeProjectStage(std::move(_currentStage), inputSlot, std::move(inputRes.expr));
+    value::SlotId inputSlot;
+    if (inputRes.slot) {
+        inputSlot = *inputRes.slot;
+    } else {
+        inputSlot = _slotIdGen.generate();
+        _currentStage =
+            makeProjectStage(std::move(_currentStage), inputSlot, std::move(inputRes.expr));
+    }
 
-    auto saveCtx = std::move(_pathCtx);
-    _pathCtx = std::make_unique<PathContext>();
+    auto saveCtx = _pathCtx;
+    PathContext localPathCtx;
+    _pathCtx = &localPathCtx;
     _pathCtx->topLevelTraverse = true;
     _pathCtx->expr = makeE<EVariable>(inputSlot);
     _pathCtx->slot = inputSlot;
+    _pathCtx->inputMkObjSlot = inputSlot;
 
     if (path.is<PathGet>()) {
         // return a value
@@ -142,12 +156,12 @@ ExeGenerator::GenResult ExeGenerator::walk(const EvalPath& op, const ABT& path, 
     } else {
         // return an object/document
         auto pathRes = generate(path);
-        generatePathMkObj(inputSlot);
+        generatePathMkObj();
     }
 
     GenResult result;
     result.expr = std::move(_pathCtx->expr);
-    _pathCtx = std::move(saveCtx);
+    _pathCtx = saveCtx;
     return result;
 }
 ExeGenerator::GenResult ExeGenerator::walk(const FunctionCall& op, const std::vector<ABT>& args) {

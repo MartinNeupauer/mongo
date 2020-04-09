@@ -55,6 +55,25 @@ void checkOpSyntaxSort(const std::vector<ABT>& n) {
         checkOpSyntaxSort(e);
     }
 }
+
+const ABT& follow(const ABT& input) {
+    if (auto var = input.cast<Variable>(); var) {
+        return var->followVar();
+    } else if (auto fence = input.cast<OptFence>(); fence) {
+        return fence->followFence();
+    }
+
+    return input;
+}
+ABT& follow(ABT& input) {
+    if (auto var = input.cast<Variable>(); var) {
+        return var->followVar();
+    } else if (auto fence = input.cast<OptFence>(); fence) {
+        return fence->followFence();
+    }
+
+    return input;
+}
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

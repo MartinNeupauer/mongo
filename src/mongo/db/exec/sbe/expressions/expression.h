@@ -220,6 +220,9 @@ class EFunction final : public EExpression {
 public:
     EFunction(std::string_view name, std::vector<std::unique_ptr<EExpression>> args) : _name(name) {
         _nodes = std::move(args);
+        for (auto& n : _nodes) {
+            invariant(n);
+        }
     }
 
     std::unique_ptr<EExpression> clone() override;

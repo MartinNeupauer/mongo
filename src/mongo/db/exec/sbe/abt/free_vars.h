@@ -69,6 +69,9 @@ public:
     bool hasFreeVars() const {
         return !_freeVars.empty();
     }
+    bool hasFreeVars(ABT* e) const {
+        return _freeVars.count(e) > 0;
+    }
     const VarMultiSet& getFreeVars() const;
 
     // Default implementation that simply merges its children
@@ -81,6 +84,8 @@ public:
     ABT* transport(ABT& e, Variable& op);
     ABT* transport(ABT& e, LocalBind& op, ABT* bind, ABT* in);
     ABT* transport(ABT& e, LambdaAbstraction& op, ABT* param, ABT* body);
+    ABT* transport(ABT& e, PathTraverse& op, ABT* c);
+
     ABT* transport(ABT& e, Join& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* body);
     ABT* transport(ABT& e, Facet& op, std::vector<ABT*> deps, ABT* body);

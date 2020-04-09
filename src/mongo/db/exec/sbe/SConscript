@@ -16,6 +16,7 @@ env.Library(
         'abt/functional.cpp',
         'abt/group.cpp',
         'abt/join.cpp',
+        'abt/optimize.cpp',
         'abt/path.cpp',
         'abt/scan.cpp',
         'abt/sort.cpp',

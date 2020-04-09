@@ -151,6 +151,9 @@ void checkBinder(const ABT& n);
 void checkValueSyntaxSort(const std::vector<ABT>& n);
 void checkOpSyntaxSort(const std::vector<ABT>& n);
 
+const ABT& follow(const ABT& input);
+ABT& follow(ABT& input);
+
 }  // namespace abt
 }  // namespace sbe
 }  // namespace mongo

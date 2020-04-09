@@ -116,10 +116,12 @@ ExeGenerator::GenResult ExeGenerator::generateInputPhase(VarId id, const ABT& bo
     auto index = binder->index(id);
 
     for (size_t idx = 0; idx < index; ++idx) {
-        invariant(_currentStage);
-        auto localRes = generateBind(false, it->second[idx], binder->binds()[idx]);
-        invariant(!_currentStage);
-        _currentStage = std::move(localRes.stage);
+        if (binder->isUsed(binder->ids()[idx])) {
+            invariant(_currentStage);
+            auto localRes = generateBind(it->second[idx], binder->binds()[idx]);
+            invariant(!_currentStage);
+            _currentStage = std::move(localRes.stage);
+        }
     }
     GenResult result;
     result.stage = std::move(_currentStage);
@@ -135,19 +137,19 @@ ExeGenerator::GenResult ExeGenerator::generateOutputPhase(VarId id, const ABT& b
     auto index = binder->index(id);
 
     for (size_t idx = index; idx < binder->binds().size(); ++idx) {
-        invariant(_currentStage);
-        auto localRes = generateBind(false, it->second[idx], binder->binds()[idx]);
-        invariant(!_currentStage);
-        _currentStage = std::move(localRes.stage);
+        if (binder->isUsed(binder->ids()[idx])) {
+            invariant(_currentStage);
+            auto localRes = generateBind(it->second[idx], binder->binds()[idx]);
+            invariant(!_currentStage);
+            _currentStage = std::move(localRes.stage);
+        }
     }
 
     GenResult result;
     result.stage = std::move(_currentStage);
     return result;
 }
-ExeGenerator::GenResult ExeGenerator::generateBind(bool asExpression,
-                                                   const SlotInfo& info,
-                                                   const ABT& e) {
+ExeGenerator::GenResult ExeGenerator::generateBind(const SlotInfo& info, const ABT& e) {
     auto bindResult = generate(e);
     if (!(bindResult.expr || bindResult.stage)) {
         GenResult result;
@@ -155,11 +157,11 @@ ExeGenerator::GenResult ExeGenerator::generateBind(bool asExpression,
         return result;
     }
 
-    if (asExpression) {
+    if (info.slot && info.frame) {
+        // as expression
     } else {
         // as projection
         invariant(info.slot);
-        invariant(!info.frame);
         if (bindResult.expr) {
             _currentStage =
                 makeProjectStage(std::move(_currentStage), *info.slot, std::move(bindResult.expr));
@@ -170,15 +172,16 @@ ExeGenerator::GenResult ExeGenerator::generateBind(bool asExpression,
     result.expr = std::move(bindResult.expr);
     return result;
 }
-void ExeGenerator::generatePathMkObj(value::SlotId inputSlot) {
+void ExeGenerator::generatePathMkObj() {
     invariant(_currentStage);
     invariant(_pathCtx);
+    invariant(_pathCtx->inputMkObjSlot);
 
     auto outputSlot = _slotIdGen.generate();
 
     _currentStage = makeS<MakeObjStage>(std::move(_currentStage),
                                         outputSlot,
-                                        inputSlot,
+                                        *_pathCtx->inputMkObjSlot,
                                         _pathCtx->restrictFields,
                                         _pathCtx->projectFields,
                                         _pathCtx->projectVars,

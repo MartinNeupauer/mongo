@@ -63,6 +63,7 @@ std::unordered_map<std::type_index, ABTBuilder::BuilderFnType> ABTBuilder::kStag
 MONGO_INITIALIZER(RegisterABTBuilders)(InitializerContext*) {
 
     ABTBuilder::registerBuilder<DocumentSourceUnwind>(std::mem_fn(&ABTBuilder::buildUnwind));
+    ABTBuilder::registerBuilder<DocumentSourceGroup>(std::mem_fn(&ABTBuilder::buildGroup));
 
     return Status::OK();
 }
@@ -120,7 +121,82 @@ DSABT ABTBuilder::buildUnwind(const DocumentSource* root) {
             rowsetVarId,
             docVarId};
 }
+DSABT ABTBuilder::buildGroup(const DocumentSource* root) {
+    using namespace sbe::abt;
 
+    const auto gb = static_cast<const DocumentSourceGroup*>(root);
+    auto input = build(gb->getSource());
+
+    std::vector<VarId> gbs;
+    std::vector<VarId> ids;
+    std::vector<ABT> binds;
+
+    // Project out group by fields/columns.
+    for (size_t idx = 0; idx < gb->getIdExpressions().size(); ++idx) {
+        auto fieldExpr = gb->getIdExpressions()[idx].get();
+        auto fieldPathExpr = dynamic_cast<ExpressionFieldPath*>(fieldExpr);
+        uassert(ErrorCodes::NotImplemented, "not yet implemented", fieldPathExpr);
+
+        auto path = fieldPathExpr->getFieldPathWithoutCurrentPrefix();
+
+        auto abtPath = make<PathIdentity>();
+        abtPath = make<PathGet>(path.back().toString(), std::move(abtPath));
+        for (size_t idx = path.getPathLength() - 1; idx-- > 0;) {
+            abtPath = make<PathTraverse>(std::move(abtPath));
+            abtPath = make<PathGet>(path.getFieldName(idx).toString(), std::move(abtPath));
+        }
+        abtPath = fence(make<EvalPath>(std::move(abtPath), var(input.doc)));
+
+        auto gbVar = _varIdGen.generate();
+        gbs.push_back(gbVar);
+        ids.push_back(gbVar);
+        binds.emplace_back(std::move(abtPath));
+    }
+    // Create agg expressions
+    for (size_t idx = 0; idx < gb->getAccumulatedFields().size(); ++idx) {
+        auto acc = gb->getAccumulatedFields()[idx].makeAccumulator();
+    }
+
+    auto rowsetTypeId = _rowsetIdGen.generate();
+    auto rowsetVarId = _varIdGen.generate();
+    ids.push_back(rowsetVarId);
+    binds.emplace_back(fence(fdep(rowsetType(rowsetTypeId), var(input.rowset))));
+
+    // Output of the group operation
+    auto docVarId = _varIdGen.generate();
+    if (gb->getIdFieldNames().empty()) {
+        auto abtPathOut = make<PathConstant>(var(gbs[0]));
+        abtPathOut = make<PathField>("_id", std::move(abtPathOut));
+        auto [tag, val] = sbe::value::makeNewObject();
+        abtPathOut = make<EvalPath>(std::move(abtPathOut), makeConst(tag, val));
+        ids.push_back(docVarId);
+        binds.emplace_back(std::move(abtPathOut));
+    } else {
+        auto abtPathOut = make<Blackhole>();
+        for (size_t idx = 0; idx < gb->getIdFieldNames().size(); ++idx) {
+            auto abt = make<PathConstant>(var(gbs[idx]));
+            abt = make<PathField>(gb->getIdFieldNames()[idx], std::move(abt));
+            if (idx == 0) {
+                abtPathOut = std::move(abt);
+            } else {
+
+                abtPathOut = make<PathCompose>(std::move(abt), std::move(abtPathOut));
+            }
+        }
+        abtPathOut = make<PathField>("_id", std::move(abtPathOut));
+        auto [tag, val] = sbe::value::makeNewObject();
+        abtPathOut = make<EvalPath>(std::move(abtPathOut), makeConst(tag, val));
+        ids.push_back(docVarId);
+        binds.emplace_back(std::move(abtPathOut));
+    }
+
+    return {make<Group>(rowsetVarId,
+                        gbs,
+                        make<ValueBinder>(std::move(ids), std::move(binds)),
+                        makeSeq(std::move(input.op))),
+            rowsetVarId,
+            docVarId};
+}
 DSABT ABTBuilder::build(const DocumentSource* root) {
     uassert(ErrorCodes::InternalErrorNotSupported,
             str::stream() << "Can't build exec tree for node: " << root->getSourceName(),

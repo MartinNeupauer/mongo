@@ -37,6 +37,11 @@
 namespace mongo {
 namespace sbe {
 namespace abt {
+Variable::Variable(const Variable& other) : _id(other._id) {
+    // TODO - fix binder copying
+    // rebind(other._binding);
+    rebind(nullptr);
+}
 Variable::~Variable() {
     rebind(nullptr);
 }
@@ -49,6 +54,16 @@ void Variable::rebind(ValueBinder* b) {
     }
 
     _binding = b;
+}
+
+const ABT& Variable::followVar() const {
+    invariant(_binding);
+    return follow(_binding->binds()[_binding->index(_id)]);
+}
+
+ABT& Variable::followVar() {
+    invariant(_binding);
+    return follow(_binding->binds()[_binding->index(_id)]);
 }
 /**
  * Free variables
@@ -76,6 +91,7 @@ ExeGenerator::GenResult ExeGenerator::walk(const Variable& op) {
         result.expr = makeE<EVariable>(*info.frame, *info.slot);
     } else {
         result.expr = makeE<EVariable>(*info.slot);
+        result.slot = *info.slot;
     }
     return result;
 }

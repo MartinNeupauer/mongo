@@ -43,7 +43,7 @@ namespace abt {
 ABT* FreeVariables::transport(ABT& e, Join& op, std::vector<ABT*> deps, ABT* body) {
     mergeVarsHelper(&e, deps);
     // TODO correlated parameters
-    uassert(ErrorCodes::InternalError, "Join has free variables", !hasFreeVars());
+    uassert(ErrorCodes::InternalError, "Join has free variables", !hasFreeVars(&e));
 
     mergeFreeVars(&e, body);
 

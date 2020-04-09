@@ -71,6 +71,24 @@ PathCompose::PathCompose(ABT t2In, ABT t1In) : Base(std::move(t2In), std::move(t
 }
 
 /**
+ * Free variables
+ */
+ABT* FreeVariables::transport(ABT& e, PathTraverse& op, ABT* c) {
+    mergeVarsHelper(&e, c);
+
+    std::vector<Variable*> correlatedVars;
+
+    if (auto it = _freeVars.find(&e); it != _freeVars.end()) {
+        for (auto&& v : it->second) {
+            correlatedVars.emplace_back(v.second);
+        }
+    }
+
+    op.correlated() = correlatedVars;
+
+    return &e;
+}
+/**
  * ExeGenerator
  */
 ExeGenerator::GenResult ExeGenerator::walk(const PathIdentity& op) {
@@ -94,7 +112,9 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathConstant& op, const ABT& c)
 ExeGenerator::GenResult ExeGenerator::walk(const PathLambda& op, const ABT& lam) {
     invariant(_pathCtx->expr);
 
-    _lambdaCtx = std::make_unique<std::vector<std::unique_ptr<EExpression>>>();
+    std::vector<std::unique_ptr<EExpression>> localLambdaCtx;
+    auto saveCtx = _lambdaCtx;
+    _lambdaCtx = &localLambdaCtx;
     _lambdaCtx->emplace_back(std::move(_pathCtx->expr));
 
     auto resLam = generate(lam);
@@ -108,6 +128,7 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathLambda& op, const ABT& lam)
     _pathCtx->expr = makeE<EVariable>(inputSlot);
     _pathCtx->slot = inputSlot;
 
+    _lambdaCtx = saveCtx;
     return {};
 }
 ExeGenerator::GenResult ExeGenerator::walk(const PathDrop& op) {
@@ -145,38 +166,35 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathTraverse& op, const ABT& c)
     _pathCtx->slot = outputSlot;
 
     auto saveCurrent = std::move(_currentStage);
-    auto saveCtx = std::move(_pathCtx);
-    _pathCtx = std::make_unique<PathContext>();
+    auto saveCtx = _pathCtx;
+    PathContext localPathCtx;
+    _pathCtx = &localPathCtx;
     _pathCtx->topLevelTraverse = false;
     _pathCtx->expr = makeE<EVariable>(inputSlot);
     _pathCtx->slot = inputSlot;
+    _pathCtx->inputMkObjSlot = inputSlot;
     _currentStage = makeS<LimitSkipStage>(makeS<CoScanStage>(), 1, boost::none);
 
     auto localRes = generate(c);
     if (!_pathCtx->expr) {
-        generatePathMkObj(inputSlot);
+        generatePathMkObj();
     }
     auto resultExpr = std::move(_pathCtx->expr);
     auto resultSlot = _pathCtx->slot;
     auto resultStage = std::move(_currentStage);
     resultStage = makeProjectStage(std::move(resultStage), outputSlot, std::move(resultExpr));
 
-    _pathCtx = std::move(saveCtx);
+    _pathCtx = saveCtx;
     _currentStage = std::move(saveCurrent);
 
     std::vector<value::SlotId> correlatedSlots;
     if (_pathCtx->topLevelTraverse) {
-        FreeVariables fv;
-        fv.compute(const_cast<ABT&>(c));
-        if (fv.hasFreeVars()) {
-            auto& vars = fv.getFreeVars();
-            std::unordered_set<value::SlotId> slots;
-            for (auto& v : vars) {
-                auto slot = getSlot(v.second->binding(), v.second->id());
-                slots.insert(slot);
-            }
-            correlatedSlots.insert(correlatedSlots.begin(), slots.begin(), slots.end());
+        std::unordered_set<value::SlotId> slots;
+        for (auto& v : op.correlated()) {
+            auto slot = getSlot(v->binding(), v->id());
+            slots.insert(slot);
         }
+        correlatedSlots = std::vector<value::SlotId>(slots.begin(), slots.end());
     }
     _currentStage = makeS<TraverseStage>(std::move(_currentStage),
                                          std::move(resultStage),
@@ -204,27 +222,28 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathField& op, const ABT& c) {
                          makeEs(std::move(_pathCtx->expr), makeE<EConstant>(op.name()))));
 
     // new path context
-    auto saveCtx = std::move(_pathCtx);
-    _pathCtx = std::make_unique<PathContext>();
+    auto saveCtx = _pathCtx;
+    PathContext localPathCtx;
+    _pathCtx = &localPathCtx;
     _pathCtx->topLevelTraverse = saveCtx->topLevelTraverse;
     _pathCtx->expr = makeE<EVariable>(localSlot);
     _pathCtx->slot = localSlot;
+    _pathCtx->inputMkObjSlot = localSlot;
 
     // generate c
     auto localRes = generate(c);
     // process results from c (aka MakeObj) got the field
     if (!_pathCtx->expr) {
-        generatePathMkObj(localSlot);
+        generatePathMkObj();
     }
     auto resultExpr = std::move(_pathCtx->expr);
     auto resultSlot = _pathCtx->slot;
 
     // pop path context
-    _pathCtx = std::move(saveCtx);
+    _pathCtx = saveCtx;
     // set the field in context
     _pathCtx->projectFields.push_back(op.name());
     _pathCtx->projectVars.push_back(*resultSlot);
-
     return {};
 }
 ExeGenerator::GenResult ExeGenerator::walk(const PathGet& op, const ABT& c) {
@@ -237,29 +256,41 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathGet& op, const ABT& c) {
         makeE<EFunction>("getField"sv,
                          makeEs(std::move(_pathCtx->expr), makeE<EConstant>(op.name()))));
 
-    auto saveCtx = std::move(_pathCtx);
-    _pathCtx = std::make_unique<PathContext>();
+    auto saveCtx = _pathCtx;
+    PathContext localPathCtx;
+    _pathCtx = &localPathCtx;
     _pathCtx->topLevelTraverse = saveCtx->topLevelTraverse;
     _pathCtx->expr = makeE<EVariable>(localSlot);
     _pathCtx->slot = localSlot;
+    _pathCtx->inputMkObjSlot = localSlot;
 
     auto localRes = generate(c);
     if (!_pathCtx->expr) {
-        generatePathMkObj(localSlot);
+        generatePathMkObj();
     }
     auto resultExpr = std::move(_pathCtx->expr);
     auto resultSlot = _pathCtx->slot;
 
-    _pathCtx = std::move(saveCtx);
+    _pathCtx = saveCtx;
     _pathCtx->expr = std::move(resultExpr);
     _pathCtx->slot = resultSlot;
 
     return {};
 }
 ExeGenerator::GenResult ExeGenerator::walk(const PathCompose& op, const ABT& t2, const ABT& t1) {
-    GenResult result;
+    invariant(_pathCtx->slot);
+    auto savedSlot = *_pathCtx->slot;
 
-    return result;
+    auto local1 = generate(t1);
+    // somehow merge
+
+    _pathCtx->slot = savedSlot;
+    _pathCtx->expr = makeE<EVariable>(savedSlot);
+
+    auto local2 = generate(t2);
+    // somehow merge
+
+    return {};
 }
 
 }  // namespace abt

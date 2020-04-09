@@ -31,7 +31,7 @@
 #include "mongo/db/exec/sbe/abt/exe_generator.h"
 #include "mongo/db/exec/sbe/abt/free_vars.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
-#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/util/assert_util.h"
 
 namespace mongo {
@@ -42,7 +42,7 @@ namespace abt {
  */
 ABT* FreeVariables::transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* body) {
     mergeVarsHelper(&e, deps);
-    uassert(ErrorCodes::InternalError, "Group has free variables", !hasFreeVars());
+    uassert(ErrorCodes::InternalError, "Group has free variables", !hasFreeVars(&e));
 
     mergeFreeVars(&e, body);
 
@@ -65,8 +65,29 @@ ABT* FreeVariables::transport(ABT& e, Group& op, std::vector<ABT*> deps, ABT* bo
 ExeGenerator::GenResult ExeGenerator::walk(const Group& op,
                                            const std::vector<ABT>& deps,
                                            const ABT& body) {
-    GenResult result;
+    auto resultDeps = generateDeps(deps);
+    invariant(resultDeps.size() == 1);
+    invariant(!_currentStage);
 
+    _currentStage = std::move(resultDeps[0].stage);
+    invariant(_currentStage);
+
+    auto resultInput = generateInputPhase(op.rowsetVar(), body);
+    _currentStage = std::move(resultInput.stage);
+
+    auto binder = body.cast<ValueBinder>();
+    std::vector<value::SlotId> gbs;
+    for (auto gb : op.gbs()) {
+        gbs.push_back(getSlot(binder, gb));
+    }
+    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs;
+
+    _currentStage = makeS<HashAggStage>(std::move(_currentStage), gbs, std::move(aggs));
+
+    auto resultOutput = generateOutputPhase(op.rowsetVar(), body);
+
+    GenResult result;
+    result.stage = std::move(resultOutput.stage);
     return result;
 }
 }  // namespace abt

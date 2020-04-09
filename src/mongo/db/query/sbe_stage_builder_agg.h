@@ -56,7 +56,7 @@ public:
     DSABT build(const Pipeline* pipeline);
 
     DSABT buildUnwind(const DocumentSource* root);
-
+    DSABT buildGroup(const DocumentSource* root);
 
     DSABT buildBSONScan(const DocumentSource* root);
 

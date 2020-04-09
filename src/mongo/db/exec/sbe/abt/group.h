@@ -37,11 +37,21 @@ namespace abt {
 class Group final : public OperatorDynamic<Group, 1>, public OpSyntaxSort {
     using Base = OperatorDynamic<Group, 1>;
 
+    VarId _rowsetVar;
+    std::vector<VarId> _gbs;
+
 public:
     ABT& body() override {
         return get<0>();
     }
-    Group(ABT bodyIn, std::vector<ABT> deps) : Base(std::move(deps), std::move(bodyIn)) {
+    auto rowsetVar() const {
+        return _rowsetVar;
+    }
+    auto& gbs() const {
+        return _gbs;
+    }
+    Group(VarId rowsetVar, const std::vector<VarId>& gbsIn, ABT bodyIn, std::vector<ABT> deps)
+        : Base(std::move(deps), std::move(bodyIn)), _rowsetVar(rowsetVar), _gbs(gbsIn) {
         checkOpSyntaxSort(nodes());
     }
 };

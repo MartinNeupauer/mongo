@@ -144,14 +144,24 @@ public:
 class PathTraverse final : public Operator<PathTraverse, 1>, public PathSyntaxSort {
     using Base = Operator<PathTraverse, 1>;
 
+    std::vector<Variable*> _correlatedVars;
+
 public:
     const auto& t() const {
+        return get<0>();
+    }
+    auto& t() {
         return get<0>();
     }
     const Type& type() const override {
         return t().cast<PathSyntaxSort>()->type();
     }
-
+    auto& correlated() {
+        return _correlatedVars;
+    }
+    auto& correlated() const {
+        return _correlatedVars;
+    }
     PathTraverse(ABT c);
 };
 
@@ -165,6 +175,9 @@ class PathField final : public Operator<PathField, 1>, public PathSyntaxSort {
 
 public:
     const auto& t() const {
+        return get<0>();
+    }
+    auto& t() {
         return get<0>();
     }
     const Type& type() const override {
@@ -187,6 +200,9 @@ class PathGet final : public Operator<PathGet, 1>, public PathSyntaxSort {
 
 public:
     const auto& t() const {
+        return get<0>();
+    }
+    auto& t() {
         return get<0>();
     }
     const Type& type() const override {
