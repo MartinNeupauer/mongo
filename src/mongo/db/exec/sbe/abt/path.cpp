@@ -284,9 +284,12 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathCompose& op, const ABT& t2,
     auto local1 = generate(t1);
     // somehow merge
 
-    _pathCtx->slot = savedSlot;
-    _pathCtx->expr = makeE<EVariable>(savedSlot);
-
+    if (!_pathCtx->slot) {
+        _pathCtx->slot = savedSlot;
+    }
+    if (!_pathCtx->expr) {
+        _pathCtx->expr = makeE<EVariable>(*_pathCtx->slot);
+    }
     auto local2 = generate(t2);
     // somehow merge
 

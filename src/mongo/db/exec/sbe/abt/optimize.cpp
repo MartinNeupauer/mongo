@@ -53,14 +53,15 @@ void DeadCodeElimination::optimize(ABT& root) {
 void DeadCodeElimination::transport(ValueBinder& op, std::vector<ABT>& binds) {
     for (auto id : op.ids()) {
         if (!op.isUsed(id) && !binds[op.index(id)].is<Blackhole>()) {
-            std::cout << "removing something\n";
-            auto blackHole = make<Blackhole>();
-            binds[op.index(id)].swap(blackHole);
+            binds[op.index(id)] = make<Blackhole>();
             _changed = true;
         }
     }
 }
 
+/**
+ * Path fusion
+ */
 void PathFusion::optimize(ABT& root) {
     _changed = false;
     algebra::transport(root, *this);
@@ -97,7 +98,6 @@ bool PathFusion::fuse(ABT& lhs, ABT& rhs) {
         lhs = make<PathCompose>(std::move(lhs), rhs);
         return true;
     }
-    std::cout << "unknown\n";
 
     return false;
 }
@@ -107,7 +107,6 @@ void PathFusion::transport(EvalPath& op, ABT& path, ABT& input) {
         if (fuse(op.path(), eval->path())) {
             input = eval->input();
             _changed = true;
-            std::cout << "tu som\n";
         }
     }
 }
