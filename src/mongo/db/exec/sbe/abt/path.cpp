@@ -180,7 +180,6 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathTraverse& op, const ABT& c)
         generatePathMkObj();
     }
     auto resultExpr = std::move(_pathCtx->expr);
-    auto resultSlot = _pathCtx->slot;
     auto resultStage = std::move(_currentStage);
     resultStage = makeProjectStage(std::move(resultStage), outputSlot, std::move(resultExpr));
 
