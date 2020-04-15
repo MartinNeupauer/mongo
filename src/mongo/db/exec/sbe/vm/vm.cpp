@@ -30,8 +30,11 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/storage/key_string.h"
+#include "mongo/util/fail_point.h"
 
 #include <set>
+
+MONGO_FAIL_POINT_DEFINE(failOnPoisonedFieldLookup);
 
 namespace mongo {
 namespace sbe {
@@ -295,6 +298,10 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTa
     }
 
     auto fieldStr = value::getStringView(fieldTag, fieldValue);
+
+    if (MONGO_unlikely(failOnPoisonedFieldLookup.shouldFail())) {
+        uassert(4623399, "Lookup of $POISON", fieldStr != "POISON");
+    }
 
     if (objTag == value::TypeTags::Object) {
         auto [tag, val] = value::getObjectView(objValue)->getField(fieldStr);

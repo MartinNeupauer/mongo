@@ -79,6 +79,10 @@ struct ProjectionTraversalVisitorContext {
     std::stack<NestedLevel> levels;
     std::stack<boost::optional<ProjectEval>> evals;
 
+    // See the comment above the generateExpression() declaration for an explanation of the
+    // 'relevantSlots' list.
+    std::vector<sbe::value::SlotId> relevantSlots;
+
     const auto& topFrontField() const {
         invariant(!levels.empty());
         invariant(!levels.top().fields.empty());
@@ -194,7 +198,8 @@ public:
                                std::move(_context->topLevel().fieldPathExpressionsTraverseStage),
                                _context->slotIdGenerator,
                                _context->frameIdGenerator,
-                               _context->inputSlot);
+                               _context->inputSlot,
+                               &_context->relevantSlots);
         _context->evals.push({{_context->topLevel().inputSlot, outputSlot, std::move(expr)}});
         _context->topLevel().fieldPathExpressionsTraverseStage = std::move(stage);
         _context->popFrontField();
@@ -261,6 +266,7 @@ public:
         }
 
         auto outputSlot = _context->slotIdGenerator->generate();
+        _context->relevantSlots.push_back(outputSlot);
         _context->evals.push(
             {{_context->topLevel().inputSlot,
               outputSlot,
@@ -326,6 +332,7 @@ std::pair<sbe::value::SlotId, PlanStageType> generateProjection(
     sbe::value::SlotId inputVar) {
     ProjectionTraversalVisitorContext context{
         projection->type(), slotIdGenerator, frameIdGenerator, std::move(stage), inputVar};
+    context.relevantSlots.push_back(inputVar);
     ProjectionTraversalPreVisitor preVisitor{&context};
     ProjectionTraversalPostVisitor postVisitor{&context};
     ProjectionTraversalWalker walker{&preVisitor, &postVisitor};

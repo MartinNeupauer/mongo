@@ -89,9 +89,8 @@ value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot
 void UnionStage::open(bool reOpen) {
     _commonStats.opens++;
     if (reOpen) {
-        // TODO this assumption is incorrect. There is no quarantee that the getnext call will run
-        // until EOS or that close is called.
-        invariant(_remainingBranchesToDrain.empty());
+        std::queue<UnionBranch> emptyQueue;
+        swap(_remainingBranchesToDrain, emptyQueue);
     }
 
     for (auto& child : _children) {

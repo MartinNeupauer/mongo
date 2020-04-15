@@ -5,6 +5,9 @@
 
 load("jstests/aggregation/extras/utils.js");  // For arrayEq and orderedArrayEq.
 
+assert.commandWorked(
+    db.adminCommand({configureFailPoint: "failOnPoisonedFieldLookup", mode: "alwaysOn"}));
+
 const coll = db.sbe_sanity;
 coll.drop();
 assert.commandWorked(coll.insert([
@@ -191,10 +194,22 @@ function runQuery(
             runQuery({query: {'i.j': {$gt: 0}}, proj: {foo: {$add: ['$i.j', '$k.l']}}, hint: hint});
             runQuery({proj: {'x.y': 1, foo: '$v.w'}, hint: hint});
 
-            // $and
+            // $and/$or
+            runQuery({query: {}, proj: {foo: {$and: ["$a"]}}, hint: hint});
+            runQuery({query: {}, proj: {foo: {$or: ["$a"]}}, hint: hint});
+            runQuery({query: {}, proj: {foo: {$and: ["$n"]}}, hint: hint});
+            runQuery({query: {}, proj: {foo: {$or: ["$n"]}}, hint: hint});
+            runQuery({query: {}, proj: {foo: {$and: ["$nonexistent"]}}, hint: hint});
+            runQuery({query: {}, proj: {foo: {$or: ["$nonexistent"]}}, hint: hint});
+
             runQuery({
                 query: {_id: 24, a: 1},
                 proj: {foo: {$and: []}, bar: {$and: ["$tf", "$t", "$a"]}},
+                hint: hint
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {foo: {$or: []}, bar: {$or: ["$f", "$n", "$nonexistent"]}},
                 hint: hint
             });
             runQuery({
@@ -208,7 +223,90 @@ function runQuery(
             });
             runQuery({
                 query: {_id: 24, a: 1},
+                proj:
+                    {foo: {$or: ["$a", "$b"]}, bar: {$or: ["$a", "$f"]}, baz: {$or: ["$a", "$n"]}},
+                hint: hint
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
                 proj: {foo: {$and: ["$ff", "$t"]}, bar: {$and: ["$nonexistent", "$t"]}},
+                hint: hint
+            });
+            runQuery({
+                query: {_id: 24, a: 1},
+                proj: {foo: {$or: ["$ff", "$f"]}, bar: {$or: ["$nonexistent", "$f"]}},
+                hint: hint
+            });
+
+            // Expected to fail.
+            runQuery(
+                {query: {s: "string"}, proj: {foo: {$and: [{$abs: ["$s"]}, "$n"]}}, hint: hint});
+            runQuery(
+                {query: {s: "string"}, proj: {foo: {$or: [{$abs: ["$s"]}, "$s"]}}, hint: hint});
+
+            // Test short-circuiting: this query will not fail, even though |$x| is invalid.
+            runQuery(
+                {query: {s: "string"}, proj: {foo: {$and: ["$n", {$abs: ["$s"]}]}}, hint: hint});
+            runQuery(
+                {query: {s: "string"}, proj: {foo: {$or: ["$s", {$abs: ["$s"]}]}}, hint: hint});
+
+            // Test that short-circuited branches do not do any work. An SBE expression that
+            // attempts to look up the "$POISON" field will always fail because of the
+            // failOnPoisonedFieldLookup failpoint.
+            runQuery({
+                query: {},
+                proj: {foo: {$and: [false, "$POISON"]}, bar: {$or: [true, "$POISON"]}},
+                hint: hint
+            });
+            runQuery({
+                query: {},
+                proj: {
+                    foo: {$and: [false, {$or: [false, "$POISON"]}, {$eq: ["$a", 1]}]},
+                    bar: {$and: [true, {$or: [true, "$POISON"]}, {$eq: ["$a", 1]}]}
+                },
+                hint: hint
+            });
+
+            // Nesting torture tests.
+            runQuery({
+                query: {},
+                proj: {
+                    foo: {
+                        $let: {
+                            vars: {v1: {$or: ["$x.y", "$v.w"], vx: "$x"}},
+                            "in": {$and: ["$$vx.y", "$v.w"]}
+                        }
+                    }
+                },
+                hint: hint
+            });
+            runQuery({
+                query: {},
+                proj: {
+                    foo: {
+                        $let: {
+                            vars: {v1: "$x.y"},
+                            "in": {
+                                $let: {
+                                    vars: {
+                                        v2: {
+                                            $let:
+                                                {vars: {v3: "$v.w"},
+                                                 "in": {$and: ["$$v1", "$$v3"]}}
+                                        }
+                                    },
+                                    "in": "$$v2"
+                                }
+                            }
+                        }
+                    }
+                },
+                hint: hint
+            });
+            runQuery({
+                query: {},
+                proj:
+                    {foo: {$or: ["$a", {$lt: [{$and: ["$a", "$c"]}, {$or: ["$c", "$x"]}]}, "$x"]}},
                 hint: hint
             });
 

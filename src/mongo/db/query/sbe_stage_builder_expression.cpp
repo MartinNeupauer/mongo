@@ -34,9 +34,12 @@
 #include "mongo/db/query/sbe_stage_builder_expression.h"
 
 #include "mongo/db/exec/sbe/stages/co_scan.h"
+#include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/limit_skip.h"
+#include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
+#include "mongo/db/exec/sbe/stages/union.h"
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/pipeline/accumulator.h"
 #include "mongo/db/pipeline/expression_visitor.h"
@@ -59,11 +62,22 @@ std::pair<sbe::value::TypeTags, sbe::value::Value> convertFrom(Value val) {
 
 struct ExpressionVisitorContext {
     std::unique_ptr<sbe::PlanStage> traverseStage;
-    sbe::value::SlotIdGenerator* slotIdGenerator{nullptr};
-    sbe::value::FrameIdGenerator* frameIdGenerator{nullptr};
+    sbe::value::SlotIdGenerator* slotIdGenerator;
+    sbe::value::FrameIdGenerator* frameIdGenerator;
     sbe::value::SlotId rootSlot;
     std::stack<std::unique_ptr<sbe::EExpression>> exprs;
     std::map<Variables::Id, sbe::value::SlotId> environment;
+
+    ExpressionVisitorContext(std::unique_ptr<sbe::PlanStage> inputStage,
+                             sbe::value::SlotIdGenerator* slotIdGenerator,
+                             sbe::value::FrameIdGenerator* frameIdGenerator,
+                             sbe::value::SlotId rootSlot,
+                             std::vector<sbe::value::SlotId>* relevantSlots)
+        : traverseStage(std::move(inputStage)),
+          slotIdGenerator(slotIdGenerator),
+          frameIdGenerator(frameIdGenerator),
+          rootSlot(rootSlot),
+          relevantSlots(relevantSlots) {}
 
     struct VarsFrame {
         std::deque<Variables::Id> variablesToBind;
@@ -74,6 +88,27 @@ struct ExpressionVisitorContext {
             : variablesToBind{std::forward<Args>(args)...}, boundVariables{} {}
     };
     std::stack<VarsFrame> varsFrameStack;
+
+    struct LogicalExpressionEvalFrame {
+        std::unique_ptr<sbe::PlanStage> savedTraverseStage;
+        std::vector<sbe::value::SlotId> savedRelevantSlots;
+
+        sbe::value::SlotId nextBranchResultSlot;
+
+        std::vector<std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>>> branches;
+
+        LogicalExpressionEvalFrame(std::unique_ptr<sbe::PlanStage> traverseStage,
+                                   const std::vector<sbe::value::SlotId>& relevantSlots,
+                                   sbe::value::SlotId nextBranchResultSlot)
+            : savedTraverseStage(std::move(traverseStage)),
+              savedRelevantSlots(relevantSlots),
+              nextBranchResultSlot(nextBranchResultSlot) {}
+    };
+    std::stack<LogicalExpressionEvalFrame> logicalExpressionEvalFrameStack;
+
+    // See the comment above the generateExpression() declaration for an explanation of the
+    // 'relevantSlots' list.
+    std::vector<sbe::value::SlotId>* relevantSlots;
 
     void ensureArity(size_t arity) {
         invariant(exprs.size() >= arity);
@@ -94,6 +129,51 @@ struct ExpressionVisitorContext {
         traverseStage = std::move(stage);
     }
 
+    /**
+     * Temporarily reset 'traverseStage' and 'relevantSlots' so they are prepared for translating a
+     * $and/$or branch. (They will be restored later using the saved values in the
+     * 'logicalExpressionEvalFrameStack' top entry.) The new 'traverseStage' is actually a
+     * projection that will evaluate to a constant false (for $and) or true (for $or). Once this
+     * branch is fully contructed, it will have a filter stage that will either filter out the
+     * constant (when branch evaluation does not short circuit) or produce the constant value
+     * (therefore producing the short-circuit result). These branches are part of a union stage, so
+     * each time a branch fails to produce a value, execution moves on to the next branch. A limit
+     * stage above the union ensures that execution halts once one of the branches produces a
+     * result.
+     */
+    void prepareToTranslateShortCircuitingBranch(sbe::EPrimBinary::Op logicOp,
+                                                 sbe::value::SlotId branchResultSlot) {
+        invariant(!logicalExpressionEvalFrameStack.empty());
+        logicalExpressionEvalFrameStack.top().nextBranchResultSlot = branchResultSlot;
+
+        auto shortCircuitVal = (logicOp == sbe::EPrimBinary::logicOr);
+        auto shortCircuitExpr = sbe::makeE<sbe::EConstant>(
+            sbe::value::TypeTags::Boolean, sbe::value::bitcastFrom(shortCircuitVal));
+        traverseStage = sbe::makeProjectStage(
+            sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+            branchResultSlot,
+            std::move(shortCircuitExpr));
+
+        // Slots created in a previous branch for this $and/$or are not accessible to any stages in
+        // this new branch, so we clear them from the 'relevantSlots' list.
+        *relevantSlots = logicalExpressionEvalFrameStack.top().savedRelevantSlots;
+
+        // The 'branchResultSlot' is where the new branch will place its result in the event of a
+        // short circuit, and it must be visible to the union stage after the branch executes.
+        relevantSlots->push_back(branchResultSlot);
+    }
+
+    /**
+     * This does the same thing as 'prepareToTranslateShortCircuitingBranch' but is intended to the
+     * last branch in an $and/$or, which cannot short circuit.
+     */
+    void prepareToTranslateConcludingLogicalBranch() {
+        invariant(!logicalExpressionEvalFrameStack.empty());
+
+        traverseStage = sbe::makeS<sbe::CoScanStage>();
+        *relevantSlots = logicalExpressionEvalFrameStack.top().savedRelevantSlots;
+    }
+
     std::tuple<sbe::value::SlotId,
                std::unique_ptr<sbe::EExpression>,
                std::unique_ptr<sbe::PlanStage>>
@@ -103,24 +183,42 @@ struct ExpressionVisitorContext {
     }
 };
 
-std::pair<std::vector<sbe::value::SlotId>, std::unique_ptr<sbe::PlanStage>>
-generateProjectForLogicalOperator(std::unique_ptr<sbe::PlanStage> inputStage,
-                                  std::vector<std::unique_ptr<sbe::EExpression>> branchExpressions,
-                                  sbe::value::SlotIdGenerator* slotIdGenerator) {
-    std::pair<std::vector<sbe::value::SlotId>, std::unique_ptr<sbe::PlanStage>> result;
+/**
+ * Generate an EExpression that converts a value (contained in a variable bound to 'branchRef') that
+ * can be of any type to a Boolean value based on MQL's definition of truth for the branch of a
+ * "$and" or "$or" expression.
+ */
+std::unique_ptr<sbe::EExpression> generateExpressionForLogicBranch(sbe::EVariable branchRef) {
+    // Make an expression that compares the value in 'branchRef' to the result of evaluating the
+    // 'valExpr' expression. The comparison uses cmp3w, so that can handle comparisons between
+    // values with different types.
+    auto makeNeqCheck = [&branchRef](std::unique_ptr<sbe::EExpression> valExpr) {
+        return sbe::makeE<sbe::EPrimBinary>(
+            sbe::EPrimBinary::neq,
+            sbe::makeE<sbe::EPrimBinary>(
+                sbe::EPrimBinary::cmp3w, branchRef.clone(), std::move(valExpr)),
+            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0));
+    };
 
-    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projections;
-    for (std::unique_ptr<sbe::EExpression>& expr : branchExpressions) {
-        auto slot = slotIdGenerator->generate();
-        result.first.push_back(slot);
+    // If any of these are false, the branch is considered false for the purposes of the
+    // $and/$or.
+    auto checkExists = sbe::makeE<sbe::EFunction>("exists", sbe::makeEs(branchRef.clone()));
+    auto checkNotNull = sbe::makeE<sbe::EPrimUnary>(
+        sbe::EPrimUnary::logicNot,
+        sbe::makeE<sbe::EFunction>("isNull", sbe::makeEs(branchRef.clone())));
+    auto checkNotFalse =
+        makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, false));
+    auto checkNotZero =
+        makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0));
 
-        projections.insert(std::make_pair(slot, std::move(expr)));
-    }
-
-    result.second =
-        std::make_unique<sbe::ProjectStage>(std::move(inputStage), std::move(projections));
-
-    return result;
+    return sbe::makeE<sbe::EPrimBinary>(
+        sbe::EPrimBinary::logicAnd,
+        std::move(checkExists),
+        sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicAnd,
+                                     std::move(checkNotNull),
+                                     sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicAnd,
+                                                                  std::move(checkNotFalse),
+                                                                  std::move(checkNotZero))));
 }
 
 std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverseHelper(
@@ -225,7 +323,9 @@ public:
     void visit(ExpressionAbs* expr) final {}
     void visit(ExpressionAdd* expr) final {}
     void visit(ExpressionAllElementsTrue* expr) final {}
-    void visit(ExpressionAnd* expr) final {}
+    void visit(ExpressionAnd* expr) final {
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicAnd);
+    }
     void visit(ExpressionAnyElementTrue* expr) final {}
     void visit(ExpressionArray* expr) final {}
     void visit(ExpressionArrayElemAt* expr) final {}
@@ -268,7 +368,9 @@ public:
     void visit(ExpressionMultiply* expr) final {}
     void visit(ExpressionNot* expr) final {}
     void visit(ExpressionObject* expr) final {}
-    void visit(ExpressionOr* expr) final {}
+    void visit(ExpressionOr* expr) final {
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicOr);
+    }
     void visit(ExpressionPow* expr) final {}
     void visit(ExpressionRange* expr) final {}
     void visit(ExpressionReduce* expr) final {}
@@ -348,6 +450,22 @@ public:
     void visit(ExpressionInternalRemoveFieldTombstones* expr) final {}
 
 private:
+    void visitMultiBranchLogicExpression(Expression* expr, sbe::EPrimBinary::Op logicOp) {
+        invariant(logicOp == sbe::EPrimBinary::logicOr || logicOp == sbe::EPrimBinary::logicAnd);
+
+        if (expr->getChildren().size() < 2) {
+            // All this bookkeeping is only necessary for short circuiting, so we can skip it if we
+            // don't have two or more branches.
+            return;
+        }
+
+        auto branchResultSlot = _context->slotIdGenerator->generate();
+        _context->logicalExpressionEvalFrameStack.emplace(
+            std::move(_context->traverseStage), *_context->relevantSlots, branchResultSlot);
+
+        _context->prepareToTranslateShortCircuitingBranch(logicOp, branchResultSlot);
+    }
+
     ExpressionVisitorContext* _context;
 };
 
@@ -359,7 +477,9 @@ public:
     void visit(ExpressionAbs* expr) final {}
     void visit(ExpressionAdd* expr) final {}
     void visit(ExpressionAllElementsTrue* expr) final {}
-    void visit(ExpressionAnd* expr) final {}
+    void visit(ExpressionAnd* expr) final {
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicAnd);
+    }
     void visit(ExpressionAnyElementTrue* expr) final {}
     void visit(ExpressionArray* expr) final {}
     void visit(ExpressionArrayElemAt* expr) final {}
@@ -433,7 +553,9 @@ public:
     void visit(ExpressionMultiply* expr) final {}
     void visit(ExpressionNot* expr) final {}
     void visit(ExpressionObject* expr) final {}
-    void visit(ExpressionOr* expr) final {}
+    void visit(ExpressionOr* expr) final {
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicOr);
+    }
     void visit(ExpressionPow* expr) final {}
     void visit(ExpressionRange* expr) final {}
     void visit(ExpressionReduce* expr) final {}
@@ -513,6 +635,45 @@ public:
     void visit(ExpressionInternalRemoveFieldTombstones* expr) final {}
 
 private:
+    void visitMultiBranchLogicExpression(Expression* expr, sbe::EPrimBinary::Op logicOp) {
+        // The infix visitor should only visit expressions with more than one child.
+        invariant(expr->getChildren().size() >= 2);
+        invariant(logicOp == sbe::EPrimBinary::logicOr || logicOp == sbe::EPrimBinary::logicAnd);
+
+        auto frameId = _context->frameIdGenerator->generate();
+        auto branchExpr = generateExpressionForLogicBranch(sbe::EVariable{frameId, 0});
+        std::unique_ptr<sbe::EExpression> shortCircuitCondition;
+        if (logicOp == sbe::EPrimBinary::logicAnd) {
+            // The filter should take the short circuit path when the branch resolves to _false_, so
+            // we invert the filter condition.
+            shortCircuitCondition = sbe::makeE<sbe::ELocalBind>(
+                frameId,
+                sbe::makeEs(_context->popExpr()),
+                sbe::makeE<sbe::EPrimUnary>(sbe::EPrimUnary::logicNot, std::move(branchExpr)));
+        } else {
+            // For $or, keep the filter condition as is; the filter will take the short circuit path
+            // when the branch resolves to true.
+            shortCircuitCondition = sbe::makeE<sbe::ELocalBind>(
+                frameId, sbe::makeEs(_context->popExpr()), std::move(branchExpr));
+        }
+
+        auto branchStage = sbe::makeS<sbe::FilterStage<false>>(std::move(_context->traverseStage),
+                                                               std::move(shortCircuitCondition));
+
+        auto& currentFrameStack = _context->logicalExpressionEvalFrameStack.top();
+        currentFrameStack.branches.emplace_back(
+            std::make_pair(currentFrameStack.nextBranchResultSlot, std::move(branchStage)));
+
+        if (currentFrameStack.branches.size() < (expr->getChildren().size() - 1)) {
+            _context->prepareToTranslateShortCircuitingBranch(
+                logicOp, _context->slotIdGenerator->generate());
+        } else {
+            // We have already translated all but one of the branches, meaning the next branch we
+            // translate will be the final one and does not need an short-circuit logic.
+            _context->prepareToTranslateConcludingLogicalBranch();
+        }
+    }
+
     ExpressionVisitorContext* _context;
 };
 
@@ -560,77 +721,7 @@ public:
         unsupportedExpression(expr->getOpName());
     }
     void visit(ExpressionAnd* expr) final {
-        auto arity = expr->getChildren().size();
-        _context->ensureArity(arity);
-
-        if (arity == 0) {
-            _context->pushExpr(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, true));
-            return;
-        }
-
-        // Pop arguments and store them in the 'branches' list, going through the list in reverse
-        // order so that the branches end up in the order that they were pushed on the stack.
-        std::vector<std::unique_ptr<sbe::EExpression>> branches(arity);
-        for (auto branchIt = branches.rbegin(); branchIt != branches.rend(); ++branchIt) {
-            *branchIt = _context->popExpr();
-        }
-
-        // Use a Project stage that will evaluate each branch and bind the result to a slot.
-        // TODO: Use a modified Project stage that will allow short-circuit semantics.
-        auto [slotList, projectStage] = generateProjectForLogicalOperator(
-            std::move(_context->traverseStage), std::move(branches), _context->slotIdGenerator);
-
-        // This std::transform creates an EExpression for each branch that evaluates to a Boolean
-        // value that indicates whether it should be considered true for the purposes of the $and.
-        // The MQL $and expression considers a branch to evaluate to true iff 1) it is not equal to
-        // Boolean false, 2) it is not equal to numeric 0, _and_ 3) it is not null.
-        std::vector<std::unique_ptr<sbe::EExpression>> coercedBranches;
-        coercedBranches.reserve(arity);
-        std::transform(
-            slotList.begin(),
-            slotList.end(),
-            std::back_inserter(coercedBranches),
-            [](sbe::value::SlotId branchSlot) {
-                auto makeNeqCheck = [branchSlot](std::unique_ptr<sbe::EExpression> valExpr) {
-                    return sbe::makeE<sbe::EPrimBinary>(
-                        sbe::EPrimBinary::neq,
-                        sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w,
-                                                     sbe::makeE<sbe::EVariable>(branchSlot),
-                                                     std::move(valExpr)),
-                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0));
-                };
-
-                return sbe::makeE<sbe::EPrimBinary>(
-                    sbe::EPrimBinary::logicAnd,
-                    makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, false)),
-                    sbe::makeE<sbe::EPrimBinary>(
-                        sbe::EPrimBinary::logicAnd,
-                        makeNeqCheck(
-                            sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64, 0)),
-                        makeNeqCheck(sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Null, 0))));
-            });
-
-        // Fold the branches into a binary tree of EPrimBinary::logicAnd EExpressions.
-        auto andExpr =
-            std::accumulate(std::next(std::make_move_iterator(coercedBranches.begin())),
-                            std::make_move_iterator(coercedBranches.end()),
-                            std::move(*coercedBranches.begin()),
-                            [](std::unique_ptr<sbe::EExpression>& andAccum,
-                               std::unique_ptr<sbe::EExpression> branch) {
-                                return sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicAnd,
-                                                                    std::move(andAccum),
-                                                                    std::move(branch));
-                            });
-
-        // The MQL $and treats any "Nothing" branch as false, so if the expression evaluated to
-        // "Nothing" because one of the if branches evaluated to "Nothing," we convert that result
-        // back to false.
-        auto andExprWithFillEmpty = sbe::makeE<sbe::EFunction>(
-            "fillEmpty",
-            sbe::makeEs(std::move(andExpr),
-                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::Boolean, false)));
-
-        _context->pushExpr(std::move(andExprWithFillEmpty), std::move(projectStage));
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicAnd);
     }
     void visit(ExpressionAnyElementTrue* expr) final {
         unsupportedExpression(expr->getOpName());
@@ -669,9 +760,9 @@ public:
             *it = _context->popExpr();
         }
 
-        auto [slotList, projectStage] = generateProjectForLogicalOperator(
-            std::move(_context->traverseStage), std::move(operands), _context->slotIdGenerator);
-        invariant(slotList.size() == 2);
+        auto frameId = _context->frameIdGenerator->generate();
+        sbe::EVariable lhsRef(frameId, 0);
+        sbe::EVariable rhsRef(frameId, 1);
 
         auto comparisonOperator = [expr]() {
             switch (expr->getOp()) {
@@ -696,9 +787,8 @@ public:
         // We use the "cmp3e" primitive for every comparison, because it "type brackets" its
         // comparisons (for example, a number will always compare as less than a string). The other
         // comparison primitives are designed for comparing values of the same type.
-        auto cmp3w = sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w,
-                                                  sbe::makeE<sbe::EVariable>(slotList[0]),
-                                                  sbe::makeE<sbe::EVariable>(slotList[1]));
+        auto cmp3w =
+            sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::cmp3w, lhsRef.clone(), rhsRef.clone());
         auto cmp = (comparisonOperator == sbe::EPrimBinary::cmp3w)
             ? std::move(cmp3w)
             : sbe::makeE<sbe::EPrimBinary>(
@@ -712,14 +802,14 @@ public:
         // evaluate to "Nothing" are considered equal to each other.)
         auto nothingFallbackCmp = sbe::makeE<sbe::EPrimBinary>(
             comparisonOperator,
-            sbe::makeE<sbe::EFunction>("exists",
-                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(slotList[0]))),
-            sbe::makeE<sbe::EFunction>("exists",
-                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(slotList[1]))));
+            sbe::makeE<sbe::EFunction>("exists", sbe::makeEs(lhsRef.clone())),
+            sbe::makeE<sbe::EFunction>("exists", sbe::makeEs(rhsRef.clone())));
+
+        auto cmpWithFallback = sbe::makeE<sbe::EFunction>(
+            "fillEmpty", sbe::makeEs(std::move(cmp), std::move(nothingFallbackCmp)));
+
         _context->pushExpr(
-            sbe::makeE<sbe::EFunction>("fillEmpty",
-                                       sbe::makeEs(std::move(cmp), std::move(nothingFallbackCmp))),
-            std::move(projectStage));
+            sbe::makeE<sbe::ELocalBind>(frameId, std::move(operands), std::move(cmpWithFallback)));
     }
     void visit(ExpressionConcat* expr) final {
         unsupportedExpression(expr->getOpName());
@@ -780,6 +870,7 @@ public:
                                                     expr->getFieldPathWithoutCurrentPrefix(),
                                                     _context->slotIdGenerator);
         _context->pushExpr(sbe::makeE<sbe::EVariable>(outputSlot), std::move(stage));
+        _context->relevantSlots->push_back(outputSlot);
     }
     void visit(ExpressionFilter* expr) final {
         unsupportedExpression("$filter");
@@ -815,6 +906,17 @@ public:
         invariant(!_context->varsFrameStack.empty());
         auto& currentFrame = _context->varsFrameStack.top();
         invariant(currentFrame.variablesToBind.empty());
+
+        // Pop the lexical frame for this $let and remove all its bindings, which are now out of
+        // scope.
+        auto it = _context->environment.begin();
+        while (it != _context->environment.end()) {
+            if (currentFrame.boundVariables.count(it->first)) {
+                it = _context->environment.erase(it);
+            } else {
+                ++it;
+            }
+        }
         _context->varsFrameStack.pop();
 
         // Note that there is no need to remove SlotId bindings from the the _context's environment.
@@ -848,7 +950,7 @@ public:
         unsupportedExpression("$object");
     }
     void visit(ExpressionOr* expr) final {
-        unsupportedExpression(expr->getOpName());
+        visitMultiBranchLogicExpression(expr, sbe::EPrimBinary::logicOr);
     }
     void visit(ExpressionPow* expr) final {
         unsupportedExpression("$pow");
@@ -1083,6 +1185,104 @@ public:
     }
 
 private:
+    /**
+     * Shared logic for $and, $or. Converts each child into an EExpression that evaluates to Boolean
+     * true or false, based on MQL rules for $and and $or branches, and then chains the branches
+     * together using binary and/or EExpressions so that the result has MQL's short-circuit
+     * semantics.
+     */
+    void visitMultiBranchLogicExpression(Expression* expr, sbe::EPrimBinary::Op logicOp) {
+        invariant(logicOp == sbe::EPrimBinary::logicAnd || logicOp == sbe::EPrimBinary::logicOr);
+
+        if (expr->getChildren().size() == 0) {
+            // Empty $and and $or always evaluate to their logical operator's identity value: true
+            // and false, respectively.
+            bool logicIdentityVal = (logicOp == sbe::EPrimBinary::logicAnd);
+            _context->pushExpr(sbe::makeE<sbe::EConstant>(
+                sbe::value::TypeTags::Boolean, sbe::value::bitcastFrom(logicIdentityVal)));
+            return;
+        } else if (expr->getChildren().size() == 1) {
+            // No need for short circuiting logic in a singleton $and/$or. Just execute the branch
+            // and return its result as a bool.
+            auto frameId = _context->frameIdGenerator->generate();
+            _context->pushExpr(sbe::makeE<sbe::ELocalBind>(
+                frameId,
+                sbe::makeEs(_context->popExpr()),
+                generateExpressionForLogicBranch(sbe::EVariable{frameId, 0})));
+
+            return;
+        }
+
+        auto& LogicalExpressionEvalFrame = _context->logicalExpressionEvalFrameStack.top();
+
+        // The last branch works differently from the others. It just uses a project stage to
+        // produce a true or false value for the branch result.
+        auto frameId = _context->frameIdGenerator->generate();
+        auto lastBranchExpr = sbe::makeE<sbe::ELocalBind>(
+            frameId,
+            sbe::makeEs(_context->popExpr()),
+            generateExpressionForLogicBranch(sbe::EVariable{frameId, 0}));
+        auto lastBranchResultSlot = _context->slotIdGenerator->generate();
+        auto lastBranch = sbe::makeProjectStage(
+            std::move(_context->traverseStage), lastBranchResultSlot, std::move(lastBranchExpr));
+        LogicalExpressionEvalFrame.branches.emplace_back(
+            std::make_pair(lastBranchResultSlot, std::move(lastBranch)));
+
+        std::vector<std::vector<sbe::value::SlotId>> branchSlots;
+        std::vector<std::unique_ptr<sbe::PlanStage>> branchStages;
+        for (auto&& [slot, stage] : LogicalExpressionEvalFrame.branches) {
+            branchSlots.push_back(std::vector<sbe::value::SlotId>{slot});
+            branchStages.push_back(std::move(stage));
+        }
+
+        auto branchResultSlot = _context->slotIdGenerator->generate();
+        auto unionOfBranches =
+            sbe::makeS<sbe::UnionStage>(std::move(branchStages),
+                                        branchSlots,
+                                        std::vector<sbe::value::SlotId>{branchResultSlot});
+
+        // Restore 'relevantSlots' to the way it was before we started translating the logic
+        // operator.
+        *_context->relevantSlots = std::move(LogicalExpressionEvalFrame.savedRelevantSlots);
+
+        // Get a list of slots that are used by $let expressions. These slots need to be available
+        // to the inner side of the LoopJoinStage, in case any of the branches want to reference one
+        // of the variables bound by the $let.
+        std::vector<sbe::value::SlotId> letBindings;
+        for (auto&& [_, slot] : _context->environment) {
+            letBindings.push_back(slot);
+        }
+
+        // The LoopJoinStage we are creating here will not expose any of the slots from its outer
+        // side except for the ones we explicity ask for. For that reason, we maintain the
+        // 'relevantSlots' list of slots that may still be referenced above this stage. All of the
+        // slots in 'letBindings' are relevant by this definition, but we track them separately,
+        // which is why we need to add them in now.
+        auto relevantSlotsWithLetBindings(*_context->relevantSlots);
+        relevantSlotsWithLetBindings.insert(
+            relevantSlotsWithLetBindings.end(), letBindings.begin(), letBindings.end());
+
+        // Put the union into a nested loop. The inner side of the nested loop will execute exactly
+        // once, trying each branch of the union until one of them short circuits or until it
+        // reaches the end. This process also restores the old 'traverseStage' value from before we
+        // started translating the logic operator, by placing it below the new nested loop stage.
+        auto stage = sbe::makeS<sbe::LoopJoinStage>(
+            std::move(LogicalExpressionEvalFrame.savedTraverseStage),
+            sbe::makeS<sbe::LimitSkipStage>(std::move(unionOfBranches), 1, boost::none),
+            relevantSlotsWithLetBindings,
+            letBindings,
+            nullptr /* predicate */);
+
+        // We've already restored all necessary state from the top 'logicalExpressionEvalFrameStack'
+        // entry, so we are done with it.
+        _context->logicalExpressionEvalFrameStack.pop();
+
+        // The final true/false result of the logic operator is stored in the 'branchResultSlot'
+        // slot.
+        _context->relevantSlots->push_back(branchResultSlot);
+        _context->pushExpr(sbe::makeE<sbe::EVariable>(branchResultSlot), std::move(stage));
+    }
+
     void unsupportedExpression(const char* op) const {
         uasserted(ErrorCodes::InternalErrorNotSupported,
                   str::stream() << "Expression is not supported in SBE: " << op);
@@ -1122,8 +1322,13 @@ generateExpression(Expression* expr,
                    std::unique_ptr<sbe::PlanStage> stage,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
                    sbe::value::FrameIdGenerator* frameIdGenerator,
-                   sbe::value::SlotId rootSlot) {
-    ExpressionVisitorContext context{std::move(stage), slotIdGenerator, frameIdGenerator, rootSlot};
+                   sbe::value::SlotId rootSlot,
+                   std::vector<sbe::value::SlotId>* relevantSlots) {
+    std::vector<sbe::value::SlotId> tempRelevantSlots = {rootSlot};
+    relevantSlots = relevantSlots ?: &tempRelevantSlots;
+
+    ExpressionVisitorContext context(
+        std::move(stage), slotIdGenerator, frameIdGenerator, rootSlot, relevantSlots);
     ExpressionPreVisitor preVisitor{&context};
     ExpressionInVisitor inVisitor{&context};
     ExpressionPostVisitor postVisitor{&context};
