@@ -59,7 +59,9 @@ static std::string format_error_message(size_t ln, size_t col, const std::string
 
 static constexpr auto syntax = R"(
                 ROOT <- OPERATOR
-                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / CFILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION / BRANCH / SIMPLE_PROJ / PFO
+                OPERATOR <- SCAN / PSCAN / SEEK / IXSCAN / IXSEEK / PROJECT / FILTER / CFILTER / MKOBJ / GROUP / HJOIN / NLJOIN / LIMIT / SKIP / COSCAN / TRAVERSE / EXCHANGE / SORT / UNWIND / UNION / BRANCH / SIMPLE_PROJ / PFO / ESPOOL / LSPOOL / CSPOOL / SSPOOL
+
+                FORWARD_FLAG <- <'true'> / <'false'>
 
                 SCAN <- 'scan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                IDENT? # optional variable name of the record id delivered by the scan
@@ -82,6 +84,7 @@ static constexpr auto syntax = R"(
                                    IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
                                    IDENT # collection name
                                    IDENT # index name to scan
+                                   FORWARD_FLAG # forward scan or not
 
                 IXSEEK <- 'ixseek' IDENT # variable name of the low key
                                    IDENT # variable name of the high key
@@ -90,6 +93,7 @@ static constexpr auto syntax = R"(
                                    IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
                                    IDENT # collection name
                                    IDENT # index name to scan
+                                   FORWARD_FLAG # forward scan or not
 
                 PROJECT <- 'project' PROJECT_LIST OPERATOR
                 SIMPLE_PROJ <- '$p' IDENT # output
@@ -98,7 +102,7 @@ static constexpr auto syntax = R"(
                                     PFV # path
                                     OPERATOR # input
                 PFV <- (IDENT '.' PFV) / ( '|' EXPR / IDENT)
-                       
+
                 FILTER <- 'filter' '{' EXPR '}' OPERATOR
                 CFILTER <- 'cfilter' '{' EXPR '}' OPERATOR
                 MKOBJ <- 'mkobj' IDENT (IDENT IDENT_LIST)? IDENT_LIST_WITH_RENAMES OPERATOR
@@ -151,6 +155,21 @@ static constexpr auto syntax = R"(
                 PF_DROPALL <- '~'
                 PF_EXPR <- '=' EXPR
                 PF_MEXPR <- '|' EXPR
+
+                ESPOOL <- 'espool' IDENT # buffer
+                                   IDENT_LIST # slots
+                                   OPERATOR # input stage
+
+                LSPOOL <- 'lspool' IDENT # buffer
+                                   IDENT_LIST # slots
+                                   ('{' EXPR '}')? # optional predicate
+                                   OPERATOR # input stage
+
+                CSPOOL <- 'cspool' IDENT # buffer
+                                   IDENT_LIST # slots
+
+                SSPOOL <- 'sspool' IDENT # buffer
+                                   IDENT_LIST # slots
 
                 PROJECT_LIST <- '[' (ASSIGN (',' ASSIGN)* )?']'
                 ASSIGN <- IDENT '=' EXPR
@@ -561,22 +580,26 @@ void Parser::walkIndexScan(AstQuery& ast) {
     std::string collName;
     std::string indexName;
     int projectsPos;
+    int forwardPos;
 
-    if (ast.nodes.size() == 5) {
+    if (ast.nodes.size() == 6) {
         recordName = std::move(ast.nodes[0]->identifier);
         recordIdName = std::move(ast.nodes[1]->identifier);
         projectsPos = 2;
         collName = std::move(ast.nodes[3]->identifier);
         indexName = std::move(ast.nodes[4]->identifier);
-    } else if (ast.nodes.size() == 4) {
+        forwardPos = 5;
+    } else if (ast.nodes.size() == 5) {
         recordName = std::move(ast.nodes[0]->identifier);
         projectsPos = 1;
         collName = std::move(ast.nodes[2]->identifier);
         indexName = std::move(ast.nodes[3]->identifier);
-    } else if (ast.nodes.size() == 3) {
+        forwardPos = 4;
+    } else if (ast.nodes.size() == 4) {
         projectsPos = 0;
         collName = std::move(ast.nodes[1]->identifier);
         indexName = std::move(ast.nodes[2]->identifier);
+        forwardPos = 3;
     } else {
         MONGO_UNREACHABLE;
     }
@@ -586,9 +609,11 @@ void Parser::walkIndexScan(AstQuery& ast) {
     auto collection = ctxColl.getCollection();
     NamespaceStringOrUUID name =
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
+    const auto forward = (ast.nodes[forwardPos]->token == "true") ? true : false;
 
     ast.stage = makeS<IndexScanStage>(name,
                                       indexName,
+                                      forward,
                                       lookupSlot(recordName),
                                       lookupSlot(recordIdName),
                                       ast.nodes[projectsPos]->identifiers,
@@ -607,22 +632,26 @@ void Parser::walkIndexSeek(AstQuery& ast) {
     std::string collName;
     std::string indexName;
     int projectsPos;
+    int forwardPos;
 
-    if (ast.nodes.size() == 7) {
+    if (ast.nodes.size() == 8) {
         recordName = std::move(ast.nodes[2]->identifier);
         recordIdName = std::move(ast.nodes[3]->identifier);
         projectsPos = 4;
         collName = std::move(ast.nodes[5]->identifier);
         indexName = std::move(ast.nodes[6]->identifier);
-    } else if (ast.nodes.size() == 6) {
+        forwardPos = 7;
+    } else if (ast.nodes.size() == 7) {
         recordName = std::move(ast.nodes[2]->identifier);
         projectsPos = 3;
         collName = std::move(ast.nodes[4]->identifier);
         indexName = std::move(ast.nodes[5]->identifier);
-    } else if (ast.nodes.size() == 5) {
+        forwardPos = 6;
+    } else if (ast.nodes.size() == 6) {
         projectsPos = 2;
         collName = std::move(ast.nodes[3]->identifier);
         indexName = std::move(ast.nodes[4]->identifier);
+        forwardPos = 5;
     } else {
         MONGO_UNREACHABLE;
     }
@@ -632,9 +661,11 @@ void Parser::walkIndexSeek(AstQuery& ast) {
     auto collection = ctxColl.getCollection();
     NamespaceStringOrUUID name =
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
+    const auto forward = (ast.nodes[forwardPos]->token == "true") ? true : false;
 
     ast.stage = makeS<IndexScanStage>(name,
                                       indexName,
+                                      forward,
                                       lookupSlot(recordName),
                                       lookupSlot(recordIdName),
                                       ast.nodes[projectsPos]->identifiers,
@@ -903,7 +934,7 @@ std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
         }
     } else {
         walk(*ast.nodes[0]);
-        auto traverseIn = _slotIdGenerator->generate();
+        auto traverseIn = _slotIdGenerator.generate();
         auto from =
             makeProjectStage(std::move(inputStage),
                              traverseIn,
@@ -1064,7 +1095,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                 case "PF_INCL"_: {
                     // restrictAll = true;
                     fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
-                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator.generate());
                     stage = makeProjectStage(
                         std::move(stage),
                         fieldVars.front(),
@@ -1076,7 +1107,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                 case "PF_EXPR"_: {
                     fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
                     walk(*action.nodes[0]);
-                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator.generate());
                     stage = makeProjectStage(std::move(stage),
                                              fieldVars.front(),
                                              std::move(action.nodes[0]->nodes[0]->expr));
@@ -1088,7 +1119,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
 
                     fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
                     walk(*action.nodes[0]);
-                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator.generate());
                     stage = makeProjectStage(std::move(stage),
                                              fieldVars.front(),
                                              std::move(action.nodes[0]->nodes[0]->expr));
@@ -1098,9 +1129,9 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                 }
                 case "PATH"_: {
                     fieldNames.emplace(fieldNames.begin(), std::move(pf->nodes[0]->identifier));
-                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator->generate());
+                    fieldVars.emplace(fieldVars.begin(), _slotIdGenerator.generate());
                     auto traverseOut = fieldVars.front();
-                    auto traverseIn = _slotIdGenerator->generate();
+                    auto traverseIn = _slotIdGenerator.generate();
                     stage = makeProjectStage(
                         std::move(stage),
                         traverseIn,
@@ -1168,6 +1199,43 @@ void Parser::walkPFO(AstQuery& ast) {
                                      lookupSlots(ast.nodes[2]->identifiers),
                                      nullptr,
                                      nullptr);
+}
+void Parser::walkLazyProducerSpool(AstQuery& ast) {
+    walkChildren(ast);
+
+    std::unique_ptr<EExpression> predicate;
+    size_t inputPos;
+
+    if (ast.nodes.size() == 4) {
+        predicate = std::move(ast.nodes[2]->expr);
+        inputPos = 3;
+    } else {
+        inputPos = 2;
+    }
+
+    ast.stage = makeS<SpoolLazyProducerStage>(std::move(ast.nodes[inputPos]->stage),
+                                              lookupSpoolBuffer(ast.nodes[0]->identifier),
+                                              lookupSlots(ast.nodes[1]->identifiers),
+                                              std::move(predicate));
+}
+void Parser::walkEagerProducerSpool(AstQuery& ast) {
+    walkChildren(ast);
+
+    ast.stage = makeS<SpoolEagerProducerStage>(std::move(ast.nodes[2]->stage),
+                                               lookupSpoolBuffer(ast.nodes[0]->identifier),
+                                               lookupSlots(ast.nodes[1]->identifiers));
+}
+void Parser::walkConsumerSpool(AstQuery& ast) {
+    walkChildren(ast);
+
+    ast.stage = makeS<SpoolConsumerStage<false>>(lookupSpoolBuffer(ast.nodes[0]->identifier),
+                                                 lookupSlots(ast.nodes[1]->identifiers));
+}
+void Parser::walkStackConsumerSpool(AstQuery& ast) {
+    walkChildren(ast);
+
+    ast.stage = makeS<SpoolConsumerStage<true>>(lookupSpoolBuffer(ast.nodes[0]->identifier),
+                                                lookupSlots(ast.nodes[1]->identifiers));
 }
 void Parser::walk(AstQuery& ast) {
     switch (ast.tag) {
@@ -1301,6 +1369,18 @@ void Parser::walk(AstQuery& ast) {
             break;
         case "PFO"_:
             walkPFO(ast);
+            break;
+        case "ESPOOL"_:
+            walkEagerProducerSpool(ast);
+            break;
+        case "LSPOOL"_:
+            walkLazyProducerSpool(ast);
+            break;
+        case "CSPOOL"_:
+            walkConsumerSpool(ast);
+            break;
+        case "SSPOOL"_:
+            walkStackConsumerSpool(ast);
             break;
         default:
             walkChildren(ast);

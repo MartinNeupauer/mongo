@@ -40,15 +40,18 @@
 
 namespace mongo {
 namespace sbe {
+using SpoolBuffer = std::vector<value::MaterializedRow>;
 
 class PlanStage;
 struct CompileCtx {
     PlanStage* root{nullptr};
     value::SlotAccessor* accumulator{nullptr};
     std::vector<std::pair<value::SlotId, value::SlotAccessor*>> correlated;
+    std::unordered_map<SpoolId, std::shared_ptr<SpoolBuffer>> spoolBuffers;
     bool aggExpression{false};
 
     value::SlotAccessor* getAccessor(value::SlotId slot);
+    std::shared_ptr<SpoolBuffer> getSpoolBuffer(SpoolId spool);
 
     void pushCorrelated(value::SlotId slot, value::SlotAccessor* accessor);
     void popCorrelated();

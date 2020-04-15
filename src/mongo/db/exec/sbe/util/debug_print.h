@@ -115,6 +115,14 @@ public:
         ret.emplace_back(Block{Block::cmdNoneNoSpace, " "});
     }
 
+    static void addSpoolIdentifier(std::vector<Block>& ret, SpoolId spool) {
+        std::string name{str::stream() << spool};
+        ret.emplace_back(Block::cmdColorGreen);
+        ret.emplace_back(Block{Block::cmdNoneNoSpace, name});
+        ret.emplace_back(Block::cmdColorNone);
+        ret.emplace_back(Block{Block::cmdNoneNoSpace, " "});
+    }
+
     static void addNewLine(std::vector<Block>& ret) {
         ret.emplace_back(Block::cmdNewLine);
     }

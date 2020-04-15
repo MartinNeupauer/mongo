@@ -48,6 +48,7 @@ class Value;
 }
 namespace sbe {
 using FrameId = int64_t;
+using SpoolId = int64_t;
 
 namespace value {
 using SlotId = int64_t;
@@ -814,6 +815,28 @@ public:
 
     void reset(bool owned, TypeTags tag, Value val) {
         _it->second._fields[_slot].reset(owned, tag, val);
+    }
+};
+
+template <typename T>
+class MaterializedRowAccessor final : public SlotAccessor {
+    T& _container;
+    const size_t& _it;
+    const size_t _slot;
+
+public:
+    MaterializedRowAccessor(T& container, const size_t& it, size_t slot)
+        : _container(container), _it(it), _slot(slot) {}
+
+    std::pair<TypeTags, Value> getViewOfValue() const override {
+        return _container[_it]._fields[_slot].getViewOfValue();
+    }
+    std::pair<TypeTags, Value> copyOrMoveValue() override {
+        return _container[_it]._fields[_slot].copyOrMoveValue();
+    }
+
+    void reset(bool owned, TypeTags tag, Value val) {
+        _container[_it]._fields[_slot].reset(owned, tag, val);
     }
 };
 

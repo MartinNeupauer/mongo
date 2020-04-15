@@ -31,6 +31,7 @@
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/parser/peglib.h"
+#include "mongo/db/exec/sbe/stages/spool.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/slot_id_generator.h"
 #include "mongo/db/query/sbe_stage_builder.h"
@@ -53,11 +54,14 @@ using AstQuery = peg::AstBase<ParsedQueryTree>;
 
 class Parser {
     using SymbolTable = std::unordered_map<std::string, value::SlotId>;
+    using SpoolBufferLookupTable = std::unordered_map<std::string, SpoolId>;
     peg::parser _parser;
     OperationContext* _opCtx{nullptr};
     std::string _defaultDb;
     SymbolTable _symbolsLookupTable;
-    std::unique_ptr<value::SlotIdGenerator> _slotIdGenerator{value::makeDefaultSlotIdGenerator()};
+    SpoolBufferLookupTable _spoolBuffersLookupTable;
+    value::SlotIdGenerator _slotIdGenerator;
+    value::SpoolIdGenerator _spoolIdGenerator;
     FrameId _frameId{0};
     struct FrameSymbolTable {
         FrameId id;
@@ -102,7 +106,7 @@ class Parser {
         } else if (name == "$$RID") {
             return value::SystemSlots::kRecordIdSlot;
         } else if (_symbolsLookupTable.find(name) == _symbolsLookupTable.end()) {
-            _symbolsLookupTable[name] = _slotIdGenerator->generate();
+            _symbolsLookupTable[name] = _slotIdGenerator.generate();
             std::cout << "mapping " << name << " to " << _symbolsLookupTable[name] << std::endl;
         }
         return _symbolsLookupTable[name];
@@ -132,6 +136,13 @@ class Parser {
             result[lookupSlotStrict(k)] = std::move(v);
         }
         return result;
+    }
+
+    SpoolId lookupSpoolBuffer(const std::string& name) {
+        if (_spoolBuffersLookupTable.find(name) == _spoolBuffersLookupTable.end()) {
+            _spoolBuffersLookupTable[name] = _spoolIdGenerator.generate();
+        }
+        return _spoolBuffersLookupTable[name];
     }
 
     void walkChildren(AstQuery& ast);
@@ -177,6 +188,10 @@ class Parser {
     void walkBranch(AstQuery& ast);
     void walkSimpleProj(AstQuery& ast);
     void walkPFO(AstQuery& ast);
+    void walkLazyProducerSpool(AstQuery& ast);
+    void walkEagerProducerSpool(AstQuery& ast);
+    void walkConsumerSpool(AstQuery& ast);
+    void walkStackConsumerSpool(AstQuery& ast);
 
     void walk(AstQuery& ast);
 

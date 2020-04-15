@@ -35,6 +35,7 @@
 namespace mongo::sbe {
 IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
                                std::string_view indexName,
+                               bool forward,
                                boost::optional<value::SlotId> recordSlot,
                                boost::optional<value::SlotId> recordIdSlot,
                                const std::vector<std::string>& fields,
@@ -45,6 +46,7 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
     : PlanStage(seekKeySlotLow ? "ixseek"_sd : "ixscan"_sd, yieldPolicy),
       _name(name),
       _indexName(indexName),
+      _forward(forward),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
       _fields(fields),
@@ -52,13 +54,15 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
       _seekKeySlotLow(seekKeySlotLow),
       _seekKeySlotHi(seekKeySlotHi) {
     invariant(_fields.size() == _vars.size());
-    // Either both boundaries are set or none is set.
-    invariant((_seekKeySlotLow && _seekKeySlotHi) || (!_seekKeySlotLow && !_seekKeySlotHi));
+    // The valid state is when both boundaries, or none is set, or only low key is set.
+    invariant((_seekKeySlotLow && _seekKeySlotHi) || (!_seekKeySlotLow && !_seekKeySlotHi) ||
+              (_seekKeySlotLow && !_seekKeySlotHi));
 }
 
 std::unique_ptr<PlanStage> IndexScanStage::clone() {
     return std::make_unique<IndexScanStage>(_name,
                                             _indexName,
+                                            _forward,
                                             _recordSlot,
                                             _recordIdSlot,
                                             _fields,
@@ -172,7 +176,8 @@ void IndexScanStage::open(bool reOpen) {
 
         if (auto entry = _weakIndexCatalogEntry.lock()) {
             if (!_cursor) {
-                _cursor = entry->accessMethod()->getSortedDataInterface()->newCursor(_opCtx);
+                _cursor =
+                    entry->accessMethod()->getSortedDataInterface()->newCursor(_opCtx, _forward);
             }
 
             if (_seekKeyLowAccessor && _seekKeyHiAccessor) {
@@ -187,6 +192,13 @@ void IndexScanStage::open(bool reOpen) {
                         "seek key is wrong type",
                         tagHi == value::TypeTags::ksValue);
                 _seekKeyHi = value::getKeyStringView(valHi);
+            } else if (_seekKeyLowAccessor) {
+                auto [tagLow, valLow] = _seekKeyLowAccessor->getViewOfValue();
+                uassert(ErrorCodes::BadValue,
+                        "seek key is wrong type",
+                        tagLow == value::TypeTags::ksValue);
+                _seekKeyLow = value::getKeyStringView(valLow);
+                _seekKeyHi = nullptr;
             } else {
                 auto sdi = entry->accessMethod()->getSortedDataInterface();
                 KeyString::Builder kb(sdi->getKeyStringVersion(),
@@ -227,8 +239,14 @@ PlanState IndexScanStage::getNext() {
     if (_seekKeyHi) {
         auto cmp = _nextRecord->keyString.compare(*_seekKeyHi);
 
-        if (cmp > 0) {
-            return trackPlanState(PlanState::IS_EOF);
+        if (_forward) {
+            if (cmp > 0) {
+                return trackPlanState(PlanState::IS_EOF);
+            }
+        } else {
+            if (cmp < 0) {
+                return trackPlanState(PlanState::IS_EOF);
+            }
         }
     }
 
@@ -274,11 +292,12 @@ std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {
         DebugPrinter::addKeyword(ret, "ixseek");
 
         DebugPrinter::addIdentifier(ret, _seekKeySlotLow.get());
-        DebugPrinter::addIdentifier(ret, _seekKeySlotHi.get());
+        if (_seekKeySlotHi) {
+            DebugPrinter::addIdentifier(ret, _seekKeySlotHi.get());
+        }
     } else {
         DebugPrinter::addKeyword(ret, "ixscan");
     }
-
 
     if (_recordSlot) {
         DebugPrinter::addIdentifier(ret, _recordSlot.get());
@@ -307,6 +326,8 @@ std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {
     ret.emplace_back("@\"`");
     DebugPrinter::addIdentifier(ret, _indexName);
     ret.emplace_back("`\"");
+
+    ret.emplace_back(_forward ? "true" : "false");
 
     return ret;
 }

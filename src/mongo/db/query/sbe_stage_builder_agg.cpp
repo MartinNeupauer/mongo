@@ -256,11 +256,8 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
     // Project out group by fields/columns.
     for (size_t idx = 0; idx < gb->getIdExpressions().size(); ++idx) {
         auto fieldExpr = gb->getIdExpressions()[idx].get();
-        auto [slot, expr, stage] = generateExpression(fieldExpr,
-                                                      std::move(inputStage),
-                                                      _slotIdGenerator.get(),
-                                                      _frameIdGenerator.get(),
-                                                      *_resultSlot);
+        auto [slot, expr, stage] = generateExpression(
+            fieldExpr, std::move(inputStage), &_slotIdGenerator, &_frameIdGenerator, *_resultSlot);
 
         inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
         gbs.push_back(slot);
@@ -273,13 +270,13 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
             auto fieldExpr = gb->getAccumulatedFields()[idx].expr.argument.get();
             auto [slot, expr, stage] = generateExpression(fieldExpr,
                                                           std::move(inputStage),
-                                                          _slotIdGenerator.get(),
-                                                          _frameIdGenerator.get(),
+                                                          &_slotIdGenerator,
+                                                          &_frameIdGenerator,
                                                           *_resultSlot);
 
             inputStage = sbe::makeProjectStage(std::move(stage), slot, std::move(expr));
 
-            auto slotOut = _slotIdGenerator->generate();
+            auto slotOut = _slotIdGenerator.generate();
             aggOut.push_back(slotOut);
             aggs[slotOut] =
                 sbe::makeE<sbe::EFunction>("sum"sv, sbe::makeEs(sbe::makeE<sbe::EVariable>(slot)));
@@ -297,7 +294,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
         invariant(gbs.size() == 1);
         resultIdSlot = gbs[0];
     } else {
-        resultIdSlot = _slotIdGenerator->generate();
+        resultIdSlot = _slotIdGenerator.generate();
         inputStage = sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
                                                    resultIdSlot,
                                                    boost::none,
@@ -308,7 +305,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildGroup(
                                                    false);
     }
     // Construct the result.
-    _resultSlot = _slotIdGenerator->generate();
+    _resultSlot = _slotIdGenerator.generate();
     std::vector<std::string> fieldsOut;
     std::vector<sbe::value::SlotId> slotsOut;
     fieldsOut.push_back("_id");
@@ -349,11 +346,8 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildTransf
     auto policies = ProjectionPolicies::aggregateProjectionPolicies();
     auto projection = projection_ast::parse(prj->getContext(), trn.toBson(), policies);
 
-    auto [slot, stage] = generateProjection(&projection,
-                                            std::move(inputStage),
-                                            _slotIdGenerator.get(),
-                                            _frameIdGenerator.get(),
-                                            *_resultSlot);
+    auto [slot, stage] = generateProjection(
+        &projection, std::move(inputStage), &_slotIdGenerator, &_frameIdGenerator, *_resultSlot);
     _resultSlot = slot;
 
     return std::move(stage);
@@ -365,7 +359,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildMatch(
     auto inputStage = build(fn->getSource());
 
     auto stage = generateFilter(
-        fn->getMatchExpression(), std::move(inputStage), _slotIdGenerator.get(), *_resultSlot);
+        fn->getMatchExpression(), std::move(inputStage), &_slotIdGenerator, *_resultSlot);
 
     return stage;
 }
@@ -390,7 +384,7 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind
             str::stream() << "Dotted paths in unwind not supported: " << path.fullPath(),
             path.getPathLength() == 1);
     */
-    auto slot = _slotIdGenerator->generate();
+    auto slot = _slotIdGenerator.generate();
     auto getFieldFn = sbe::makeE<sbe::EFunction>(
         "getField"sv,
         sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
@@ -399,14 +393,14 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::buildUnwind
     inputStage = sbe::makeProjectStage(std::move(inputStage), slot, std::move(getFieldFn));
 
     // Create the unwind
-    auto indexSlot = _slotIdGenerator->generate();
-    auto outSlot = _slotIdGenerator->generate();
+    auto indexSlot = _slotIdGenerator.generate();
+    auto outSlot = _slotIdGenerator.generate();
     inputStage = sbe::makeS<sbe::UnwindStage>(
         std::move(inputStage), slot, outSlot, indexSlot, un->preserveNullAndEmptyArrays());
 
     // Construct the result
     auto oldResult = _resultSlot;
-    _resultSlot = _slotIdGenerator->generate();
+    _resultSlot = _slotIdGenerator.generate();
     std::vector<std::string> fieldsOut;
     std::vector<sbe::value::SlotId> slotsOut;
     fieldsOut.push_back(path.fullPath());

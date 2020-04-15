@@ -44,7 +44,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
     LOGV2_DEBUG(
-        47429003, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
+        47429003, 5, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
 
     sbe::CompileCtx ctx;
     root->prepare(ctx);
@@ -84,7 +84,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
     LOGV2_DEBUG(
-        47429004, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
+        47429004, 5, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
 
     auto execImpl = new PlanExecutorSBE(opCtx,
                                         std::move(cq),

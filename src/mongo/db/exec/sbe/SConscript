@@ -3,6 +3,16 @@
 Import("env")
 
 env.Library(
+    target='query_sbe_plan_stats',
+    source=[
+        'stages/plan_stats.cpp',
+        ],
+    LIBDEPS=[
+        '$BUILD_DIR/mongo/base',
+        ]
+    )
+
+env.Library(
     target='query_sbe',
     source=[
         'abt/base.cpp',
@@ -26,6 +36,7 @@ env.Library(
         'abt/variable.cpp',
         'expressions/expression.cpp',
         'stages/bson_scan.cpp',
+        'stages/check_bounds.cpp',
         'stages/co_scan.cpp',
         'stages/exchange.cpp',
         'stages/filter.cpp',
@@ -34,9 +45,9 @@ env.Library(
         'stages/limit_skip.cpp',
         'stages/loop_join.cpp',
         'stages/makeobj.cpp',
-        'stages/plan_stats.cpp',
         'stages/project.cpp',
         'stages/sort.cpp',
+        'stages/spool.cpp',
         'stages/stages.cpp',
         'stages/traverse.cpp',
         'stages/union.cpp',
@@ -51,10 +62,13 @@ env.Library(
         '$BUILD_DIR/mongo/base',
         '$BUILD_DIR/mongo/db/exec/scoped_timer',
         '$BUILD_DIR/mongo/db/query/plan_yield_policy',
+        '$BUILD_DIR/mongo/db/query/query_planner',
         '$BUILD_DIR/mongo/db/service_context',
+        '$BUILD_DIR/mongo/db/storage/index_entry_comparison',
         '$BUILD_DIR/mongo/db/storage/key_string',
-        '$BUILD_DIR/mongo/util/concurrency/thread_pool'
-        ]
+        '$BUILD_DIR/mongo/util/concurrency/thread_pool',
+        'query_sbe_plan_stats'
+         ]
     )
 
 env.Library(

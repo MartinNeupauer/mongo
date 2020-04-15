@@ -28,6 +28,7 @@
  */
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
+#include "mongo/db/exec/sbe/stages/spool.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/util/str.h"
 
@@ -584,9 +585,18 @@ value::SlotAccessor* CompileCtx::getAccessor(value::SlotId slot) {
 
     uasserted(ErrorCodes::InternalError, str::stream() << "undefined slot accessor:" << slot);
 }
+
+std::shared_ptr<SpoolBuffer> CompileCtx::getSpoolBuffer(SpoolId spool) {
+    if (spoolBuffers.find(spool) == spoolBuffers.end()) {
+        spoolBuffers.emplace(spool, std::make_shared<SpoolBuffer>());
+    }
+    return spoolBuffers[spool];
+}
+
 void CompileCtx::pushCorrelated(value::SlotId slot, value::SlotAccessor* accessor) {
     correlated.emplace_back(slot, accessor);
 }
+
 void CompileCtx::popCorrelated() {
     correlated.pop_back();
 }

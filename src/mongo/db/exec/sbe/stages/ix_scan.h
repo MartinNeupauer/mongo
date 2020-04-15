@@ -46,6 +46,7 @@ protected:
 public:
     IndexScanStage(const NamespaceStringOrUUID& name,
                    std::string_view indexName,
+                   bool forward,
                    boost::optional<value::SlotId> recordSlot,
                    boost::optional<value::SlotId> recordISlot,
                    const std::vector<std::string>& fields,
@@ -69,6 +70,7 @@ public:
 private:
     const NamespaceStringOrUUID _name;
     const std::string _indexName;
+    const bool _forward;
     const boost::optional<value::SlotId> _recordSlot;
     const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;

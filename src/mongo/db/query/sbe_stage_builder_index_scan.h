@@ -29,52 +29,18 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/query_solution.h"
 
-namespace mongo::sbe::value {
-/*
- * System reserved slot ids.
- */
-enum SystemSlots : int64_t { kResultSlot = -1, kRecordIdSlot = -2 };
-
+namespace mongo::stage_builder {
 /**
- * A reusable id generator suitable for use with integer ids that generates each new id by adding an
- * increment to the previously generated id. This generator is not thread safe; calls to
- * generateByIncrementing must be serialized.
+ * Generates an SBE plan stage sub-tree implementing an index scan.
  */
-template <class T>
-class IncrementingIdGenerator {
-protected:
-    /**
-     * Constructs a new generator using 'startingId' as the first generated id and 'incrementStep'
-     * as the value to add to generate subsequent ids. Note that 'incrementStep' may be negative but
-     * must not be zero.
-     */
-    IncrementingIdGenerator(T startingId, T incrementStep)
-        : _currentId(startingId), _incrementStep(incrementStep) {}
-
-    T generateByIncrementing() {
-        _currentId += _incrementStep;
-        return _currentId;
-    }
-
-private:
-    T _currentId;
-    T _incrementStep;
-};
-
-template <class T>
-class IdGenerator : IncrementingIdGenerator<T> {
-public:
-    IdGenerator(T startingId = 0, T incrementStep = 1)
-        : IncrementingIdGenerator<T>(startingId, incrementStep) {}
-
-    T generate() {
-        return this->generateByIncrementing();
-    }
-};
-
-using SlotIdGenerator = IdGenerator<value::SlotId>;
-using FrameIdGenerator = IdGenerator<FrameId>;
-using SpoolIdGenerator = IdGenerator<SpoolId>;
-}  // namespace mongo::sbe::value
+std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateIndexScan(
+    OperationContext* opCtx,
+    const Collection* collection,
+    const IndexScanNode* ixn,
+    sbe::value::SlotIdGenerator* slotIdGenerator,
+    sbe::value::SpoolIdGenerator* spoolIdGenerator,
+    PlanYieldPolicy* yieldPolicy);
+}  // namespace mongo::stage_builder

@@ -208,6 +208,19 @@ public:
                                  BSONObj* endKey,
                                  bool* endKeyInclusive);
 
+    /**
+     * Appends the startKey and endKey of the given "all values" 'interval' to the 'startBob' and
+     * 'endBob' respectively, handling inclusivity of each bound through the relevant
+     * '*KeyInclusive' parameter.
+     *
+     * If the 'interval' is not an "all values" interval, does nothing.
+     */
+    static void appendAllValuesInterval(const Interval& interval,
+                                        bool startKeyInclusive,
+                                        bool endKeyInclusive,
+                                        BSONObjBuilder* startBob,
+                                        BSONObjBuilder* endBob);
+
 private:
     /**
      * Performs the heavy lifting for IndexBoundsBuilder::translate().
