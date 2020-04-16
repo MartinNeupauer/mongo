@@ -67,11 +67,11 @@ std::unique_ptr<PlanStage> IndexScanStage::clone() {
 }
 
 void IndexScanStage::prepare(CompileCtx& ctx) {
-    if (*_recordSlot) {
+    if (_recordSlot) {
         _recordAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
-    if (*_recordIdSlot) {
+    if (_recordIdSlot) {
         _recordIdAccessor = std::make_unique<value::ViewOfValueAccessor>();
     }
 
