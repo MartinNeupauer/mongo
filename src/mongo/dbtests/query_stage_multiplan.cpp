@@ -202,8 +202,7 @@ std::unique_ptr<MultiPlanStage> runMultiPlanner(ExpressionContext* expCtx,
     mps->addPlan(createQuerySolution(), std::move(collScanRoot), sharedWs.get());
 
     // Plan 0 aka the first plan aka the index scan should be the best.
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD,
-                                expCtx->opCtx->getServiceContext()->getFastClockSource());
+    NoopYieldPolicy yieldPolicy(expCtx->opCtx->getServiceContext()->getFastClockSource());
     ASSERT_OK(mps->pickBestPlan(&yieldPolicy));
     ASSERT(mps->bestPlanChosen());
     ASSERT_EQUALS(0, mps->bestPlanIdx());
@@ -250,14 +249,17 @@ TEST_F(QueryStageMultiPlanTest, MPSCollectionScanVsHighlySelectiveIXScan) {
     mps->addPlan(createQuerySolution(), std::move(collScanRoot), sharedWs.get());
 
     // Plan 0 aka the first plan aka the index scan should be the best.
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD, _clock);
+    NoopYieldPolicy yieldPolicy(_clock);
     ASSERT_OK(mps->pickBestPlan(&yieldPolicy));
     ASSERT(mps->bestPlanChosen());
     ASSERT_EQUALS(0, mps->bestPlanIdx());
 
     // Takes ownership of arguments other than 'collection'.
-    auto statusWithPlanExecutor = PlanExecutor::make(
-        std::move(cq), std::move(sharedWs), std::move(mps), coll, PlanExecutor::NO_YIELD);
+    auto statusWithPlanExecutor = PlanExecutor::make(std::move(cq),
+                                                     std::move(sharedWs),
+                                                     std::move(mps),
+                                                     coll,
+                                                     PlanYieldPolicy::YieldPolicy::NO_YIELD);
     ASSERT_OK(statusWithPlanExecutor.getStatus());
     auto exec = std::move(statusWithPlanExecutor.getValue());
 
@@ -401,12 +403,12 @@ TEST_F(QueryStageMultiPlanTest, MPSBackupPlan) {
     // Put each solution from the planner into the MPR.
     for (size_t i = 0; i < solutions.size(); ++i) {
         auto root = stage_builder::buildExecutableTree<PlanStage>(
-            _opCtx.get(), collection, *cq, *solutions[i], ws.get());
+            _opCtx.get(), collection, *cq, *solutions[i], nullptr, ws.get());
         mps->addPlan(std::move(solutions[i]), std::move(root), ws.get());
     }
 
     // This sets a backup plan.
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD, _clock);
+    NoopYieldPolicy yieldPolicy(_clock);
     ASSERT_OK(mps->pickBestPlan(&yieldPolicy));
     ASSERT(mps->bestPlanChosen());
     ASSERT(mps->hasBackupPlan());
@@ -492,8 +494,11 @@ TEST_F(QueryStageMultiPlanTest, MPSExplainAllPlans) {
     mps->addPlan(std::make_unique<QuerySolution>(), std::move(secondPlan), ws.get());
 
     // Making a PlanExecutor chooses the best plan.
-    auto exec = uassertStatusOK(PlanExecutor::make(
-        _expCtx, std::move(ws), std::move(mps), ctx.getCollection(), PlanExecutor::NO_YIELD));
+    auto exec = uassertStatusOK(PlanExecutor::make(_expCtx,
+                                                   std::move(ws),
+                                                   std::move(mps),
+                                                   ctx.getCollection(),
+                                                   PlanYieldPolicy::YieldPolicy::NO_YIELD));
 
     auto root = static_cast<MultiPlanStage*>(exec->getRootStage());
     ASSERT_TRUE(root->bestPlanChosen());
@@ -542,8 +547,8 @@ TEST_F(QueryStageMultiPlanTest, MPSSummaryStats) {
     auto qr = std::make_unique<QueryRequest>(nss);
     qr->setFilter(BSON("foo" << BSON("$gte" << 0)));
     auto cq = uassertStatusOK(CanonicalQuery::canonicalize(opCtx(), std::move(qr)));
-    auto exec =
-        uassertStatusOK(getExecutor(opCtx(), coll, std::move(cq), PlanExecutor::NO_YIELD, 0));
+    auto exec = uassertStatusOK(
+        getExecutor(opCtx(), coll, std::move(cq), PlanYieldPolicy::YieldPolicy::NO_YIELD, 0));
     ASSERT_EQ(exec->getRootStage()->stageType(), STAGE_MULTI_PLAN);
 
     ASSERT_OK(exec->executePlan());
@@ -680,7 +685,7 @@ TEST_F(QueryStageMultiPlanTest, AddsContextDuringException) {
     multiPlanStage.addPlan(
         createQuerySolution(), std::make_unique<ThrowyPlanStage>(_expCtx.get()), sharedWs.get());
 
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD, _clock);
+    NoopYieldPolicy yieldPolicy(_clock);
     ASSERT_THROWS_WITH_CHECK(multiPlanStage.pickBestPlan(&yieldPolicy),
                              AssertionException,
                              [](const AssertionException& ex) {

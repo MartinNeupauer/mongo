@@ -53,7 +53,7 @@
 #include "mongo/db/exec/working_set_common.h"
 #include "mongo/db/query/find_common.h"
 #include "mongo/db/query/mock_yield_policies.h"
-#include "mongo/db/query/plan_yield_policy.h"
+#include "mongo/db/query/plan_yield_policy_impl.h"
 #include "mongo/db/repl/replication_coordinator.h"
 #include "mongo/db/service_context.h"
 #include "mongo/logv2/log.h"
@@ -85,19 +85,19 @@ MONGO_FAIL_POINT_DEFINE(planExecutorHangBeforeShouldWaitForInserts);
  * Constructs a PlanYieldPolicy based on 'policy'.
  */
 std::unique_ptr<PlanYieldPolicy> makeYieldPolicy(PlanExecutor* exec,
-                                                 PlanExecutor::YieldPolicy policy) {
+                                                 PlanYieldPolicy::YieldPolicy policy) {
     switch (policy) {
-        case PlanExecutor::YieldPolicy::YIELD_AUTO:
-        case PlanExecutor::YieldPolicy::YIELD_MANUAL:
-        case PlanExecutor::YieldPolicy::NO_YIELD:
-        case PlanExecutor::YieldPolicy::WRITE_CONFLICT_RETRY_ONLY:
-        case PlanExecutor::YieldPolicy::INTERRUPT_ONLY: {
-            return std::make_unique<PlanYieldPolicy>(exec, policy);
+        case PlanYieldPolicy::YieldPolicy::YIELD_AUTO:
+        case PlanYieldPolicy::YieldPolicy::YIELD_MANUAL:
+        case PlanYieldPolicy::YieldPolicy::NO_YIELD:
+        case PlanYieldPolicy::YieldPolicy::WRITE_CONFLICT_RETRY_ONLY:
+        case PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY: {
+            return std::make_unique<PlanYieldPolicyImpl>(exec, policy);
         }
-        case PlanExecutor::YieldPolicy::ALWAYS_TIME_OUT: {
+        case PlanYieldPolicy::YieldPolicy::ALWAYS_TIME_OUT: {
             return std::make_unique<AlwaysTimeOutYieldPolicy>(exec);
         }
-        case PlanExecutor::YieldPolicy::ALWAYS_MARK_KILLED: {
+        case PlanYieldPolicy::YieldPolicy::ALWAYS_MARK_KILLED: {
             return std::make_unique<AlwaysPlanKilledYieldPolicy>(exec);
         }
         default:
@@ -131,7 +131,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
     std::unique_ptr<WorkingSet> ws,
     std::unique_ptr<PlanStage> rt,
     const Collection* collection,
-    YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     NamespaceString nss,
     std::unique_ptr<QuerySolution> qs) {
     auto expCtx = cq->getExpCtx();
@@ -151,7 +151,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
     std::unique_ptr<WorkingSet> ws,
     std::unique_ptr<PlanStage> rt,
     const Collection* collection,
-    YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     NamespaceString nss,
     std::unique_ptr<QuerySolution> qs) {
     return PlanExecutorImpl::make(expCtx->opCtx,
@@ -174,7 +174,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutorImpl::ma
     const boost::intrusive_ptr<ExpressionContext>& expCtx,
     const Collection* collection,
     NamespaceString nss,
-    YieldPolicy yieldPolicy) {
+    PlanYieldPolicy::YieldPolicy yieldPolicy) {
 
     auto execImpl = new PlanExecutorImpl(opCtx,
                                          std::move(ws),
@@ -205,7 +205,7 @@ PlanExecutorImpl::PlanExecutorImpl(OperationContext* opCtx,
                                    const boost::intrusive_ptr<ExpressionContext>& expCtx,
                                    const Collection* collection,
                                    NamespaceString nss,
-                                   YieldPolicy yieldPolicy)
+                                   PlanYieldPolicy::YieldPolicy yieldPolicy)
     : _opCtx(opCtx),
       _cq(std::move(cq)),
       _expCtx(_cq ? _cq->getExpCtx() : expCtx),
@@ -214,7 +214,8 @@ PlanExecutorImpl::PlanExecutorImpl(OperationContext* opCtx,
       _root(std::move(rt)),
       _nss(std::move(nss)),
       // There's no point in yielding if the collection doesn't exist.
-      _yieldPolicy(makeYieldPolicy(this, collection ? yieldPolicy : NO_YIELD)) {
+      _yieldPolicy(makeYieldPolicy(
+          this, collection ? yieldPolicy : PlanYieldPolicy::YieldPolicy::NO_YIELD)) {
     invariant(!_expCtx || _expCtx->opCtx == _opCtx);
     invariant(!_cq || !_expCtx || _cq->getExpCtx() == _expCtx);
 
@@ -336,7 +337,7 @@ void PlanExecutorImpl::restoreState() {
             throw;
 
         // Handles retries by calling restoreStateWithoutRetrying() in a loop.
-        uassertStatusOK(_yieldPolicy->yieldOrInterrupt());
+        uassertStatusOK(_yieldPolicy->yieldOrInterrupt(getOpCtx()));
     }
 }
 
@@ -477,7 +478,7 @@ PlanExecutor::ExecState PlanExecutorImpl::_waitForInserts(CappedInsertNotifierDa
     ON_BLOCK_EXIT([curOp] { curOp->resumeTimer(); });
     auto opCtx = _opCtx;
     uint64_t currentNotifierVersion = notifierData->notifier->getVersion();
-    auto yieldResult = _yieldPolicy->yieldOrInterrupt([opCtx, notifierData] {
+    auto yieldResult = _yieldPolicy->yieldOrInterrupt(opCtx, [opCtx, notifierData] {
         const auto deadline = awaitDataState(opCtx).waitForInsertsDeadline;
         notifierData->notifier->waitUntil(notifierData->lastEOFVersion, deadline);
     });
@@ -539,8 +540,8 @@ PlanExecutor::ExecState PlanExecutorImpl::_getNextImpl(Snapshotted<Document>* ob
         //   2) some stage requested a yield, or
         //   3) we need to yield and retry due to a WriteConflictException.
         // In all cases, the actual yielding happens here.
-        if (_yieldPolicy->shouldYieldOrInterrupt()) {
-            auto yieldStatus = _yieldPolicy->yieldOrInterrupt();
+        if (_yieldPolicy->shouldYieldOrInterrupt(_opCtx)) {
+            auto yieldStatus = _yieldPolicy->yieldOrInterrupt(_opCtx);
             if (!yieldStatus.isOK()) {
                 if (objOut) {
                     *objOut = Snapshotted<Document>(

@@ -831,7 +831,7 @@ MigrationChunkClonerSourceLegacy::_getIndexScanExecutor(OperationContext* opCtx,
                                       min,
                                       max,
                                       BoundInclusion::kIncludeStartKeyOnly,
-                                      PlanExecutor::YIELD_AUTO);
+                                      PlanYieldPolicy::YieldPolicy::YIELD_AUTO);
 }
 
 Status MigrationChunkClonerSourceLegacy::_storeCurrentLocs(OperationContext* opCtx) {

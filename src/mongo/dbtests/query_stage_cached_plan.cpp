@@ -46,8 +46,8 @@
 #include "mongo/db/query/canonical_query.h"
 #include "mongo/db/query/collection_query_info.h"
 #include "mongo/db/query/get_executor.h"
+#include "mongo/db/query/mock_yield_policies.h"
 #include "mongo/db/query/plan_cache.h"
-#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner_params.h"
 #include "mongo/dbtests/dbtests.h"
@@ -166,8 +166,7 @@ public:
                                         std::move(mockChild));
 
         // This should succeed after triggering a replan.
-        PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD,
-                                    _opCtx.getServiceContext()->getFastClockSource());
+        NoopYieldPolicy yieldPolicy(_opCtx.getServiceContext()->getFastClockSource());
         ASSERT_OK(cachedPlanStage.pickBestPlan(&yieldPolicy));
     }
 
@@ -221,8 +220,7 @@ TEST_F(QueryStageCachedPlan, QueryStageCachedPlanFailure) {
                                     std::move(mockChild));
 
     // This should succeed after triggering a replan.
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD,
-                                _opCtx.getServiceContext()->getFastClockSource());
+    NoopYieldPolicy yieldPolicy(_opCtx.getServiceContext()->getFastClockSource());
     ASSERT_OK(cachedPlanStage.pickBestPlan(&yieldPolicy));
 
     ASSERT_EQ(getNumResultsForStage(_ws, &cachedPlanStage, cq.get()), 2U);
@@ -276,8 +274,7 @@ TEST_F(QueryStageCachedPlan, QueryStageCachedPlanHitMaxWorks) {
                                     std::move(mockChild));
 
     // This should succeed after triggering a replan.
-    PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD,
-                                _opCtx.getServiceContext()->getFastClockSource());
+    NoopYieldPolicy yieldPolicy(_opCtx.getServiceContext()->getFastClockSource());
     ASSERT_OK(cachedPlanStage.pickBestPlan(&yieldPolicy));
 
     ASSERT_EQ(getNumResultsForStage(_ws, &cachedPlanStage, cq.get()), 2U);
@@ -521,8 +518,7 @@ TEST_F(QueryStageCachedPlan, DoesNotThrowOnYieldRecoveryWhenIndexIsDroppedAferPl
                                     decisionWorks,
                                     std::make_unique<QueuedDataStage>(_expCtx.get(), &_ws));
 
-    PlanYieldPolicy yieldPolicy(PlanExecutor::YIELD_MANUAL,
-                                _opCtx.getServiceContext()->getFastClockSource());
+    NoopYieldPolicy yieldPolicy(_opCtx.getServiceContext()->getFastClockSource());
     ASSERT_OK(cachedPlanStage.pickBestPlan(&yieldPolicy));
 
     // Drop an index while the CachedPlanStage is in a saved state. We should be able to restore

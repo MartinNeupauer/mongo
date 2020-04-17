@@ -40,7 +40,8 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     OperationContext* opCtx,
     std::unique_ptr<CanonicalQuery> cq,
     std::unique_ptr<sbe::PlanStage> root,
-    NamespaceString nss) {
+    NamespaceString nss,
+    std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
     LOGV2_DEBUG(
         47429003, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
@@ -56,8 +57,15 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
         uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
     }
 
-    auto execImpl = new PlanExecutorSBE(
-        opCtx, std::move(cq), std::move(root), resultSlot, resultRecordId, nss, false, boost::none);
+    auto execImpl = new PlanExecutorSBE(opCtx,
+                                        std::move(cq),
+                                        std::move(root),
+                                        resultSlot,
+                                        resultRecordId,
+                                        nss,
+                                        false,
+                                        boost::none,
+                                        std::move(yieldPolicy));
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
@@ -72,13 +80,21 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
     NamespaceString nss,
     sbe::value::SlotAccessor* resultSlot,
     sbe::value::SlotAccessor* recordIdSlot,
-    std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash) {
+    std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash,
+    std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
     LOGV2_DEBUG(
         47429004, 3, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
 
-    auto execImpl = new PlanExecutorSBE(
-        opCtx, std::move(cq), std::move(root), resultSlot, recordIdSlot, nss, true, stash);
+    auto execImpl = new PlanExecutorSBE(opCtx,
+                                        std::move(cq),
+                                        std::move(root),
+                                        resultSlot,
+                                        recordIdSlot,
+                                        nss,
+                                        true,
+                                        stash,
+                                        std::move(yieldPolicy));
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
@@ -93,14 +109,16 @@ PlanExecutorSBE::PlanExecutorSBE(
     sbe::value::SlotAccessor* resultRecordId,
     NamespaceString nss,
     bool isOpen,
-    boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash)
+    boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash,
+    std::unique_ptr<PlanYieldPolicySBE> yieldPolicy)
     : _state{isOpen ? State::opened : State::beforeOpen},
       _opCtx(opCtx),
       _nss(nss),
       _root(std::move(root)),
       _result(result),
       _resultRecordId(resultRecordId),
-      _cq{std::move(cq)} {
+      _cq{std::move(cq)},
+      _yieldPolicy(std::move(yieldPolicy)) {
     invariant(_root);
     invariant(_result);
 
@@ -110,6 +128,11 @@ PlanExecutorSBE::PlanExecutorSBE(
 
     if (stash) {
         _stash = std::move(*stash);
+    }
+
+    // Callers are allowed to disable yielding for this plan by passing a null yield policy.
+    if (_yieldPolicy) {
+        _yieldPolicy->setRootStage(root.get());
     }
 }
 

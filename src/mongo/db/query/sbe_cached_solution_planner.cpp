@@ -119,8 +119,8 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
     auto solutions = uassertStatusOK(QueryPlanner::plan(_cq, _queryParams));
     if (solutions.size() == 1) {
         // Only one possible plan. Build the stages from the solution.
-        auto root =
-            stage_builder::buildExecutableTree<PlanStage>(_opCtx, _collection, _cq, *solutions[0]);
+        auto root = stage_builder::buildExecutableTree<PlanStage>(
+            _opCtx, _collection, _cq, *solutions[0], _yieldPolicy);
         auto [slots, _] = prepareExecutionPlan(root.get());
         LOGV2_DEBUG(
             2058101,
@@ -148,7 +148,7 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
 
     const auto cachingMode =
         shouldCache ? PlanCachingMode::AlwaysCache : PlanCachingMode::NeverCache;
-    MultiPlanner multiPlanner{_opCtx, _collection, _cq, cachingMode};
+    MultiPlanner multiPlanner{_opCtx, _collection, _cq, cachingMode, _yieldPolicy};
     auto plan = multiPlanner.plan(std::move(solutions), std::move(roots));
     LOGV2_DEBUG(2058201,
                 1,

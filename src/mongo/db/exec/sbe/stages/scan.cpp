@@ -38,8 +38,9 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
                      boost::optional<value::SlotId> recordIdSlot,
                      const std::vector<std::string>& fields,
                      const std::vector<value::SlotId>& vars,
-                     boost::optional<value::SlotId> seekKeySlot)
-    : PlanStage(seekKeySlot ? "seek"_sd : "scan"_sd),
+                     boost::optional<value::SlotId> seekKeySlot,
+                     PlanYieldPolicy* yieldPolicy)
+    : PlanStage(seekKeySlot ? "seek"_sd : "scan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
@@ -51,7 +52,7 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
 
 std::unique_ptr<PlanStage> ScanStage::clone() {
     return std::make_unique<ScanStage>(
-        _name, _recordSlot, _recordIdSlot, _fields, _vars, _seekKeySlot);
+        _name, _recordSlot, _recordIdSlot, _fields, _vars, _seekKeySlot, _yieldPolicy);
 }
 
 void ScanStage::prepare(CompileCtx& ctx) {
@@ -290,8 +291,9 @@ ParallelScanStage::ParallelScanStage(const NamespaceStringOrUUID& name,
                                      boost::optional<value::SlotId> recordSlot,
                                      boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
-                                     const std::vector<value::SlotId>& vars)
-    : PlanStage("pscan"_sd),
+                                     const std::vector<value::SlotId>& vars,
+                                     PlanYieldPolicy* yieldPolicy)
+    : PlanStage("pscan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
@@ -307,8 +309,9 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
                                      boost::optional<value::SlotId> recordSlot,
                                      boost::optional<value::SlotId> recordIdSlot,
                                      const std::vector<std::string>& fields,
-                                     const std::vector<value::SlotId>& vars)
-    : PlanStage("pscan"_sd),
+                                     const std::vector<value::SlotId>& vars,
+                                     PlanYieldPolicy* yieldPolicy)
+    : PlanStage("pscan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
@@ -319,7 +322,7 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
 }
 std::unique_ptr<PlanStage> ParallelScanStage::clone() {
     return std::make_unique<ParallelScanStage>(
-        _state, _name, _recordSlot, _recordIdSlot, _fields, _vars);
+        _state, _name, _recordSlot, _recordIdSlot, _fields, _vars, _yieldPolicy);
 }
 
 void ParallelScanStage::prepare(CompileCtx& ctx) {

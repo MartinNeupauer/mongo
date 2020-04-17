@@ -31,6 +31,7 @@
 
 #include "mongo/db/db_raii.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 
@@ -50,7 +51,8 @@ public:
                    const std::vector<std::string>& fields,
                    const std::vector<value::SlotId>& vars,
                    boost::optional<value::SlotId> seekKeySlotLow,
-                   boost::optional<value::SlotId> seekKeySlotHi);
+                   boost::optional<value::SlotId> seekKeySlotHi,
+                   PlanYieldPolicy* yieldPolicy);
 
     std::unique_ptr<PlanStage> clone() final;
 

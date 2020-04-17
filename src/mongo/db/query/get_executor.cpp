@@ -388,6 +388,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
     Collection* collection,
     WorkingSet* ws,
     unique_ptr<CanonicalQuery> canonicalQuery,
+    PlanYieldPolicy* yieldPolicy,
     size_t plannerOptions) {
     invariant(canonicalQuery);
     unique_ptr<PlanStageType> root;
@@ -561,7 +562,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                 }
 
                 root = stage_builder::buildExecutableTree<PlanStageType>(
-                    opCtx, collection, *canonicalQuery, *querySolution, ws);
+                    opCtx, collection, *canonicalQuery, *querySolution, yieldPolicy, ws);
 
                 if constexpr (!isSlotBased) {
                     // Add a CachedPlanStage on top of the previous root.
@@ -627,7 +628,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                 } else {
                     // We're not going to cache anything that's fast count.
                     auto root = stage_builder::buildExecutableTree<PlanStageType>(
-                        opCtx, collection, *canonicalQuery, *solutions[i], ws);
+                        opCtx, collection, *canonicalQuery, *solutions[i], yieldPolicy, ws);
 
                     LOGV2_DEBUG(20925,
                                 2,
@@ -652,7 +653,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
     if (1 == solutions.size()) {
         // Only one possible plan. Run it. Build the stages from the solution.
         roots.push_back(stage_builder::buildExecutableTree<PlanStageType>(
-            opCtx, collection, *canonicalQuery, *solutions[0], ws));
+            opCtx, collection, *canonicalQuery, *solutions[0], yieldPolicy, ws));
         LOGV2_DEBUG(20926,
                     2,
                     "Only one plan is available; it will be run but will not be cached. "
@@ -667,7 +668,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
             }
 
             roots.push_back(stage_builder::buildExecutableTree<PlanStageType>(
-                opCtx, collection, *canonicalQuery, *solutions[ix], ws));
+                opCtx, collection, *canonicalQuery, *solutions[ix], yieldPolicy, ws));
         }
     }
     return PrepareExecutionResult(
@@ -678,11 +679,11 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
     OperationContext* opCtx,
     Collection* collection,
     unique_ptr<CanonicalQuery> canonicalQuery,
-    PlanExecutor::YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     auto executionResult = prepareExecution<PlanStage>(
-        opCtx, collection, ws.get(), std::move(canonicalQuery), plannerOptions);
+        opCtx, collection, ws.get(), std::move(canonicalQuery), nullptr, plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -730,6 +731,7 @@ std::unique_ptr<sbe::RuntimePlanner> makeRuntimePlannerIfNeeded(
     OperationContext* opCtx,
     Collection* collection,
     const PrepareExecutionResult<sbe::PlanStage>& result,
+    PlanYieldPolicySBE* yieldPolicy,
     size_t plannerOptions) {
     if (result.roots.size() == 1) {
         // If we have a single solution but it was created from a cached plan, we will need to
@@ -747,27 +749,37 @@ std::unique_ptr<sbe::RuntimePlanner> makeRuntimePlannerIfNeeded(
 
             if (result.needSubplanning) {
                 return std::make_unique<sbe::SubPlanner>(
-                    opCtx, collection, *result.canonicalQuery, plannerParams);
+                    opCtx, collection, *result.canonicalQuery, plannerParams, yieldPolicy);
             }
-            return std::make_unique<sbe::CachedSolutionPlanner>(
-                opCtx, collection, *result.canonicalQuery, plannerParams, *result.decisionWorks);
+            return std::make_unique<sbe::CachedSolutionPlanner>(opCtx,
+                                                                collection,
+                                                                *result.canonicalQuery,
+                                                                plannerParams,
+                                                                *result.decisionWorks,
+                                                                yieldPolicy);
         }
         return nullptr;
     }
 
     // If we have multiple solutions, we always need to do the runtime planning.
     return std::make_unique<sbe::MultiPlanner>(
-        opCtx, collection, *result.canonicalQuery, PlanCachingMode::AlwaysCache);
+        opCtx, collection, *result.canonicalQuery, PlanCachingMode::AlwaysCache, yieldPolicy);
 }
 
 StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor(
     OperationContext* opCtx,
     Collection* collection,
     unique_ptr<CanonicalQuery> cq,
+    PlanYieldPolicy::YieldPolicy requestedYieldPolicy,
     size_t plannerOptions) {
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
+    auto yieldPolicy =
+        std::make_unique<PlanYieldPolicySBE>(requestedYieldPolicy,
+                                             opCtx->getServiceContext()->getFastClockSource(),
+                                             internalQueryExecYieldIterations.load(),
+                                             Milliseconds{internalQueryExecYieldPeriodMS.load()});
     auto executionResult = prepareExecution<sbe::PlanStage>(
-        opCtx, collection, ws.get(), std::move(cq), plannerOptions);
+        opCtx, collection, ws.get(), std::move(cq), yieldPolicy.get(), plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -775,7 +787,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor
     auto&& result = executionResult.getValue();
     invariant(result.roots.size() > 0);
 
-    if (auto planner = makeRuntimePlannerIfNeeded(opCtx, collection, result, plannerOptions)) {
+    if (auto planner = makeRuntimePlannerIfNeeded(
+            opCtx, collection, result, yieldPolicy.get(), plannerOptions)) {
         // Do the runtime planning and pick the best candidate plan.
         auto plan = planner->plan(std::move(result.querySolutions), std::move(result.roots));
         return PlanExecutor::make(opCtx,
@@ -784,12 +797,16 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor
                                   {},                // ns
                                   plan.data.first,   // resultSlot
                                   plan.data.second,  // recordIdSlot
-                                  std::move(plan.results));
+                                  std::move(plan.results),
+                                  std::move(yieldPolicy));
     }
     // No need for runtime planning, just use the constructed plan stage tree.
     invariant(result.roots.size() == 1);
-    return PlanExecutor::make(
-        opCtx, std::move(result.canonicalQuery), std::move(result.roots[0]), {});
+    return PlanExecutor::make(opCtx,
+                              std::move(result.canonicalQuery),
+                              std::move(result.roots[0]),
+                              {},
+                              std::move(yieldPolicy));
 }
 }  // namespace
 
@@ -797,10 +814,11 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutor(
     OperationContext* opCtx,
     Collection* collection,
     unique_ptr<CanonicalQuery> canonicalQuery,
-    PlanExecutor::YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
     return internalQueryEnableSlotBasedExecutionEngine.load()
-        ? getSlotBasedExecutor(opCtx, collection, std::move(canonicalQuery), plannerOptions)
+        ? getSlotBasedExecutor(
+              opCtx, collection, std::move(canonicalQuery), yieldPolicy, plannerOptions)
         : getClassicExecutor(
               opCtx, collection, std::move(canonicalQuery), yieldPolicy, plannerOptions);
 }
@@ -815,7 +833,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> _getExecutorFind(
     OperationContext* opCtx,
     Collection* collection,
     unique_ptr<CanonicalQuery> canonicalQuery,
-    PlanExecutor::YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
 
     if (OperationShardingState::isOperationVersioned(opCtx)) {
@@ -833,8 +851,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorFind(
     bool permitYield,
     size_t plannerOptions) {
     auto yieldPolicy = (permitYield && !opCtx->inMultiDocumentTransaction())
-        ? PlanExecutor::YIELD_AUTO
-        : PlanExecutor::INTERRUPT_ONLY;
+        ? PlanYieldPolicy::YieldPolicy::YIELD_AUTO
+        : PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY;
     return _getExecutorFind(
         opCtx, collection, std::move(canonicalQuery), yieldPolicy, plannerOptions);
 }
@@ -846,7 +864,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorLega
     return _getExecutorFind(opCtx,
                             collection,
                             std::move(canonicalQuery),
-                            PlanExecutor::YIELD_AUTO,
+                            PlanYieldPolicy::YieldPolicy::YIELD_AUTO,
                             QueryPlannerParams::DEFAULT);
 }
 
@@ -940,7 +958,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDelete(
     deleteStageParams->stmtId = request->getStmtId();
 
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    const PlanExecutor::YieldPolicy policy = parsedDelete->yieldPolicy();
+    const auto policy = parsedDelete->yieldPolicy();
 
     if (!collection) {
         // Treat collections that do not exist as empty collections. Return a PlanExecutor which
@@ -1016,7 +1034,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDelete(
     const size_t defaultPlannerOptions = QueryPlannerParams::PRESERVE_RECORD_ID;
 
     auto executionResult = prepareExecution<PlanStage>(
-        opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
+        opCtx, collection, ws.get(), std::move(cq), nullptr, defaultPlannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1104,7 +1122,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorUpdate(
                       str::stream() << "Not primary while performing update on " << nss.ns());
     }
 
-    const PlanExecutor::YieldPolicy policy = parsedUpdate->yieldPolicy();
+    const auto policy = parsedUpdate->yieldPolicy();
 
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     UpdateStageParams updateStageParams(request, driver, opDebug);
@@ -1178,7 +1196,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorUpdate(
     const size_t defaultPlannerOptions = QueryPlannerParams::PRESERVE_RECORD_ID;
 
     auto executionResult = prepareExecution<PlanStage>(
-        opCtx, collection, ws.get(), std::move(cq), defaultPlannerOptions);
+        opCtx, collection, ws.get(), std::move(cq), nullptr, defaultPlannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1393,8 +1411,9 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorCount(
     }
     unique_ptr<CanonicalQuery> cq = std::move(statusWithCQ.getValue());
 
-    const auto yieldPolicy = opCtx->inMultiDocumentTransaction() ? PlanExecutor::INTERRUPT_ONLY
-                                                                 : PlanExecutor::YIELD_AUTO;
+    const auto yieldPolicy = opCtx->inMultiDocumentTransaction()
+        ? PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY
+        : PlanYieldPolicy::YieldPolicy::YIELD_AUTO;
 
     const auto skip = request.getSkip().value_or(0);
     const auto limit = request.getLimit().value_or(0);
@@ -1430,8 +1449,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorCount(
         plannerOptions |= QueryPlannerParams::INCLUDE_SHARD_FILTER;
     }
 
-    auto executionResult =
-        prepareExecution<PlanStage>(opCtx, collection, ws.get(), std::move(cq), plannerOptions);
+    auto executionResult = prepareExecution<PlanStage>(
+        opCtx, collection, ws.get(), std::move(cq), nullptr, plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
@@ -1720,7 +1739,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorForS
     OperationContext* opCtx,
     Collection* collection,
     const QueryPlannerParams& plannerParams,
-    PlanExecutor::YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     ParsedDistinct* parsedDistinct) {
     invariant(parsedDistinct->getQuery());
     auto collator = parsedDistinct->getQuery()->getCollator();
@@ -1760,7 +1779,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorForS
 
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
     auto root = stage_builder::buildExecutableTree<PlanStage>(
-        opCtx, collection, *parsedDistinct->getQuery(), *soln, ws.get());
+        opCtx, collection, *parsedDistinct->getQuery(), *soln, nullptr, ws.get());
 
     LOGV2_DEBUG(20931,
                 2,
@@ -1795,7 +1814,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>>
 getExecutorDistinctFromIndexSolutions(OperationContext* opCtx,
                                       Collection* collection,
                                       std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                      PlanExecutor::YieldPolicy yieldPolicy,
+                                      PlanYieldPolicy::YieldPolicy yieldPolicy,
                                       ParsedDistinct* parsedDistinct,
                                       bool strictDistinctOnly) {
     // We look for a solution that has an ixscan we can turn into a distinctixscan
@@ -1805,8 +1824,12 @@ getExecutorDistinctFromIndexSolutions(OperationContext* opCtx,
             // Build and return the SSR over solutions[i].
             unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
             unique_ptr<QuerySolution> currentSolution = std::move(solutions[i]);
-            auto root = stage_builder::buildExecutableTree<PlanStage>(
-                opCtx, collection, *parsedDistinct->getQuery(), *currentSolution, ws.get());
+            auto root = stage_builder::buildExecutableTree<PlanStage>(opCtx,
+                                                                      collection,
+                                                                      *parsedDistinct->getQuery(),
+                                                                      *currentSolution,
+                                                                      nullptr,
+                                                                      ws.get());
 
             LOGV2_DEBUG(20932,
                         2,
@@ -1838,7 +1861,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorWithoutPr
     OperationContext* opCtx,
     Collection* collection,
     const CanonicalQuery* cq,
-    PlanExecutor::YieldPolicy yieldPolicy,
+    PlanYieldPolicy::YieldPolicy yieldPolicy,
     size_t plannerOptions) {
     auto qr = std::make_unique<QueryRequest>(cq->getQueryRequest());
     qr->setProj(BSONObj());
@@ -1861,8 +1884,9 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDistinct(
     Collection* collection, size_t plannerOptions, ParsedDistinct* parsedDistinct) {
     auto expCtx = parsedDistinct->getQuery()->getExpCtx();
     OperationContext* opCtx = expCtx->opCtx;
-    const auto yieldPolicy = opCtx->inMultiDocumentTransaction() ? PlanExecutor::INTERRUPT_ONLY
-                                                                 : PlanExecutor::YIELD_AUTO;
+    const auto yieldPolicy = opCtx->inMultiDocumentTransaction()
+        ? PlanYieldPolicy::YieldPolicy::INTERRUPT_ONLY
+        : PlanYieldPolicy::YieldPolicy::YIELD_AUTO;
 
     if (!collection) {
         // Treat collections that do not exist as empty collections.

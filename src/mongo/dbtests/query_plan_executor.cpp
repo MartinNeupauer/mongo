@@ -99,7 +99,7 @@ public:
     unique_ptr<PlanExecutor, PlanExecutor::Deleter> makeCollScanExec(
         Collection* coll,
         BSONObj& filterObj,
-        PlanExecutor::YieldPolicy yieldPolicy = PlanExecutor::YieldPolicy::YIELD_MANUAL,
+        PlanYieldPolicy::YieldPolicy yieldPolicy = PlanYieldPolicy::YieldPolicy::YIELD_MANUAL,
         TailableModeEnum tailableMode = TailableModeEnum::kNormal) {
         CollectionScanParams csparams;
         csparams.direction = CollectionScanParams::FORWARD;
@@ -164,8 +164,12 @@ public:
         verify(nullptr != cq.get());
 
         // Hand the plan off to the executor.
-        auto statusWithPlanExecutor = PlanExecutor::make(
-            std::move(cq), std::move(ws), std::move(root), coll, PlanExecutor::YIELD_MANUAL);
+        auto statusWithPlanExecutor =
+            PlanExecutor::make(std::move(cq),
+                               std::move(ws),
+                               std::move(root),
+                               coll,
+                               PlanYieldPolicy::YieldPolicy::YIELD_MANUAL);
         ASSERT_OK(statusWithPlanExecutor.getStatus());
         return std::move(statusWithPlanExecutor.getValue());
     }
@@ -223,8 +227,11 @@ TEST_F(PlanExecutorTest, DropIndexScanAgg) {
     auto ws = std::make_unique<WorkingSet>();
     auto proxy = std::make_unique<PipelineProxyStage>(_expCtx.get(), std::move(pipeline), ws.get());
 
-    auto statusWithPlanExecutor = PlanExecutor::make(
-        _expCtx, std::move(ws), std::move(proxy), collection, PlanExecutor::NO_YIELD);
+    auto statusWithPlanExecutor = PlanExecutor::make(_expCtx,
+                                                     std::move(ws),
+                                                     std::move(proxy),
+                                                     collection,
+                                                     PlanYieldPolicy::YieldPolicy::NO_YIELD);
     ASSERT_OK(statusWithPlanExecutor.getStatus());
     auto outerExec = std::move(statusWithPlanExecutor.getValue());
 
@@ -245,7 +252,7 @@ TEST_F(PlanExecutorTest, ShouldReportErrorIfExceedsTimeLimitDuringYield) {
     BSONObj filterObj = fromjson("{_id: {$gt: 0}}");
 
     Collection* coll = ctx.getCollection();
-    auto exec = makeCollScanExec(coll, filterObj, PlanExecutor::YieldPolicy::ALWAYS_TIME_OUT);
+    auto exec = makeCollScanExec(coll, filterObj, PlanYieldPolicy::YieldPolicy::ALWAYS_TIME_OUT);
 
     BSONObj resultObj;
     ASSERT_EQ(PlanExecutor::FAILURE, exec->getNext(&resultObj, nullptr));
@@ -262,7 +269,7 @@ TEST_F(PlanExecutorTest, ShouldReportErrorIfKilledDuringYieldButIsTailableAndAwa
     Collection* coll = ctx.getCollection();
     auto exec = makeCollScanExec(coll,
                                  filterObj,
-                                 PlanExecutor::YieldPolicy::ALWAYS_TIME_OUT,
+                                 PlanYieldPolicy::YieldPolicy::ALWAYS_TIME_OUT,
                                  TailableModeEnum::kTailableAndAwaitData);
 
     BSONObj resultObj;
@@ -278,8 +285,10 @@ TEST_F(PlanExecutorTest, ShouldNotSwallowExceedsTimeLimitDuringYieldButIsTailabl
     BSONObj filterObj = fromjson("{_id: {$gt: 0}}");
 
     Collection* coll = ctx.getCollection();
-    auto exec = makeCollScanExec(
-        coll, filterObj, PlanExecutor::YieldPolicy::ALWAYS_TIME_OUT, TailableModeEnum::kTailable);
+    auto exec = makeCollScanExec(coll,
+                                 filterObj,
+                                 PlanYieldPolicy::YieldPolicy::ALWAYS_TIME_OUT,
+                                 TailableModeEnum::kTailable);
 
     BSONObj resultObj;
     ASSERT_EQ(PlanExecutor::FAILURE, exec->getNext(&resultObj, nullptr));
@@ -294,7 +303,7 @@ TEST_F(PlanExecutorTest, ShouldReportErrorIfKilledDuringYield) {
     BSONObj filterObj = fromjson("{_id: {$gt: 0}}");
 
     Collection* coll = ctx.getCollection();
-    auto exec = makeCollScanExec(coll, filterObj, PlanExecutor::YieldPolicy::ALWAYS_MARK_KILLED);
+    auto exec = makeCollScanExec(coll, filterObj, PlanYieldPolicy::YieldPolicy::ALWAYS_MARK_KILLED);
 
     BSONObj resultObj;
     ASSERT_EQ(PlanExecutor::FAILURE, exec->getNext(&resultObj, nullptr));

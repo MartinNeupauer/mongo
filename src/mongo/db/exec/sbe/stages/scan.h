@@ -32,6 +32,7 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/storage/record_store.h"
 
 namespace mongo {
@@ -49,7 +50,8 @@ public:
               boost::optional<value::SlotId> recordIdSlot,
               const std::vector<std::string>& fields,
               const std::vector<value::SlotId>& vars,
-              boost::optional<value::SlotId> seekKeySlot);
+              boost::optional<value::SlotId> seekKeySlot,
+              PlanYieldPolicy* yieldPolicy);
 
     std::unique_ptr<PlanStage> clone() final;
 
@@ -118,14 +120,16 @@ public:
                       boost::optional<value::SlotId> recordSlot,
                       boost::optional<value::SlotId> recordIdSlot,
                       const std::vector<std::string>& fields,
-                      const std::vector<value::SlotId>& vars);
+                      const std::vector<value::SlotId>& vars,
+                      PlanYieldPolicy* yieldPolicy);
 
     ParallelScanStage(const std::shared_ptr<ParallelState>& state,
                       const NamespaceStringOrUUID& name,
                       boost::optional<value::SlotId> recordSlot,
                       boost::optional<value::SlotId> recordIdSlot,
                       const std::vector<std::string>& fields,
-                      const std::vector<value::SlotId>& vars);
+                      const std::vector<value::SlotId>& vars,
+                      PlanYieldPolicy* yieldPolicy);
 
     std::unique_ptr<PlanStage> clone() final;
 

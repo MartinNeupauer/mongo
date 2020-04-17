@@ -61,7 +61,8 @@ ExeGenerator::GenResult ExeGenerator::walkImpl(const Scan& op, const ABT& body) 
                                          boost::none,
                                          std::vector<std::string>{},
                                          std::vector<value::SlotId>{},
-                                         boost::none);
+                                         boost::none,
+                                         nullptr);
     } else {
         _currentStage = makeS<BSONScanStage>(op.bsonBegin(),
                                              op.bsonEnd(),

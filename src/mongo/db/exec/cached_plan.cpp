@@ -191,9 +191,9 @@ Status CachedPlanStage::tryYield(PlanYieldPolicy* yieldPolicy) {
     //   2) some stage requested a yield, or
     //   3) we need to yield and retry due to a WriteConflictException.
     // In all cases, the actual yielding happens here.
-    if (yieldPolicy->shouldYieldOrInterrupt()) {
+    if (yieldPolicy->shouldYieldOrInterrupt(expCtx()->opCtx)) {
         // Here's where we yield.
-        return yieldPolicy->yieldOrInterrupt();
+        return yieldPolicy->yieldOrInterrupt(expCtx()->opCtx);
     }
 
     return Status::OK();
@@ -228,7 +228,7 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
     if (1 == solutions.size()) {
         // Only one possible plan. Build the stages from the solution.
         auto newRoot = stage_builder::buildExecutableTree<PlanStage>(
-            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[0], _ws);
+            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[0], yieldPolicy, _ws);
         _children.emplace_back(std::move(newRoot));
         _replannedQs = std::move(solutions.back());
         solutions.pop_back();
@@ -258,7 +258,7 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
         }
 
         auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
-            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[ix], _ws);
+            expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[ix], yieldPolicy, _ws);
 
         multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
     }

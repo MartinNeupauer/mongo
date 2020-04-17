@@ -470,7 +470,8 @@ void Parser::walkScan(AstQuery& ast) {
                                  lookupSlot(recordIdName),
                                  ast.nodes[projectsPos]->identifiers,
                                  lookupSlots(ast.nodes[projectsPos]->renames),
-                                 boost::none);
+                                 boost::none,
+                                 nullptr);
 }
 
 void Parser::walkParallelScan(AstQuery& ast) {
@@ -508,7 +509,8 @@ void Parser::walkParallelScan(AstQuery& ast) {
                                          lookupSlot(recordName),
                                          lookupSlot(recordIdName),
                                          ast.nodes[projectsPos]->identifiers,
-                                         lookupSlots(ast.nodes[projectsPos]->renames));
+                                         lookupSlots(ast.nodes[projectsPos]->renames),
+                                         nullptr);
 }
 
 void Parser::walkSeek(AstQuery& ast) {
@@ -547,7 +549,8 @@ void Parser::walkSeek(AstQuery& ast) {
                                  lookupSlot(recordIdName),
                                  ast.nodes[projectsPos]->identifiers,
                                  lookupSlots(ast.nodes[projectsPos]->renames),
-                                 lookupSlot(ast.nodes[0]->identifier));
+                                 lookupSlot(ast.nodes[0]->identifier),
+                                 nullptr);
 }
 void Parser::walkIndexScan(AstQuery& ast) {
     walkChildren(ast);
@@ -591,7 +594,8 @@ void Parser::walkIndexScan(AstQuery& ast) {
                                       ast.nodes[projectsPos]->identifiers,
                                       lookupSlots(ast.nodes[projectsPos]->renames),
                                       boost::none,
-                                      boost::none);
+                                      boost::none,
+                                      nullptr);
 }
 
 void Parser::walkIndexSeek(AstQuery& ast) {
@@ -636,7 +640,8 @@ void Parser::walkIndexSeek(AstQuery& ast) {
                                       ast.nodes[projectsPos]->identifiers,
                                       lookupSlots(ast.nodes[projectsPos]->renames),
                                       lookupSlot(ast.nodes[0]->identifier),
-                                      lookupSlot(ast.nodes[1]->identifier));
+                                      lookupSlot(ast.nodes[1]->identifier),
+                                      nullptr);
 }
 void Parser::walkProject(AstQuery& ast) {
     walkChildren(ast);

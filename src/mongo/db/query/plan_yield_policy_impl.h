@@ -29,41 +29,35 @@
 
 #pragma once
 
-#include "mongo/db/exec/plan_cache_util.h"
 #include "mongo/db/query/plan_executor.h"
-#include "mongo/db/query/plan_ranker.h"
-#include "mongo/db/query/sbe_runtime_planner.h"
+#include "mongo/db/query/plan_yield_policy.h"
 
-namespace mongo::sbe {
-/**
- * Collects execution stats for all candidate plans, ranks them and picks the best.
- *
- * TODO: add support for backup plan
- */
-class MultiPlanner final : public BaseRuntimePlanner {
+namespace mongo {
+
+class PlanYieldPolicyImpl final : public PlanYieldPolicy {
 public:
-    MultiPlanner(OperationContext* opCtx,
-                 const Collection* collection,
-                 const CanonicalQuery& cq,
-                 PlanCachingMode cachingMode,
-                 PlanYieldPolicySBE* yieldPolicy)
-        : BaseRuntimePlanner{opCtx, collection, cq, yieldPolicy}, _cachingMode{cachingMode} {}
-
-    plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                    std::vector<std::unique_ptr<PlanStage>> roots) final;
+    PlanYieldPolicyImpl(PlanExecutor* exec, PlanYieldPolicy::YieldPolicy policy);
 
 private:
-    /**
-     * Returns the best candidate plan selected according to the plan ranking 'decision'.
-     *
-     * Calls 'close' method on all other candidate plans and update the plan cache entry,
-     * if possible.
-     */
-    plan_ranker::CandidatePlan finalizeExecutionPlans(
-        std::unique_ptr<mongo::plan_ranker::PlanRankingDecision> decision,
-        std::vector<plan_ranker::CandidatePlan> candidates) const;
+    Status yield(OperationContext* opCtx, std::function<void()> whileYieldingFn = nullptr) override;
 
-    // Describes the cases in which we should write an entry for the winning plan to the plan cache.
-    const PlanCachingMode _cachingMode;
+    void preCheckInterruptOnly(OperationContext* opCtx) override;
+
+    /**
+     * If not in a nested context, unlocks all locks, suggests to the operating system to switch to
+     * another thread, and then reacquires all locks.
+     *
+     * If in a nested context (eg DBDirectClient), does nothing.
+     *
+     * The whileYieldingFn will be executed after unlocking the locks and before re-acquiring them.
+     */
+    void _yieldAllLocks(OperationContext* opCtx,
+                        std::function<void()> whileYieldingFn,
+                        const NamespaceString& planExecNS);
+
+    // The plan executor which this yield policy is responsible for yielding. Must not outlive the
+    // plan executor.
+    PlanExecutor* const _planYielding;
 };
-}  // namespace mongo::sbe
+
+}  // namespace mongo

@@ -46,8 +46,9 @@ public:
                           Collection* collection,
                           const CanonicalQuery& cq,
                           const QueryPlannerParams& queryParams,
-                          size_t decisionReads)
-        : BaseRuntimePlanner{opCtx, collection, cq},
+                          size_t decisionReads,
+                          PlanYieldPolicySBE* yieldPolicy)
+        : BaseRuntimePlanner{opCtx, collection, cq, yieldPolicy},
           _queryParams{queryParams},
           _decisionReads{decisionReads} {}
 

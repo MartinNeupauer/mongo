@@ -149,7 +149,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildCollScan(
             _resultSlot,
             _recordIdSlot,
             std::vector<std::string>{},
-            std::vector<sbe::value::SlotId>{});
+            std::vector<sbe::value::SlotId>{},
+            _yieldPolicy);
     } else {
         stage = sbe::makeS<sbe::ScanStage>(
             NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
@@ -157,7 +158,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildCollScan(
             _recordIdSlot,
             std::vector<std::string>{},
             std::vector<sbe::value::SlotId>{},
-            boost::none);
+            boost::none,
+            _yieldPolicy);
     }
 
     if (csn->filter) {
@@ -210,7 +212,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
         std::vector<std::string>{},
         std::vector<sbe::value::SlotId>{},
         lowKeySlot,
-        highKeySlot);
+        highKeySlot,
+        _yieldPolicy);
     if (lowKeySlot && highKeySlot) {
         // Construct a constant table scan to deliver a single row with two fields
         // 'lowKeySlot' and 'highKeySlot', representing seek boundaries, into the
@@ -263,7 +266,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
         _recordIdSlot,
         std::vector<std::string>{},
         std::vector<sbe::value::SlotId>{},
-        recordIdKeySlot);
+        recordIdKeySlot,
+        nullptr);
 
     // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the
     // inner side.

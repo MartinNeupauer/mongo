@@ -72,7 +72,7 @@ public:
         NamespaceString nss{dbname, "$cmd.sbe"_sd};
         invariant(nss.isCollectionlessCursorNamespace());
 
-        exec = uassertStatusOK(PlanExecutor::make(opCtx, nullptr, std::move(root), nss));
+        exec = uassertStatusOK(PlanExecutor::make(opCtx, nullptr, std::move(root), nss, nullptr));
 
         for (long long objCount = 0; objCount < batchSize; objCount++) {
             BSONObj next;

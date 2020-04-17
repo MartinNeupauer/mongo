@@ -165,8 +165,8 @@ Status MultiPlanStage::tryYield(PlanYieldPolicy* yieldPolicy) {
     //   2) some stage requested a yield, or
     //   3) we need to yield and retry due to a WriteConflictException.
     // In all cases, the actual yielding happens here.
-    if (yieldPolicy->shouldYieldOrInterrupt()) {
-        auto yieldStatus = yieldPolicy->yieldOrInterrupt();
+    if (yieldPolicy->shouldYieldOrInterrupt(expCtx()->opCtx)) {
+        auto yieldStatus = yieldPolicy->yieldOrInterrupt(expCtx()->opCtx);
 
         if (!yieldStatus.isOK()) {
             _failure = true;

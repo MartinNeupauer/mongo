@@ -40,8 +40,9 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
                                const std::vector<std::string>& fields,
                                const std::vector<value::SlotId>& vars,
                                boost::optional<value::SlotId> seekKeySlotLow,
-                               boost::optional<value::SlotId> seekKeySlotHi)
-    : PlanStage(seekKeySlotLow ? "ixseek"_sd : "ixscan"_sd),
+                               boost::optional<value::SlotId> seekKeySlotHi,
+                               PlanYieldPolicy* yieldPolicy)
+    : PlanStage(seekKeySlotLow ? "ixseek"_sd : "ixscan"_sd, yieldPolicy),
       _name(name),
       _indexName(indexName),
       _recordSlot(recordSlot),
@@ -63,7 +64,8 @@ std::unique_ptr<PlanStage> IndexScanStage::clone() {
                                             _fields,
                                             _vars,
                                             _seekKeySlotLow,
-                                            _seekKeySlotHi);
+                                            _seekKeySlotHi,
+                                            _yieldPolicy);
 }
 
 void IndexScanStage::prepare(CompileCtx& ctx) {
@@ -208,6 +210,8 @@ PlanState IndexScanStage::getNext() {
     if (!_cursor) {
         return trackPlanState(PlanState::IS_EOF);
     }
+
+    checkForInterrupt(_opCtx);
 
     if (_firstGetNext) {
         _firstGetNext = false;

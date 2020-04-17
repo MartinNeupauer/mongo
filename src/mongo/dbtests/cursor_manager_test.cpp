@@ -79,7 +79,7 @@ public:
                                                       std::move(workingSet),
                                                       std::move(queuedDataStage),
                                                       nullptr,
-                                                      PlanExecutor::YieldPolicy::NO_YIELD,
+                                                      PlanYieldPolicy::YieldPolicy::NO_YIELD,
                                                       kTestNss));
     }
 

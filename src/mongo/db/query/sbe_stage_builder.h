@@ -29,6 +29,7 @@
 
 #pragma once
 
+#include "mongo/db/query/plan_yield_policy_sbe.h"
 #include "mongo/db/query/sbe_stage_builder_common.h"
 #include "mongo/db/query/stage_builder.h"
 
@@ -42,8 +43,9 @@ public:
     SlotBasedStageBuilder(OperationContext* opCtx,
                           const Collection* collection,
                           const CanonicalQuery& cq,
-                          const QuerySolution& solution)
-        : StageBuilder(opCtx, collection, cq, solution, nullptr) {}
+                          const QuerySolution& solution,
+                          PlanYieldPolicySBE* yieldPolicy)
+        : StageBuilder(opCtx, collection, cq, solution, nullptr), _yieldPolicy(yieldPolicy) {}
 
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
 
@@ -60,5 +62,7 @@ private:
     std::unique_ptr<sbe::PlanStage> buildOr(const QuerySolutionNode* root);
 
     boost::optional<long long> _limit;
+
+    PlanYieldPolicySBE* const _yieldPolicy;
 };
 }  // namespace mongo::stage_builder

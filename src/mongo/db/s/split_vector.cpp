@@ -172,7 +172,7 @@ StatusWith<std::vector<BSONObj>> splitVector(OperationContext* opCtx,
                                                minKey,
                                                maxKey,
                                                BoundInclusion::kIncludeStartKeyOnly,
-                                               PlanExecutor::YIELD_AUTO,
+                                               PlanYieldPolicy::YieldPolicy::YIELD_AUTO,
                                                InternalPlanner::FORWARD);
 
         BSONObj currKey;
@@ -191,7 +191,7 @@ StatusWith<std::vector<BSONObj>> splitVector(OperationContext* opCtx,
                                                    maxKey,
                                                    minKey,
                                                    BoundInclusion::kIncludeEndKeyOnly,
-                                                   PlanExecutor::YIELD_AUTO,
+                                                   PlanYieldPolicy::YieldPolicy::YIELD_AUTO,
                                                    InternalPlanner::BACKWARD);
 
             PlanExecutor::ExecState state = exec->getNext(&maxKeyInChunk, nullptr);
@@ -314,7 +314,7 @@ StatusWith<std::vector<BSONObj>> splitVector(OperationContext* opCtx,
                                               minKey,
                                               maxKey,
                                               BoundInclusion::kIncludeStartKeyOnly,
-                                              PlanExecutor::YIELD_AUTO,
+                                              PlanYieldPolicy::YieldPolicy::YIELD_AUTO,
                                               InternalPlanner::FORWARD);
 
             state = exec->getNext(&currKey, nullptr);

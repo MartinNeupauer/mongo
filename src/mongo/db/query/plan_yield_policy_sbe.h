@@ -29,41 +29,31 @@
 
 #pragma once
 
-#include "mongo/db/exec/plan_cache_util.h"
-#include "mongo/db/query/plan_executor.h"
-#include "mongo/db/query/plan_ranker.h"
-#include "mongo/db/query/sbe_runtime_planner.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/plan_yield_policy.h"
 
-namespace mongo::sbe {
-/**
- * Collects execution stats for all candidate plans, ranks them and picks the best.
- *
- * TODO: add support for backup plan
- */
-class MultiPlanner final : public BaseRuntimePlanner {
+namespace mongo {
+
+class PlanYieldPolicySBE final : public PlanYieldPolicy {
 public:
-    MultiPlanner(OperationContext* opCtx,
-                 const Collection* collection,
-                 const CanonicalQuery& cq,
-                 PlanCachingMode cachingMode,
-                 PlanYieldPolicySBE* yieldPolicy)
-        : BaseRuntimePlanner{opCtx, collection, cq, yieldPolicy}, _cachingMode{cachingMode} {}
+    PlanYieldPolicySBE(YieldPolicy policy,
+                       ClockSource* clockSource,
+                       int yieldFrequency,
+                       Milliseconds yieldPeriod)
+        : PlanYieldPolicy(policy, clockSource, yieldFrequency, yieldPeriod) {
+        uassert(ErrorCodes::InternalErrorNotSupported,
+                "WRITE_CONFLICT_RETRY_ONLY yield policy is not supported in SBE",
+                policy != YieldPolicy::WRITE_CONFLICT_RETRY_ONLY);
+    }
 
-    plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                    std::vector<std::unique_ptr<PlanStage>> roots) final;
+    void setRootStage(sbe::PlanStage* rootStage) {
+        _rootStage = rootStage;
+    }
 
 private:
-    /**
-     * Returns the best candidate plan selected according to the plan ranking 'decision'.
-     *
-     * Calls 'close' method on all other candidate plans and update the plan cache entry,
-     * if possible.
-     */
-    plan_ranker::CandidatePlan finalizeExecutionPlans(
-        std::unique_ptr<mongo::plan_ranker::PlanRankingDecision> decision,
-        std::vector<plan_ranker::CandidatePlan> candidates) const;
+    Status yield(OperationContext* opCtx, std::function<void()> whileYieldingFn = nullptr) override;
 
-    // Describes the cases in which we should write an entry for the winning plan to the plan cache.
-    const PlanCachingMode _cachingMode;
+    sbe::PlanStage* _rootStage = nullptr;
 };
-}  // namespace mongo::sbe
+
+}  // namespace mongo

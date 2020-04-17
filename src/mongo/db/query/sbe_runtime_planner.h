@@ -31,6 +31,7 @@
 
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/query/canonical_query.h"
+#include "mongo/db/query/plan_yield_policy_sbe.h"
 #include "mongo/db/query/query_solution.h"
 #include "mongo/db/query/sbe_plan_ranker.h"
 
@@ -58,8 +59,9 @@ class BaseRuntimePlanner : public RuntimePlanner {
 public:
     BaseRuntimePlanner(OperationContext* opCtx,
                        const Collection* collection,
-                       const CanonicalQuery& cq)
-        : _opCtx(opCtx), _collection(collection), _cq(cq) {
+                       const CanonicalQuery& cq,
+                       PlanYieldPolicySBE* yieldPolicy)
+        : _opCtx(opCtx), _collection(collection), _cq(cq), _yieldPolicy(yieldPolicy) {
         invariant(_opCtx);
         invariant(_collection);
     }
@@ -94,5 +96,6 @@ protected:
     OperationContext* const _opCtx;
     const Collection* const _collection;
     const CanonicalQuery& _cq;
+    PlanYieldPolicySBE* const _yieldPolicy;
 };
 }  // namespace mongo::sbe

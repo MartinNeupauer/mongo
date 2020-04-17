@@ -33,6 +33,7 @@
 
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/query/plan_executor.h"
+#include "mongo/db/query/plan_yield_policy_sbe.h"
 
 namespace mongo {
 class PlanExecutorSBE final : public PlanExecutor {
@@ -45,7 +46,8 @@ public:
         sbe::value::SlotAccessor* resultRecordId,
         NamespaceString nss,
         bool isOpen,
-        boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash);
+        boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash,
+        std::unique_ptr<PlanYieldPolicySBE> yieldPolicy);
 
     WorkingSet* getWorkingSet() const override {
         MONGO_UNREACHABLE;
@@ -159,6 +161,7 @@ private:
     NamespaceString _nss;
 
     std::unique_ptr<sbe::PlanStage> _root;
+
     sbe::value::SlotAccessor* _result{nullptr};
     sbe::value::SlotAccessor* _resultRecordId{nullptr};
 
@@ -169,6 +172,8 @@ private:
     Status _killStatus = Status::OK();
 
     std::unique_ptr<CanonicalQuery> _cq;
+
+    std::unique_ptr<PlanYieldPolicySBE> _yieldPolicy;
 };
 
 sbe::PlanState fetchNext(sbe::PlanStage* root,

@@ -48,6 +48,7 @@
 #include "mongo/db/namespace_string.h"
 #include "mongo/db/query/collection_query_info.h"
 #include "mongo/db/query/get_executor.h"
+#include "mongo/db/query/mock_yield_policies.h"
 #include "mongo/db/query/query_knobs_gen.h"
 #include "mongo/db/query/query_planner.h"
 #include "mongo/db/query/query_planner_test_lib.h"
@@ -131,12 +132,11 @@ public:
         // Put each solution from the planner into the MPR.
         for (size_t i = 0; i < solutions.size(); ++i) {
             auto root = stage_builder::buildExecutableTree<PlanStage>(
-                &_opCtx, collection, *cq, *solutions[i], ws.get());
+                &_opCtx, collection, *cq, *solutions[i], nullptr, ws.get());
             _mps->addPlan(std::move(solutions[i]), std::move(root), ws.get());
         }
         // This is what sets a backup plan, should we test for it.
-        PlanYieldPolicy yieldPolicy(PlanExecutor::NO_YIELD,
-                                    _opCtx.getServiceContext()->getFastClockSource());
+        NoopYieldPolicy yieldPolicy(_opCtx.getServiceContext()->getFastClockSource());
         _mps->pickBestPlan(&yieldPolicy).transitional_ignore();
         ASSERT(_mps->bestPlanChosen());
 

@@ -173,8 +173,12 @@ public:
                 root->pushBack(id);
             }
 
-            exec = uassertStatusOK(PlanExecutor::make(
-                expCtx, std::move(ws), std::move(root), nullptr, PlanExecutor::NO_YIELD, nss));
+            exec = uassertStatusOK(PlanExecutor::make(expCtx,
+                                                      std::move(ws),
+                                                      std::move(root),
+                                                      nullptr,
+                                                      PlanYieldPolicy::YieldPolicy::NO_YIELD,
+                                                      nss));
 
             for (long long objCount = 0; objCount < batchSize; objCount++) {
                 Document nextDoc;

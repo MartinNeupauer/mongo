@@ -34,6 +34,7 @@
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/scoped_timer.h"
 #include "mongo/db/operation_context.h"
+#include "mongo/db/query/plan_yield_policy.h"
 
 #include <memory>
 #include <vector>
@@ -184,15 +185,32 @@ protected:
  */
 class CanInterrupt {
 public:
+    /**
+     * This object will always be responsible for interrupt checking, but it can also optionally be
+     * responsible for yielding. In order to enable yielding, the caller should pass a non-null
+     * 'PlanYieldPolicy' pointer. Yielding may be disabled by providing a nullptr.
+     */
+    explicit CanInterrupt(PlanYieldPolicy* yieldPolicy) : _yieldPolicy(yieldPolicy) {}
+
+    /**
+     * Checks for interrupt if necessary. If yielding has been enabled for this object, then also
+     * performs a yield if necessary.
+     */
     void checkForInterrupt(OperationContext* opCtx) {
-        if (!opCtx) {
-            return;
-        }
+        invariant(opCtx);
+
         if (--_interruptCounter == 0) {
             _interruptCounter = kInterruptCheckPeriod;
             opCtx->checkForInterrupt();
         }
+
+        if (_yieldPolicy && _yieldPolicy->shouldYieldOrInterrupt(opCtx)) {
+            uassertStatusOK(_yieldPolicy->yieldOrInterrupt(opCtx));
+        }
     }
+
+protected:
+    PlanYieldPolicy* const _yieldPolicy{nullptr};
 
 private:
     static const int kInterruptCheckPeriod = 128;
@@ -207,8 +225,14 @@ protected:
     std::vector<std::unique_ptr<PlanStage>> _children;
 
 public:
-    PlanStage(StringData stageType)
-        : CanSwitchOperationContext{this}, CanChangeState{this}, CanTrackStats{stageType} {}
+    PlanStage(StringData stageType, PlanYieldPolicy* yieldPolicy)
+        : CanSwitchOperationContext{this},
+          CanChangeState{this},
+          CanTrackStats{stageType},
+          CanInterrupt{yieldPolicy} {}
+
+    explicit PlanStage(StringData stageType) : PlanStage(stageType, nullptr) {}
+
     virtual ~PlanStage() {}
 
     // This is unspeakably ugly

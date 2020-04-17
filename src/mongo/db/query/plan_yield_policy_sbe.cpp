@@ -27,35 +27,35 @@
  *    it in the license file.
  */
 
-#pragma once
+#include "mongo/platform/basic.h"
 
-#include "mongo/db/query/sbe_plan_ranker.h"
-#include "mongo/db/query/sbe_runtime_planner.h"
+#include "mongo/db/query/plan_yield_policy_sbe.h"
 
-namespace mongo::sbe {
-/**
- * This runtime planner is used for rooted $or queries. It plans each clause of the $or
- * individually, and then creates an overall query plan based on the winning plan from each
- * clause.
- *
- * Uses the 'MultiPlanner' in order to pick best plans for the individual clauses.
- */
-class SubPlanner final : public BaseRuntimePlanner {
-public:
-    SubPlanner(OperationContext* opCtx,
-               Collection* collection,
-               const CanonicalQuery& cq,
-               const QueryPlannerParams& queryParams,
-               PlanYieldPolicySBE* yieldPolicy)
-        : BaseRuntimePlanner{opCtx, collection, cq, yieldPolicy}, _queryParams{queryParams} {}
+namespace mongo {
 
-    plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                    std::vector<std::unique_ptr<sbe::PlanStage>> roots) final;
+// TODO: Need to change how we bump the CurOp yield counter. We shouldn't do it here so that SBE
+// does not depend on CurOp. But we should still expose that statistic and keep it fresh as the
+// operation executes.
+Status PlanYieldPolicySBE::yield(OperationContext* opCtx, std::function<void()> whileYieldingFn) {
+    if (!_rootStage) {
+        // This yield policy isn't bound to an execution tree yet.
+        return Status::OK();
+    }
 
-private:
-    plan_ranker::CandidatePlan planWholeQuery() const;
+    try {
+        _rootStage->saveState();
 
-    // Query parameters used to create a query solution for each $or branch.
-    const QueryPlannerParams _queryParams;
-};
-}  // namespace mongo::sbe
+        opCtx->recoveryUnit()->abandonSnapshot();
+
+        if (whileYieldingFn) {
+            whileYieldingFn();
+        }
+
+        _rootStage->restoreState();
+    } catch (...) {
+        return exceptionToStatus();
+    }
+
+    return Status::OK();
+}
+}  // namespace mongo

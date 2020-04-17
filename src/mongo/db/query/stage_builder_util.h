@@ -30,6 +30,7 @@
 #pragma once
 
 #include "mongo/db/query/classic_stage_builder.h"
+#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/query/sbe_stage_builder.h"
 
 namespace mongo::stage_builder {
@@ -48,6 +49,7 @@ std::unique_ptr<PlanStageType> buildExecutableTree(OperationContext* opCtx,
                                                    const Collection* collection,
                                                    const CanonicalQuery& cq,
                                                    const QuerySolution& solution,
+                                                   PlanYieldPolicy* yieldPolicy,
                                                    WorkingSet* ws = nullptr) {
     // Only QuerySolutions derived from queries parsed with context, or QuerySolutions derived from
     // queries that disallow extensions, can be properly executed. If the query does not have
@@ -59,7 +61,10 @@ std::unique_ptr<PlanStageType> buildExecutableTree(OperationContext* opCtx,
 
     std::unique_ptr<StageBuilder<PlanStageType>> builder;
     if constexpr (std::is_same_v<PlanStageType, sbe::PlanStage>) {
-        builder = std::make_unique<SlotBasedStageBuilder>(opCtx, collection, cq, solution);
+        auto sbeYieldPolicy = dynamic_cast<PlanYieldPolicySBE*>(yieldPolicy);
+        invariant(sbeYieldPolicy);
+        builder = std::make_unique<SlotBasedStageBuilder>(
+            opCtx, collection, cq, solution, sbeYieldPolicy);
     } else {
         invariant(ws);
         builder = std::make_unique<ClassicStageBuilder>(opCtx, collection, cq, solution, ws);

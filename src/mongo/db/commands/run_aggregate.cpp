@@ -469,8 +469,12 @@ std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> createOuterPipelineProxyExe
     // invalidations. The Pipeline may contain PlanExecutors which *are* yielding
     // PlanExecutors and which *are* registered with their respective collection's
     // CursorManager
-    return uassertStatusOK(PlanExecutor::make(
-        std::move(expCtx), std::move(ws), std::move(proxy), nullptr, PlanExecutor::NO_YIELD, nss));
+    return uassertStatusOK(PlanExecutor::make(std::move(expCtx),
+                                              std::move(ws),
+                                              std::move(proxy),
+                                              nullptr,
+                                              PlanYieldPolicy::YieldPolicy::NO_YIELD,
+                                              nss));
 }
 }  // namespace
 
