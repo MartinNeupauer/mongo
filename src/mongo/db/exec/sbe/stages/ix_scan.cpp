@@ -122,6 +122,11 @@ void IndexScanStage::doRestoreState() {
     invariant(_opCtx);
     invariant(!_coll);
 
+    // If this stage is not currently open, then there is nothing to restore.
+    if (!_open) {
+        return;
+    }
+
     _coll.emplace(_opCtx, _name);
 
     if (_cursor) {
@@ -153,6 +158,7 @@ void IndexScanStage::open(bool reOpen) {
         invariant(_coll);
     }
 
+    _open = true;
     _firstGetNext = true;
 
     if (auto collection = _coll->getCollection()) {
@@ -244,6 +250,7 @@ void IndexScanStage::close() {
 
     _cursor.reset();
     _coll.reset();
+    _open = false;
 }
 
 std::unique_ptr<PlanStageStats> IndexScanStage::getStats() const {

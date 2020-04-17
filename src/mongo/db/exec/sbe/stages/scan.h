@@ -78,6 +78,8 @@ private:
     std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
     value::SlotAccessor* _seekKeyAccessor{nullptr};
 
+    bool _open{false};
+
     std::unique_ptr<SeekableRecordCursor> _cursor;
     boost::optional<AutoGetCollectionForRead> _coll;
     RecordId _key;
@@ -154,6 +156,8 @@ private:
 
     size_t _currentRange{std::numeric_limits<std::size_t>::max()};
     Range _range;
+
+    bool _open{false};
 
     std::unique_ptr<SeekableRecordCursor> _cursor;
     boost::optional<AutoGetCollectionForRead> _coll;

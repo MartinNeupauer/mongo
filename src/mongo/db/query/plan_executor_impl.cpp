@@ -764,4 +764,24 @@ Status PlanExecutorImpl::getMemberObjectStatus(const Document& memberObj) const 
 Status PlanExecutorImpl::getMemberObjectStatus(const BSONObj& memberObj) const {
     return WorkingSetCommon::getMemberObjectStatus(memberObj);
 }
+
+PlanExecutor::LockPolicy PlanExecutorImpl::lockPolicy() const {
+    if (isPipelineExecutor()) {
+        return LockPolicy::kLocksInternally;
+    }
+
+    // If this PlanExecutor is simply unspooling queued data, then there is no need to acquire
+    // locks.
+    if (_root->stageType() == StageType::STAGE_QUEUED_DATA) {
+        return LockPolicy::kLocksInternally;
+    }
+
+    return LockPolicy::kLockExternally;
+}
+
+bool PlanExecutorImpl::isPipelineExecutor() const {
+    return _root->stageType() == StageType::STAGE_PIPELINE_PROXY ||
+        _root->stageType() == StageType::STAGE_CHANGE_STREAM_PROXY;
+}
+
 }  // namespace mongo

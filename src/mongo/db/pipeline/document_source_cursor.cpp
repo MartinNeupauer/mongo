@@ -135,9 +135,15 @@ void DocumentSourceCursor::loadBatch() {
     PlanExecutor::ExecState state;
     Document resultObj;
     {
-        AutoGetCollectionForRead autoColl(pExpCtx->opCtx, _exec->nss());
-        uassertStatusOK(repl::ReplicationCoordinator::get(pExpCtx->opCtx)
-                            ->checkCanServeReadsFor(pExpCtx->opCtx, _exec->nss(), true));
+
+        boost::optional<AutoGetCollectionForRead> autoColl;
+        if (_exec->lockPolicy() == PlanExecutor::LockPolicy::kLockExternally) {
+            autoColl.emplace(pExpCtx->opCtx, _exec->nss());
+            // TODO: For a real implementation if the locking model changes, we have to figure out
+            // who is responsible for making this check.
+            uassertStatusOK(repl::ReplicationCoordinator::get(pExpCtx->opCtx)
+                                ->checkCanServeReadsFor(pExpCtx->opCtx, _exec->nss(), true));
+        }
 
         _exec->restoreState();
 

@@ -141,8 +141,12 @@ public:
         MONGO_UNREACHABLE;
     }
 
-    bool internalLocks() const override {
-        return true;
+    LockPolicy lockPolicy() const override {
+        return LockPolicy::kLocksInternally;
+    }
+
+    bool isPipelineExecutor() const override {
+        return false;
     }
 
 private:

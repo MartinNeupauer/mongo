@@ -101,7 +101,8 @@ public:
     /**
      * Notifies the stage that the underlying data source may change.
      *
-     * It is illegal to call work() or isEOF() when a stage is in the "saved" state.
+     * It is illegal to call work() or isEOF() when a stage is in the "saved" state. May be called
+     * before the first call to open(), before execution of the plan has begun.
      *
      * Propagates to all children, then calls doSaveState().
      */
@@ -213,7 +214,12 @@ public:
     // This is unspeakably ugly
     virtual std::unique_ptr<PlanStage> clone() = 0;
 
+    /**
+     * Prepare this SBE PlanStage tree for execution. Can be called at most once, and must be called
+     * prior to open(), getNext(), close(), saveState(), or restoreState(),
+     */
     virtual void prepare(CompileCtx& ctx) = 0;
+
     virtual value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) = 0;
     virtual void open(bool reOpen) = 0;
     virtual PlanState getNext() = 0;

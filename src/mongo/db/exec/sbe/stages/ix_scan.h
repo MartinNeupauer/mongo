@@ -92,6 +92,7 @@ private:
     boost::optional<AutoGetCollectionForRead> _coll;
     boost::optional<KeyStringEntry> _nextRecord;
 
+    bool _open{false};
     bool _firstGetNext{true};
     IndexScanStats _specificStats;
 };

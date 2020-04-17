@@ -200,6 +200,24 @@ public:
         MONGO_UNREACHABLE;
     }
 
+    // Describes whether callers should acquire locks when using a PlanExecutor. Not all cursors
+    // have the same locking behavior. In particular, find executors using the legacy PlanStage
+    // engine require the caller to lock the collection in MODE_IS. Aggregate executors and SBE
+    // executors, on the other hand, may access multiple collections and acquire their own locks on
+    // any involved collections while producing query results. Therefore, the caller need not
+    // explicitly acquire any locks for such PlanExecutors.
+    //
+    // The policy is consulted on getMore in order to determine locking behavior, since during
+    // getMore we otherwise could not easily know what flavor of cursor we're using.
+    enum class LockPolicy {
+        // The caller is responsible for locking the collection over which this PlanExecutor
+        // executes.
+        kLockExternally,
+
+        // The caller need not hold no locks; this PlanExecutor acquires any necessary locks itself.
+        kLocksInternally,
+    };
+
     /**
      * This class will ensure a PlanExecutor is disposed before it is deleted.
      */
@@ -534,11 +552,15 @@ public:
     virtual Status getMemberObjectStatus(const Document& memberObj) const = 0;
     virtual Status getMemberObjectStatus(const BSONObj& memberObj) const = 0;
 
+    virtual LockPolicy lockPolicy() const = 0;
+
     /**
-     * Returns 'true' is resource locks are managed internally by the plan stages (as in SBE) and
-     * 'false' if they are managed by the getmore command externally.
+     * Returns true if this PlanExecutor proxies to a Pipeline of DocumentSources.
+     *
+     * TODO: Create a new PlanExecutor implementation specifically for executing the Pipeline, and
+     * delete PipelineProxyStage.
      */
-    virtual bool internalLocks() const = 0;
+    virtual bool isPipelineExecutor() const = 0;
 };
 
 }  // namespace mongo

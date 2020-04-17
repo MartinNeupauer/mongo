@@ -106,7 +106,6 @@ public:
                 opCtx->getWriteConcern(),
                 repl::ReadConcernArgs::get(opCtx),
                 cmdObj,
-                ClientCursorParams::LockPolicy::kLocksInternally,
                 {Privilege(ResourcePattern::forExactNamespace(nss), ActionType::find)},
                 false  // needsMerge always 'false' for sbe.
             });

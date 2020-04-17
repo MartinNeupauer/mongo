@@ -107,6 +107,11 @@ void ScanStage::doRestoreState() {
     invariant(_opCtx);
     invariant(!_coll);
 
+    // If this stage is not currently open, then there is nothing to restore.
+    if (!_open) {
+        return;
+    }
+
     _coll.emplace(_opCtx, _name);
 
     if (_cursor) {
@@ -158,6 +163,7 @@ void ScanStage::open(bool reOpen) {
         _cursor.reset();
     }
 
+    _open = true;
     _firstGetNext = true;
 }
 
@@ -228,6 +234,7 @@ void ScanStage::close() {
     _commonStats.closes++;
     _cursor.reset();
     _coll.reset();
+    _open = false;
 }
 
 std::unique_ptr<PlanStageStats> ScanStage::getStats() const {
@@ -364,6 +371,11 @@ void ParallelScanStage::doRestoreState() {
     invariant(_opCtx);
     invariant(!_coll);
 
+    // If this stage is not currently open, then there is nothing to restore.
+    if (!_open) {
+        return;
+    }
+
     _coll.emplace(_opCtx, _name);
 
     if (_cursor) {
@@ -427,6 +439,8 @@ void ParallelScanStage::open(bool reOpen) {
 
         _cursor = collection->getCursor(_opCtx);
     }
+
+    _open = true;
 }
 
 boost::optional<Record> ParallelScanStage::nextRange() {
@@ -508,6 +522,7 @@ PlanState ParallelScanStage::getNext() {
 void ParallelScanStage::close() {
     _cursor.reset();
     _coll.reset();
+    _open = false;
 }
 
 std::unique_ptr<PlanStageStats> ParallelScanStage::getStats() const {

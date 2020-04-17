@@ -213,7 +213,6 @@ public:
                 opCtx->getWriteConcern(),
                 repl::ReadConcernArgs::get(opCtx),
                 cmdObj,
-                ClientCursorParams::LockPolicy::kLocksInternally,
                 {Privilege(ResourcePattern::forExactNamespace(nss), ActionType::listIndexes)},
                 false  // needsMerge always 'false' for listIndexes.
             });

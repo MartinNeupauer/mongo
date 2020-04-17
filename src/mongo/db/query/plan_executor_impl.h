@@ -87,9 +87,9 @@ public:
     Status getMemberObjectStatus(const Document& memberObj) const final;
     Status getMemberObjectStatus(const BSONObj& memberObj) const final;
 
-    bool internalLocks() const override {
-        return false;
-    }
+    LockPolicy lockPolicy() const override;
+
+    bool isPipelineExecutor() const override;
 
 private:
     /**

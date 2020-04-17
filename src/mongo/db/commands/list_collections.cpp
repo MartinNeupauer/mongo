@@ -405,7 +405,6 @@ public:
                 opCtx->getWriteConcern(),
                 repl::ReadConcernArgs::get(opCtx),
                 jsobj,
-                ClientCursorParams::LockPolicy::kLocksInternally,
                 uassertStatusOK(AuthorizationSession::get(opCtx->getClient())
                                     ->checkAuthorizedToListCollections(dbname, jsobj)),
                 false  // needsMerge always 'false' for listCollections.
