@@ -1325,7 +1325,7 @@ generateExpression(Expression* expr,
                    sbe::value::SlotId rootSlot,
                    std::vector<sbe::value::SlotId>* relevantSlots) {
     std::vector<sbe::value::SlotId> tempRelevantSlots = {rootSlot};
-    relevantSlots = relevantSlots ?: &tempRelevantSlots;
+    relevantSlots = relevantSlots ? relevantSlots : &tempRelevantSlots;
 
     ExpressionVisitorContext context(
         std::move(stage), slotIdGenerator, frameIdGenerator, rootSlot, relevantSlots);
