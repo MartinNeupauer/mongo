@@ -434,14 +434,6 @@ std::unique_ptr<sbe::PlanStage> DocumentSourceSlotBasedStageBuilder::build(
 
     uassert(ErrorCodes::InternalError, "Result slot is not defined in SBE plan", _resultSlot);
 
-    stage = _recordIdSlot ? sbe::makeProjectStage(std::move(stage),
-                                                  sbe::value::SystemSlots::kResultSlot,
-                                                  sbe::makeE<sbe::EVariable>(*_resultSlot),
-                                                  sbe::value::SystemSlots::kRecordIdSlot,
-                                                  sbe::makeE<sbe::EVariable>(*_recordIdSlot))
-                          : sbe::makeProjectStage(std::move(stage),
-                                                  sbe::value::SystemSlots::kResultSlot,
-                                                  sbe::makeE<sbe::EVariable>(*_resultSlot));
     return stage;
 }
 }  // namespace mongo::stage_builder

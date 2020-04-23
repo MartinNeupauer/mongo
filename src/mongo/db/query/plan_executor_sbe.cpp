@@ -39,62 +39,42 @@ namespace mongo {
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
     OperationContext* opCtx,
     std::unique_ptr<CanonicalQuery> cq,
-    std::unique_ptr<sbe::PlanStage> root,
+    std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
     NamespaceString nss,
     std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
-    LOGV2_DEBUG(
-        47429003, 5, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
+    LOGV2_DEBUG(47429003,
+                5,
+                "SBE plan: {slots} {stages}",
+                "slots"_attr = root.second.debug(),
+                "stages"_attr = sbe::DebugPrinter{}.print(root.first.get()));
 
-    sbe::CompileCtx ctx;
-    root->prepare(ctx);
-    auto resultSlot = root->getAccessor(ctx, sbe::value::SystemSlots::kResultSlot);
-    uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
+    root.first->prepare(root.second.ctx);
 
-    sbe::value::SlotAccessor* resultRecordId{nullptr};
-    if (cq && cq->metadataDeps()[DocumentMetadataFields::kRecordId]) {
-        resultRecordId = root->getAccessor(ctx, sbe::value::SystemSlots::kRecordIdSlot);
-        uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
-    }
-
-    auto execImpl = new PlanExecutorSBE(opCtx,
-                                        std::move(cq),
-                                        std::move(root),
-                                        resultSlot,
-                                        resultRecordId,
-                                        nss,
-                                        false,
-                                        boost::none,
-                                        std::move(yieldPolicy));
+    auto execImpl = new PlanExecutorSBE(
+        opCtx, std::move(cq), std::move(root), nss, false, boost::none, std::move(yieldPolicy));
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
     return std::move(exec);
 }
 
-
 StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::make(
     OperationContext* opCtx,
     std::unique_ptr<CanonicalQuery> cq,
-    std::unique_ptr<sbe::PlanStage> root,
+    std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
     NamespaceString nss,
-    sbe::value::SlotAccessor* resultSlot,
-    sbe::value::SlotAccessor* recordIdSlot,
     std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash,
     std::unique_ptr<PlanYieldPolicySBE> yieldPolicy) {
 
-    LOGV2_DEBUG(
-        47429004, 5, "SBE plan: {stages}", "stages"_attr = sbe::DebugPrinter{}.print(root.get()));
+    LOGV2_DEBUG(47429004,
+                5,
+                "SBE plan: {slots} {stages}",
+                "slots"_attr = root.second.debug(),
+                "stages"_attr = sbe::DebugPrinter{}.print(root.first.get()));
 
-    auto execImpl = new PlanExecutorSBE(opCtx,
-                                        std::move(cq),
-                                        std::move(root),
-                                        resultSlot,
-                                        recordIdSlot,
-                                        nss,
-                                        true,
-                                        stash,
-                                        std::move(yieldPolicy));
+    auto execImpl = new PlanExecutorSBE(
+        opCtx, std::move(cq), std::move(root), nss, true, stash, std::move(yieldPolicy));
     PlanExecutor::Deleter planDeleter(opCtx);
 
     std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec(execImpl, std::move(planDeleter));
@@ -104,9 +84,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> PlanExecutor::m
 PlanExecutorSBE::PlanExecutorSBE(
     OperationContext* opCtx,
     std::unique_ptr<CanonicalQuery> cq,
-    std::unique_ptr<sbe::PlanStage> root,
-    sbe::value::SlotAccessor* result,
-    sbe::value::SlotAccessor* resultRecordId,
+    std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
     NamespaceString nss,
     bool isOpen,
     boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash,
@@ -114,13 +92,30 @@ PlanExecutorSBE::PlanExecutorSBE(
     : _state{isOpen ? State::opened : State::beforeOpen},
       _opCtx(opCtx),
       _nss(nss),
-      _root(std::move(root)),
-      _result(result),
-      _resultRecordId(resultRecordId),
+      _root(std::move(root.first)),
       _cq{std::move(cq)},
       _yieldPolicy(std::move(yieldPolicy)) {
     invariant(_root);
-    invariant(_result);
+
+    auto&& data = root.second;
+
+    if (data.resultSlot) {
+        _result = _root->getAccessor(data.ctx, *data.resultSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have result slot.", _result);
+    }
+
+    if (data.recordIdSlot) {
+        _resultRecordId = _root->getAccessor(data.ctx, *data.recordIdSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have recordId slot.", _resultRecordId);
+    }
+
+    if (data.oplogTsSlot) {
+        _oplogTs = _root->getAccessor(data.ctx, *data.oplogTsSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have oplogTs slot.", _oplogTs);
+    }
+
+    _shouldTrackLatestOplogTimestamp = data.shouldTrackLatestOplogTimestamp;
+    _shouldTrackResumeToken = data.shouldTrackResumeToken;
 
     if (!isOpen) {
         _root->attachFromOperationContext(_opCtx);
@@ -132,7 +127,7 @@ PlanExecutorSBE::PlanExecutorSBE(
 
     // Callers are allowed to disable yielding for this plan by passing a null yield policy.
     if (_yieldPolicy) {
-        _yieldPolicy->setRootStage(root.get());
+        _yieldPolicy->setRootStage(_root.get());
     }
 }
 
@@ -231,6 +226,34 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) 
     return PlanExecutor::ExecState::ADVANCED;
 }
 
+Timestamp PlanExecutorSBE::getLatestOplogTimestamp() const {
+    if (_shouldTrackLatestOplogTimestamp) {
+        invariant(_oplogTs);
+
+        auto [tag, val] = _oplogTs->getViewOfValue();
+        uassert(ErrorCodes::InternalError,
+                "Collection scan was asked to track latest operation time, "
+                "but found a result without a valid 'ts' field",
+                tag == sbe::value::TypeTags::Timestamp);
+        return Timestamp{sbe::value::bitcastTo<uint64_t>(val)};
+    }
+    return {};
+}
+
+BSONObj PlanExecutorSBE::getPostBatchResumeToken() const {
+    if (_shouldTrackResumeToken) {
+        invariant(_resultRecordId);
+
+        auto [tag, val] = _resultRecordId->getViewOfValue();
+        uassert(ErrorCodes::InternalError,
+                "Collection scan was asked to track resume token, "
+                "but found a result without a valid RecordId",
+                tag == sbe::value::TypeTags::NumberInt64);
+        return BSON("$recordId" << sbe::value::bitcastTo<int64_t>(val));
+    }
+    return {};
+}
+
 sbe::PlanState fetchNext(sbe::PlanStage* root,
                          sbe::value::SlotAccessor* resultSlot,
                          sbe::value::SlotAccessor* recordIdSlot,
@@ -238,23 +261,25 @@ sbe::PlanState fetchNext(sbe::PlanStage* root,
                          RecordId* dlOut) {
     invariant(out);
 
-    auto result = root->getNext();
-    if (result == sbe::PlanState::IS_EOF) {
-        return result;
+    auto state = root->getNext();
+    if (state == sbe::PlanState::IS_EOF) {
+        return state;
     }
-    invariant(result == sbe::PlanState::ADVANCED);
+    invariant(state == sbe::PlanState::ADVANCED);
 
     // copy the result
-    auto [tag, val] = resultSlot->getViewOfValue();
-    if (tag == sbe::value::TypeTags::Object) {
-        BSONObjBuilder bb;
-        sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
-        *out = bb.obj();
-    } else if (tag == sbe::value::TypeTags::bsonObject) {
-        *out = BSONObj(sbe::value::bitcastTo<const char*>(val));
-    } else {
-        // The query is supposed to return an object.
-        MONGO_UNREACHABLE;
+    if (resultSlot) {
+        auto [tag, val] = resultSlot->getViewOfValue();
+        if (tag == sbe::value::TypeTags::Object) {
+            BSONObjBuilder bb;
+            sbe::bson::convertToBsonObj(bb, sbe::value::getObjectView(val));
+            *out = bb.obj();
+        } else if (tag == sbe::value::TypeTags::bsonObject) {
+            *out = BSONObj(sbe::value::bitcastTo<const char*>(val));
+        } else {
+            // The query is supposed to return an object.
+            MONGO_UNREACHABLE;
+        }
     }
 
     if (dlOut) {
@@ -264,7 +289,7 @@ sbe::PlanState fetchNext(sbe::PlanStage* root,
             *dlOut = RecordId{sbe::value::bitcastTo<int64_t>(val)};
         }
     }
-    return result;
+    return state;
 }
 
 }  // namespace mongo

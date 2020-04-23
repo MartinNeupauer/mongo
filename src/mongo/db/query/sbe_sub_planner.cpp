@@ -40,8 +40,9 @@
 #include "mongo/logv2/log.h"
 
 namespace mongo::sbe {
-plan_ranker::CandidatePlan SubPlanner::plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                            std::vector<std::unique_ptr<PlanStage>> roots) {
+plan_ranker::CandidatePlan SubPlanner::plan(
+    std::vector<std::unique_ptr<QuerySolution>> solutions,
+    std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots) {
     // Plan each branch of the $or.
     auto subplanningStatus =
         QueryPlanner::planSubqueries(_opCtx,
@@ -56,10 +57,11 @@ plan_ranker::CandidatePlan SubPlanner::plan(std::vector<std::unique_ptr<QuerySol
     auto multiplanCallback = [&](CanonicalQuery* cq,
                                  std::vector<std::unique_ptr<QuerySolution>> solutions,
                                  std::function<Status(QuerySolution*)> bestSolutionCallback) {
-        std::vector<std::unique_ptr<PlanStage>> roots;
+        std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots;
         for (auto&& solution : solutions) {
-            roots.push_back(stage_builder::buildExecutableTree<PlanStage>(
-                _opCtx, _collection, *cq, *solution, _yieldPolicy));
+            roots.push_back(
+                stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
+                    _opCtx, _collection, *cq, *solution, _yieldPolicy));
         }
 
         // We pass the SometimesCache option to the MPS because the SubplanStage currently does
@@ -85,10 +87,11 @@ plan_ranker::CandidatePlan SubPlanner::plan(std::vector<std::unique_ptr<QuerySol
 
     // Build a plan stage tree from a composite solution.
     auto compositeSolution = std::move(subplanSelectStat.getValue());
-    auto root = stage_builder::buildExecutableTree<PlanStage>(
-        _opCtx, _collection, _cq, *compositeSolution, _yieldPolicy);
-    auto [slots, _] = prepareExecutionPlan(root.get());
-    return {std::move(compositeSolution), std::move(root), slots};
+    auto&& [root, data] =
+        stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
+            _opCtx, _collection, _cq, *compositeSolution, _yieldPolicy);
+    prepareExecutionPlan(root.get(), &data);
+    return {std::move(compositeSolution), std::move(root), std::move(data)};
 }
 
 plan_ranker::CandidatePlan SubPlanner::planWholeQuery() const {
@@ -97,17 +100,18 @@ plan_ranker::CandidatePlan SubPlanner::planWholeQuery() const {
 
     // Only one possible plan. Build the stages from the solution.
     if (solutions.size() == 1) {
-        auto root = stage_builder::buildExecutableTree<PlanStage>(
-            _opCtx, _collection, _cq, *solutions[0], _yieldPolicy);
-        auto [slots, _] = prepareExecutionPlan(root.get());
-        return {std::move(solutions[0]), std::move(root), slots};
+        auto [root, data] =
+            stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
+                _opCtx, _collection, _cq, *solutions[0], _yieldPolicy);
+        prepareExecutionPlan(root.get(), &data);
+        return {std::move(solutions[0]), std::move(root), std::move(data)};
     }
 
     // Many solutions. Build a plan stage tree for each solution and create a multi planner to pick
     // the best, update the cache, and so on.
-    std::vector<std::unique_ptr<PlanStage>> roots;
+    std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots;
     for (auto&& solution : solutions) {
-        roots.push_back(stage_builder::buildExecutableTree<PlanStage>(
+        roots.push_back(stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
             _opCtx, _collection, _cq, *solution, _yieldPolicy));
     }
 

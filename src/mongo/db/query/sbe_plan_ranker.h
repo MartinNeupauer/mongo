@@ -30,12 +30,14 @@
 #pragma once
 
 #include "mongo/db/query/plan_ranker.h"
+#include "mongo/db/query/sbe_stage_builder.h"
 
 namespace mongo::sbe::plan_ranker {
-using CandidatePlan = mongo::plan_ranker::BaseCandidatePlan<
-    std::unique_ptr<mongo::sbe::PlanStage>,
-    std::pair<BSONObj, boost::optional<RecordId>>,
-    std::pair<mongo::sbe::value::SlotAccessor*, mongo::sbe::value::SlotAccessor*>>;
+
+using CandidatePlan =
+    mongo::plan_ranker::BaseCandidatePlan<std::unique_ptr<mongo::sbe::PlanStage>,
+                                          std::pair<BSONObj, boost::optional<RecordId>>,
+                                          stage_builder::PlanStageData>;
 
 /**
  * A factory function to create a plan ranker for an SBE plan stage stats tree.

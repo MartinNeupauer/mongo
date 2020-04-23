@@ -269,7 +269,7 @@ Status SubplanStage::choosePlanWholeQuery(PlanYieldPolicy* yieldPolicy) {
 
     if (1 == solutions.size()) {
         // Only one possible plan.  Run it.  Build the stages from the solution.
-        auto root = stage_builder::buildExecutableTree<PlanStage>(
+        auto&& [root, _] = stage_builder::buildExecutableTree<PlanStage>(
             expCtx()->opCtx, collection(), *_query, *solutions[0], yieldPolicy, _ws);
         invariant(_children.empty());
         _children.emplace_back(std::move(root));
@@ -291,7 +291,7 @@ Status SubplanStage::choosePlanWholeQuery(PlanYieldPolicy* yieldPolicy) {
                 solutions[ix]->cacheData->indexFilterApplied = _plannerParams.indexFiltersApplied;
             }
 
-            auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+            auto&& [nextPlanRoot, _] = stage_builder::buildExecutableTree<PlanStage>(
                 expCtx()->opCtx, collection(), *_query, *solutions[ix], yieldPolicy, _ws);
             multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
         }
@@ -361,7 +361,7 @@ Status SubplanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
 
         // Dump all the solutions into the MPS.
         for (size_t ix = 0; ix < solutions.size(); ++ix) {
-            auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+            auto&& [nextPlanRoot, _] = stage_builder::buildExecutableTree<PlanStage>(
                 expCtx()->opCtx, collection(), *cq, *solutions[ix], yieldPolicy, _ws);
 
             multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);
@@ -394,8 +394,9 @@ Status SubplanStage::pickBestPlan(PlanYieldPolicy* yieldPolicy) {
     // Build a plan stage tree from the the composite solution and it as our child stage.
     _compositeSolution = std::move(subplanSelectStat.getValue());
     invariant(_children.empty());
-    _children.emplace_back(stage_builder::buildExecutableTree<PlanStage>(
-        expCtx()->opCtx, collection(), *_query, *_compositeSolution, yieldPolicy, _ws));
+    auto&& [root, _] = stage_builder::buildExecutableTree<PlanStage>(
+        expCtx()->opCtx, collection(), *_query, *_compositeSolution, yieldPolicy, _ws);
+    _children.emplace_back(std::move(root));
     _ws->clear();
 
     return Status::OK();

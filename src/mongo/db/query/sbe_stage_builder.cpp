@@ -35,7 +35,6 @@
 
 #include "mongo/db/catalog/collection.h"
 #include "mongo/db/exec/sbe/stages/co_scan.h"
-#include "mongo/db/exec/sbe/stages/exchange.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
 #include "mongo/db/exec/sbe/stages/limit_skip.h"
@@ -46,6 +45,7 @@
 #include "mongo/db/exec/sbe/stages/sort.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/exec/sbe/stages/union.h"
+#include "mongo/db/query/sbe_stage_builder_coll_scan.h"
 #include "mongo/db/query/sbe_stage_builder_filter.h"
 #include "mongo/db/query/sbe_stage_builder_index_scan.h"
 #include "mongo/db/query/sbe_stage_builder_projection.h"
@@ -57,74 +57,14 @@ namespace mongo::stage_builder {
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildCollScan(
     const QuerySolutionNode* root) {
     auto csn = static_cast<const CollectionScanNode*>(root);
-
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Tailable collection scans are not supported in SBE",
-            !csn->tailable);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Only forward collection scans are supported in SBE",
-            csn->direction == 1);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with shouldTrackLatestOplogTimestamp are not supported "
-            "in SBE",
-            !csn->shouldTrackLatestOplogTimestamp);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with shouldWaitForOplogVisibility are not supported in SBE",
-            !csn->shouldWaitForOplogVisibility);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with minTs are not supported in SBE",
-            !csn->minTs);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with maxTs are not supported in SBE",
-            !csn->maxTs);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with requestResumeToken are not supported in SBE",
-            !csn->requestResumeToken);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with resumeAfterRecordId are not supported in SBE",
-            !csn->resumeAfterRecordId);
-    uassert(ErrorCodes::InternalErrorNotSupported,
-            "Collection scans with stopApplyingFilterAfterFirstMatch are not supported "
-            "in SBE",
-            !csn->stopApplyingFilterAfterFirstMatch);
-
-    _resultSlot = _slotIdGenerator.generate();
-    _recordIdSlot = _slotIdGenerator.generate();
-    size_t localDop = internalQueryDefaultDOP.load();
-    std::unique_ptr<sbe::PlanStage> stage;
-    if (localDop > 1) {
-        stage = sbe::makeS<sbe::ParallelScanStage>(
-            NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-            _resultSlot,
-            _recordIdSlot,
-            std::vector<std::string>{},
-            std::vector<sbe::value::SlotId>{},
-            _yieldPolicy);
-    } else {
-        stage = sbe::makeS<sbe::ScanStage>(
-            NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-            _resultSlot,
-            _recordIdSlot,
-            std::vector<std::string>{},
-            std::vector<sbe::value::SlotId>{},
-            boost::none,
-            _yieldPolicy);
-    }
-
-    if (csn->filter) {
-        stage =
-            generateFilter(csn->filter.get(), std::move(stage), &_slotIdGenerator, *_resultSlot);
-    }
-
-    if (localDop > 1) {
-        std::vector<sbe::value::SlotId> fields;
-        fields.push_back(*_resultSlot);
-        fields.push_back(*_recordIdSlot);
-        stage = sbe::makeS<sbe::ExchangeConsumer>(
-            std::move(stage), localDop, fields, sbe::ExchangePolicy::roundrobin, nullptr, nullptr);
-    }
-
-    return stage;
+    auto [resultSlot, recordIdSlot, oplogTsSlot, stage] =
+        generateCollScan(_opCtx, _collection, csn, &_slotIdGenerator, _yieldPolicy);
+    _data.resultSlot = resultSlot;
+    _data.recordIdSlot = recordIdSlot;
+    _data.oplogTsSlot = oplogTsSlot;
+    _data.shouldTrackLatestOplogTimestamp = csn->shouldTrackLatestOplogTimestamp;
+    _data.shouldTrackResumeToken = csn->requestResumeToken;
+    return std::move(stage);
 }
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
@@ -132,7 +72,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
     auto ixn = static_cast<const IndexScanNode*>(root);
     auto [slot, stage] = generateIndexScan(
         _opCtx, _collection, ixn, &_slotIdGenerator, &_spoolIdGenerator, _yieldPolicy);
-    _recordIdSlot = slot;
+    _data.recordIdSlot = slot;
     return std::move(stage);
 }
 
@@ -140,32 +80,35 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
     auto fn = static_cast<const FetchNode*>(root);
     auto inputStage = build(fn->children[0]);
 
-    uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _recordIdSlot);
+    uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _data.recordIdSlot);
 
-    auto recordIdKeySlot = _recordIdSlot;
-    _resultSlot = _slotIdGenerator.generate();
-    _recordIdSlot = _slotIdGenerator.generate();
+    auto recordIdKeySlot = _data.recordIdSlot;
+    _data.resultSlot = _slotIdGenerator.generate();
+    _data.recordIdSlot = _slotIdGenerator.generate();
 
-    // Scan the collection in the range [recordIdKeySlot, recordIdKeySlot).
+    // Scan the collection in the range [recordIdKeySlot, Inf).
     auto collScan = sbe::makeS<sbe::ScanStage>(
         NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
-        _resultSlot,
-        _recordIdSlot,
+        _data.resultSlot,
+        _data.recordIdSlot,
         std::vector<std::string>{},
         std::vector<sbe::value::SlotId>{},
         recordIdKeySlot,
+        true,
         nullptr);
 
-    // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the
-    // inner side.
-    auto stage = sbe::makeS<sbe::LoopJoinStage>(std::move(inputStage),
-                                                std::move(collScan),
-                                                std::vector<sbe::value::SlotId>{},
-                                                std::vector<sbe::value::SlotId>{*recordIdKeySlot},
-                                                nullptr);
+    // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the inner side,
+    // limiting the result set to 1 row.
+    auto stage = sbe::makeS<sbe::LoopJoinStage>(
+        std::move(inputStage),
+        sbe::makeS<sbe::LimitSkipStage>(std::move(collScan), 1, boost::none),
+        std::vector<sbe::value::SlotId>{},
+        std::vector<sbe::value::SlotId>{*recordIdKeySlot},
+        nullptr);
 
     if (fn->filter) {
-        stage = generateFilter(fn->filter.get(), std::move(stage), &_slotIdGenerator, *_resultSlot);
+        stage = generateFilter(
+            fn->filter.get(), std::move(stage), &_slotIdGenerator, *_data.resultSlot);
     }
 
     return stage;
@@ -222,7 +165,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
         projectMap.emplace(
             sortFieldVar,
             sbe::makeE<sbe::EFunction>("getField"sv,
-                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_data.resultSlot),
                                                    sbe::makeE<sbe::EConstant>(fieldNameSV))));
     }
 
@@ -263,12 +206,15 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
     }
 
     std::vector<sbe::value::SlotId> values;
-    values.push_back(*_resultSlot);
-    if (_recordIdSlot) {
+    values.push_back(*_data.resultSlot);
+    if (_data.recordIdSlot) {
         // Break ties with record id if awailable.
-        orderBy.push_back(*_recordIdSlot);
+        orderBy.push_back(*_data.recordIdSlot);
         // This is arbitrary.
         direction.push_back(sbe::value::SortDirection::Ascending);
+    }
+    if (_data.oplogTsSlot) {
+        values.push_back(*_data.oplogTsSlot);
     }
     return sbe::makeS<sbe::SortStage>(std::move(inputStage),
                                       orderBy,
@@ -299,14 +245,14 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionSimple(
         projections.emplace(
             fieldSlots.back(),
             sbe::makeE<sbe::EFunction>("getField"sv,
-                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_resultSlot),
+                                       sbe::makeEs(sbe::makeE<sbe::EVariable>(*_data.resultSlot),
                                                    sbe::makeE<sbe::EConstant>(std::string_view{
                                                        field.c_str(), field.size()}))));
     }
 
     return sbe::makeS<sbe::MakeObjStage>(
         sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projections)),
-        *_resultSlot,
+        *_data.resultSlot,
         boost::none,
         std::vector<std::string>{},
         pn->proj.getRequiredFields(),
@@ -321,10 +267,10 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionDefault(
 
     auto pn = static_cast<const ProjectionNodeDefault*>(root);
     auto inputStage = build(pn->children[0]);
-    invariant(_resultSlot);
+    invariant(_data.resultSlot);
     auto [slot, stage] = generateProjection(
-        &pn->proj, std::move(inputStage), &_slotIdGenerator, &_frameIdGenerator, *_resultSlot);
-    _resultSlot = slot;
+        &pn->proj, std::move(inputStage), &_slotIdGenerator, &_frameIdGenerator, *_data.resultSlot);
+    _data.resultSlot = slot;
     return std::move(stage);
 }
 
@@ -335,12 +281,12 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySoluti
     auto orn = static_cast<const OrNode*>(root);
     for (auto&& child : orn->children) {
         inputStages.push_back(build(child));
-        invariant(_recordIdSlot);
-        inputSlots.push_back({*_recordIdSlot});
+        invariant(_data.recordIdSlot);
+        inputSlots.push_back({*_data.recordIdSlot});
     }
 
-    _recordIdSlot = _slotIdGenerator.generate();
-    std::vector<sbe::value::SlotId> outputSlots{*_recordIdSlot};
+    _data.recordIdSlot = _slotIdGenerator.generate();
+    std::vector<sbe::value::SlotId> outputSlots{*_data.recordIdSlot};
     auto stage = sbe::makeS<sbe::UnionStage>(std::move(inputStages), inputSlots, outputSlots);
 
     if (orn->dedup) {
@@ -351,8 +297,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySoluti
     }
 
     if (orn->filter) {
-        stage =
-            generateFilter(orn->filter.get(), std::move(stage), &_slotIdGenerator, *_resultSlot);
+        stage = generateFilter(
+            orn->filter.get(), std::move(stage), &_slotIdGenerator, *_data.resultSlot);
     }
 
     return stage;
@@ -381,20 +327,6 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
             str::stream() << "Can't build exec tree for node: " << root->toString(),
             kStageBuilders.find(root->getType()) != kStageBuilders.end());
 
-    auto stage = std::invoke(kStageBuilders.at(root->getType()), *this, root);
-    if (root == _solution.root.get()) {
-        uassert(ErrorCodes::InternalError, "Result slot is not defined in SBE plan", _resultSlot);
-
-        stage = _recordIdSlot ? sbe::makeProjectStage(std::move(stage),
-                                                      sbe::value::SystemSlots::kResultSlot,
-                                                      sbe::makeE<sbe::EVariable>(*_resultSlot),
-                                                      sbe::value::SystemSlots::kRecordIdSlot,
-                                                      sbe::makeE<sbe::EVariable>(*_recordIdSlot))
-                              : sbe::makeProjectStage(std::move(stage),
-                                                      sbe::value::SystemSlots::kResultSlot,
-                                                      sbe::makeE<sbe::EVariable>(*_resultSlot));
-    }
-
-    return stage;
+    return std::invoke(kStageBuilders.at(root->getType()), *this, root);
 }
 }  // namespace mongo::stage_builder

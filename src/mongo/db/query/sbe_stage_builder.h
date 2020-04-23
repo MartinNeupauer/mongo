@@ -29,16 +29,40 @@
 
 #pragma once
 
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/query/plan_yield_policy_sbe.h"
-#include "mongo/db/query/sbe_stage_builder_common.h"
 #include "mongo/db/query/stage_builder.h"
 
 namespace mongo::stage_builder {
+struct PlanStageData {
+    boost::optional<sbe::value::SlotId> resultSlot;
+    boost::optional<sbe::value::SlotId> recordIdSlot;
+    boost::optional<sbe::value::SlotId> oplogTsSlot;
+    sbe::CompileCtx ctx;
+    bool shouldTrackLatestOplogTimestamp{false};
+    bool shouldTrackResumeToken{false};
+
+    std::string debug() {
+        StringBuilder builder;
+
+        if (resultSlot) {
+            builder << "$$RESULT=s" << *resultSlot << " ";
+        }
+        if (recordIdSlot) {
+            builder << "$$RID=s" << *recordIdSlot << " ";
+        }
+        if (oplogTsSlot) {
+            builder << "$$OPLOGTS=s" << *oplogTsSlot << " ";
+        }
+
+        return builder.str();
+    }
+};
+
 /**
  * A stage builder which builds an executable tree using slot-based PlanStages.
  */
-class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage>,
-                              public BaseSlotBasedStageBuilder {
+class SlotBasedStageBuilder : public StageBuilder<sbe::PlanStage> {
 public:
     SlotBasedStageBuilder(OperationContext* opCtx,
                           const Collection* collection,
@@ -48,6 +72,10 @@ public:
         : StageBuilder(opCtx, collection, cq, solution, nullptr), _yieldPolicy(yieldPolicy) {}
 
     std::unique_ptr<sbe::PlanStage> build(const QuerySolutionNode* root) final;
+
+    PlanStageData getPlanStageData() const {
+        return _data;
+    }
 
 private:
     std::unique_ptr<sbe::PlanStage> buildCollScan(const QuerySolutionNode* root);
@@ -61,8 +89,14 @@ private:
     std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildOr(const QuerySolutionNode* root);
 
+    sbe::value::SlotIdGenerator _slotIdGenerator;
+    sbe::value::FrameIdGenerator _frameIdGenerator;
+    sbe::value::SpoolIdGenerator _spoolIdGenerator;
+
     boost::optional<long long> _limit;
 
     PlanYieldPolicySBE* const _yieldPolicy;
+
+    PlanStageData _data;
 };
 }  // namespace mongo::stage_builder

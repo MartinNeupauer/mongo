@@ -256,6 +256,11 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             os << "KS(" << ks->toString() << ")";
             break;
         }
+        case value::TypeTags::Timestamp: {
+            Timestamp ts{bitcastTo<uint64_t>(val)};
+            os << ts.toString();
+            break;
+        }
         default:
             MONGO_UNREACHABLE;
     }

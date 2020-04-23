@@ -34,7 +34,7 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 
 namespace mongo::sbe {
-template <bool IsConst>
+template <bool IsConst, bool IsEof = false>
 class FilterStage final : public PlanStage {
     const std::unique_ptr<EExpression> _filter;
     std::unique_ptr<vm::CodeFragment> _filterCode;
@@ -46,7 +46,9 @@ class FilterStage final : public PlanStage {
 
 public:
     FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
-        : PlanStage(IsConst ? "cfilter"_sd : "filter"_sd), _filter(std::move(filter)) {
+        : PlanStage(IsConst ? "cfilter"_sd : (IsEof ? "efilter" : "filter"_sd)),
+          _filter(std::move(filter)) {
+        static_assert(!IsEof || !IsConst);
         _children.emplace_back(std::move(input));
     }
 
@@ -104,6 +106,12 @@ public:
 
                 // run the filter expressions here
                 pass = _bytecode.runPredicate(_filterCode.get());
+
+                if constexpr (IsEof) {
+                    if (!pass) {
+                        return trackPlanState(PlanState::IS_EOF);
+                    }
+                }
             }
         } while (state == PlanState::ADVANCED && !pass);
 
@@ -134,7 +142,8 @@ public:
         std::vector<DebugPrinter::Block> ret;
         if constexpr (IsConst) {
             DebugPrinter::addKeyword(ret, "cfilter");
-
+        } else if constexpr (IsEof) {
+            DebugPrinter::addKeyword(ret, "efilter");
         } else {
             DebugPrinter::addKeyword(ret, "filter");
         }

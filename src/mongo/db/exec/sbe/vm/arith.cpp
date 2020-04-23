@@ -227,7 +227,9 @@ std::pair<value::TypeTags, value::Value> ByteCode::genericCompareEq(value::TypeT
                                                                     value::Value lhsValue,
                                                                     value::TypeTags rhsTag,
                                                                     value::Value rhsValue) {
-    if (value::isNumber(lhsTag) && value::isNumber(rhsTag)) {
+    if ((value::isNumber(lhsTag) && value::isNumber(rhsTag)) ||
+        (lhsTag == value::TypeTags::Date && rhsTag == value::TypeTags::Date) ||
+        (lhsTag == value::TypeTags::Timestamp && rhsTag == value::TypeTags::Timestamp)) {
         return genericNumericCompare(lhsTag, lhsValue, rhsTag, rhsValue, std::equal_to<>{});
     } else if (value::isString(lhsTag) && value::isString(rhsTag)) {
         auto lhsStr = value::getStringView(lhsTag, lhsValue);

@@ -32,7 +32,6 @@
 #include "mongo/db/exec/sbe/abt/abt.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/pipeline/document_source.h"
-#include "mongo/db/query/sbe_stage_builder_common.h"
 
 namespace mongo::stage_builder {
 struct DSABT {
@@ -66,11 +65,16 @@ public:
     }
 };
 
-class DocumentSourceSlotBasedStageBuilder : public BaseSlotBasedStageBuilder {
+class DocumentSourceSlotBasedStageBuilder {
     using BuilderFnType = std::function<std::unique_ptr<sbe::PlanStage>(
         DocumentSourceSlotBasedStageBuilder&, const DocumentSource* root)>;
     static std::unordered_map<std::type_index, DocumentSourceSlotBasedStageBuilder::BuilderFnType>
         kStageBuilders;
+
+    sbe::value::SlotIdGenerator _slotIdGenerator;
+    sbe::value::FrameIdGenerator _frameIdGenerator;
+    boost::optional<sbe::value::SlotId> _recordIdSlot;
+    boost::optional<sbe::value::SlotId> _resultSlot;
 
 public:
     std::unique_ptr<sbe::PlanStage> build(const DocumentSource* root);

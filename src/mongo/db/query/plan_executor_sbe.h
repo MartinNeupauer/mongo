@@ -41,9 +41,7 @@ public:
     PlanExecutorSBE(
         OperationContext* opCtx,
         std::unique_ptr<CanonicalQuery> cq,
-        std::unique_ptr<sbe::PlanStage> root,
-        sbe::value::SlotAccessor* result,
-        sbe::value::SlotAccessor* resultRecordId,
+        std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
         NamespaceString nss,
         bool isOpen,
         boost::optional<std::queue<std::pair<BSONObj, boost::optional<RecordId>>>> stash,
@@ -127,13 +125,8 @@ public:
         return !_opCtx;
     }
 
-    Timestamp getLatestOplogTimestamp() const override {
-        MONGO_UNREACHABLE;
-    }
-
-    BSONObj getPostBatchResumeToken() const override {
-        return {};
-    }
+    Timestamp getLatestOplogTimestamp() const override;
+    BSONObj getPostBatchResumeToken() const override;
 
     Status getMemberObjectStatus(const Document& memberObj) const override {
         MONGO_UNREACHABLE;
@@ -164,6 +157,9 @@ private:
 
     sbe::value::SlotAccessor* _result{nullptr};
     sbe::value::SlotAccessor* _resultRecordId{nullptr};
+    sbe::value::SlotAccessor* _oplogTs{nullptr};
+    bool _shouldTrackLatestOplogTimestamp{false};
+    bool _shouldTrackResumeToken{false};
 
     std::queue<std::pair<BSONObj, boost::optional<RecordId>>> _stash;
 

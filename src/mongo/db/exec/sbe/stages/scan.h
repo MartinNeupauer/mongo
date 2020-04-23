@@ -37,6 +37,8 @@
 
 namespace mongo {
 namespace sbe {
+using ScanOpenCallback = std::function<void(OperationContext*, const Collection*, bool)>;
+
 class ScanStage final : public PlanStage {
 protected:
     void doSaveState() override;
@@ -51,7 +53,9 @@ public:
               const std::vector<std::string>& fields,
               const std::vector<value::SlotId>& vars,
               boost::optional<value::SlotId> seekKeySlot,
-              PlanYieldPolicy* yieldPolicy);
+              bool forward,
+              PlanYieldPolicy* yieldPolicy,
+              ScanOpenCallback openCallback = {});
 
     std::unique_ptr<PlanStage> clone() final;
 
@@ -72,6 +76,8 @@ private:
     const std::vector<std::string> _fields;
     const std::vector<value::SlotId> _vars;
     const boost::optional<value::SlotId> _seekKeySlot;
+    const bool _forward;
+    ScanOpenCallback _openCallback;
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;

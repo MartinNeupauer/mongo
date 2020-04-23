@@ -227,7 +227,7 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
 
     if (1 == solutions.size()) {
         // Only one possible plan. Build the stages from the solution.
-        auto newRoot = stage_builder::buildExecutableTree<PlanStage>(
+        auto&& [newRoot, _] = stage_builder::buildExecutableTree<PlanStage>(
             expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[0], yieldPolicy, _ws);
         _children.emplace_back(std::move(newRoot));
         _replannedQs = std::move(solutions.back());
@@ -257,7 +257,7 @@ Status CachedPlanStage::replan(PlanYieldPolicy* yieldPolicy, bool shouldCache, s
             solutions[ix]->cacheData->indexFilterApplied = _plannerParams.indexFiltersApplied;
         }
 
-        auto nextPlanRoot = stage_builder::buildExecutableTree<PlanStage>(
+        auto&& [nextPlanRoot, _] = stage_builder::buildExecutableTree<PlanStage>(
             expCtx()->opCtx, collection(), *_canonicalQuery, *solutions[ix], yieldPolicy, _ws);
 
         multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), _ws);

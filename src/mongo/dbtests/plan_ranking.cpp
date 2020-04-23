@@ -131,7 +131,7 @@ public:
         unique_ptr<WorkingSet> ws(new WorkingSet());
         // Put each solution from the planner into the MPR.
         for (size_t i = 0; i < solutions.size(); ++i) {
-            auto root = stage_builder::buildExecutableTree<PlanStage>(
+            auto&& [root, _] = stage_builder::buildExecutableTree<PlanStage>(
                 &_opCtx, collection, *cq, *solutions[i], nullptr, ws.get());
             _mps->addPlan(std::move(solutions[i]), std::move(root), ws.get());
         }

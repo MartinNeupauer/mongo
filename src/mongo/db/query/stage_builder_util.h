@@ -44,13 +44,14 @@ namespace mongo::stage_builder {
  * The 'PlanStageType' type parameter defines a specifc type of PlanStage the executable tree
  * will consist of.
  */
-template <typename PlanStageType>
-std::unique_ptr<PlanStageType> buildExecutableTree(OperationContext* opCtx,
-                                                   const Collection* collection,
-                                                   const CanonicalQuery& cq,
-                                                   const QuerySolution& solution,
-                                                   PlanYieldPolicy* yieldPolicy,
-                                                   WorkingSet* ws = nullptr) {
+template <typename PlanStageType, typename PlanStageDataType = void*>
+std::pair<std::unique_ptr<PlanStageType>, PlanStageDataType> buildExecutableTree(
+    OperationContext* opCtx,
+    const Collection* collection,
+    const CanonicalQuery& cq,
+    const QuerySolution& solution,
+    PlanYieldPolicy* yieldPolicy,
+    WorkingSet* ws = nullptr) {
     // Only QuerySolutions derived from queries parsed with context, or QuerySolutions derived from
     // queries that disallow extensions, can be properly executed. If the query does not have
     // $text/$where context (and $text/$where are allowed), then no attempt should be made to
@@ -59,16 +60,18 @@ std::unique_ptr<PlanStageType> buildExecutableTree(OperationContext* opCtx,
 
     invariant(solution.root);
 
-    std::unique_ptr<StageBuilder<PlanStageType>> builder;
     if constexpr (std::is_same_v<PlanStageType, sbe::PlanStage>) {
         auto sbeYieldPolicy = dynamic_cast<PlanYieldPolicySBE*>(yieldPolicy);
         invariant(sbeYieldPolicy);
-        builder = std::make_unique<SlotBasedStageBuilder>(
+        auto builder = std::make_unique<SlotBasedStageBuilder>(
             opCtx, collection, cq, solution, sbeYieldPolicy);
+        auto root = builder->build(solution.root.get());
+        auto data = builder->getPlanStageData();
+        return {std::move(root), data};
     } else {
         invariant(ws);
-        builder = std::make_unique<ClassicStageBuilder>(opCtx, collection, cq, solution, ws);
+        auto builder = std::make_unique<ClassicStageBuilder>(opCtx, collection, cq, solution, ws);
+        return {builder->build(solution.root.get()), nullptr};
     }
-    return builder->build(solution.root.get());
 }
 }  // namespace mongo::stage_builder

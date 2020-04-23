@@ -96,7 +96,11 @@ const char* advance(const char* be, size_t fieldNameSize) {
                 be += 4;
             } else if (advOffset == 0xfe) {
             } else {
-                invariant(Status(ErrorCodes::InternalError, "unsupported bson element"));
+                if (static_cast<bsonType>(type) == bsonType::Binary) {
+                    be += 5;
+                } else {
+                    invariant(Status(ErrorCodes::InternalError, "unsupported bson element"));
+                }
             }
         }
     } else {

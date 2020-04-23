@@ -9,7 +9,7 @@ function runPFO(q, data, expected) {
     coll.drop();
     assert.commandWorked(coll.insert(data));
 
-    q = "$pfo $$RESULT r [] " + q + "scan r [] sbe_pfo";
+    q = "$pfo $$RESULT r [] " + q + " scan r [] sbe_pfo true";
     print("Running " + q);
     let actual = db.sbe(q).toArray();
     expected = [expected];

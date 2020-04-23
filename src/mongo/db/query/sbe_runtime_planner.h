@@ -45,8 +45,9 @@ class RuntimePlanner {
 public:
     virtual ~RuntimePlanner() = default;
 
-    virtual plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                            std::vector<std::unique_ptr<PlanStage>> roots) = 0;
+    virtual plan_ranker::CandidatePlan plan(
+        std::vector<std::unique_ptr<QuerySolution>> solutions,
+        std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots) = 0;
 };
 
 /**
@@ -73,7 +74,7 @@ protected:
      * indicating if the plan has exited early from the trial period.
      */
     std::pair<std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>, bool>
-    prepareExecutionPlan(PlanStage* root) const;
+    prepareExecutionPlan(PlanStage* root, stage_builder::PlanStageData* data) const;
 
     /**
      * Executes each plan in a round-robin fashion to collect execution stats. Stops when:
@@ -91,7 +92,7 @@ protected:
      */
     std::vector<plan_ranker::CandidatePlan> collectExecutionStats(
         std::vector<std::unique_ptr<QuerySolution>> solutions,
-        std::vector<std::unique_ptr<PlanStage>> roots);
+        std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots);
 
     OperationContext* const _opCtx;
     const Collection* const _collection;

@@ -47,12 +47,14 @@ namespace {
  * If the plan stage throws a 'DBException', it will be caught and the 'candidate->failed' flag
  * will be set to 'true', and the 'numFailures' parameter incremented by 1.
  */
-bool fetchNextDocument(plan_ranker::CandidatePlan* candidate, size_t* numFailures) {
+bool fetchNextDocument(plan_ranker::CandidatePlan* candidate,
+                       const std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>& slots,
+                       size_t* numFailures) {
     try {
         BSONObj obj;
         RecordId recordId;
 
-        auto&& [resultSlot, recordIdSlot] = candidate->data;
+        auto [resultSlot, recordIdSlot] = slots;
         auto state = fetchNext(candidate->root.get(),
                                resultSlot,
                                recordIdSlot,
@@ -79,32 +81,40 @@ bool fetchNextDocument(plan_ranker::CandidatePlan* candidate, size_t* numFailure
 }  // namespace
 
 std::pair<std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>, bool>
-BaseRuntimePlanner::prepareExecutionPlan(PlanStage* root) const {
-    sbe::CompileCtx ctx;
-    root->prepare(ctx);
+BaseRuntimePlanner::prepareExecutionPlan(PlanStage* root,
+                                         stage_builder::PlanStageData* data) const {
+    invariant(root);
+    invariant(data);
 
-    auto resultSlot = root->getAccessor(ctx, sbe::value::SystemSlots::kResultSlot);
-    uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
+    root->prepare(data->ctx);
 
-    sbe::value::SlotAccessor* resultRecordId{nullptr};
-    if (_cq.metadataDeps()[DocumentMetadataFields::kRecordId]) {
-        resultRecordId = root->getAccessor(ctx, sbe::value::SystemSlots::kRecordIdSlot);
-        uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", resultRecordId);
+    sbe::value::SlotAccessor* resultSlot{nullptr};
+    if (data->resultSlot) {
+        resultSlot = root->getAccessor(data->ctx, *data->resultSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have result slot.", resultSlot);
+    }
+
+    sbe::value::SlotAccessor* recordIdSlot{nullptr};
+    if (data->recordIdSlot) {
+        recordIdSlot = root->getAccessor(data->ctx, *data->recordIdSlot);
+        uassert(ErrorCodes::InternalError, "Query does not have record ID slot.", recordIdSlot);
     }
 
     root->attachFromOperationContext(_opCtx);
+
+    auto exitedEarly{false};
     try {
         root->open(false);
     } catch (TrialRunProgressTracker::EarlyExitException&) {
-        return {{resultSlot, resultRecordId}, true};
+        exitedEarly = true;
     }
 
-    return {{resultSlot, resultRecordId}, false};
+    return {{resultSlot, recordIdSlot}, exitedEarly};
 }
 
 std::vector<plan_ranker::CandidatePlan> BaseRuntimePlanner::collectExecutionStats(
     std::vector<std::unique_ptr<QuerySolution>> solutions,
-    std::vector<std::unique_ptr<PlanStage>> roots) {
+    std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots) {
     invariant(solutions.size() == roots.size());
 
     ON_BLOCK_EXIT([this]() { _opCtx->stopTrialRun(); });
@@ -114,21 +124,25 @@ std::vector<plan_ranker::CandidatePlan> BaseRuntimePlanner::collectExecutionStat
     _opCtx->startTrialRun(maxNumResults, maxNumReads);
 
     std::vector<plan_ranker::CandidatePlan> candidates;
+    std::vector<std::pair<sbe::value::SlotAccessor*, sbe::value::SlotAccessor*>> slots;
     for (size_t ix = 0; ix < roots.size(); ++ix) {
-        auto [slots, exitedEarly] = prepareExecutionPlan(roots[ix].get());
-        candidates.push_back({std::move(solutions[ix]), std::move(roots[ix]), slots, exitedEarly});
+        auto&& [root, data] = roots[ix];
+        auto [accessors, exitedEarly] = prepareExecutionPlan(root.get(), &data);
+        candidates.push_back(
+            {std::move(solutions[ix]), std::move(root), std::move(data), exitedEarly});
+        slots.push_back(accessors);
     }
 
     auto done{false};
     size_t numFailures{0};
     for (size_t it = 0; it < maxNumResults && !done; ++it) {
-        for (auto&& candidate : candidates) {
-            if (candidate.failed || candidate.exitedEarly) {
+        for (size_t ix = 0; ix < candidates.size(); ++ix) {
+            if (candidates[ix].failed || candidates[ix].exitedEarly) {
                 continue;
             }
 
-            done |=
-                fetchNextDocument(&candidate, &numFailures) || (numFailures == candidates.size());
+            done |= fetchNextDocument(&candidates[ix], slots[ix], &numFailures) ||
+                (numFailures == candidates.size());
         }
     }
 

@@ -1,5 +1,5 @@
 /**
- *    Copyright (C) 2019-present MongoDB, Inc.
+ *    Copyright (C) 2020-present MongoDB, Inc.
  *
  *    This program is free software: you can redistribute it and/or modify
  *    it under the terms of the Server Side Public License, version 1,
@@ -27,8 +27,22 @@
  *    it in the license file.
  */
 
-#define MONGO_LOG_DEFAULT_COMPONENT ::mongo::logger::LogComponent::kQuery
+#pragma once
 
-#include "mongo/platform/basic.h"
+#include "mongo/db/exec/sbe/stages/stages.h"
+#include "mongo/db/query/query_solution.h"
 
-#include "mongo/db/query/sbe_stage_builder_common.h"
+namespace mongo::stage_builder {
+/**
+ * Generates an SBE plan stage sub-tree implementing an collection scan.
+ */
+std::tuple<sbe::value::SlotId,
+           sbe::value::SlotId,
+           boost::optional<sbe::value::SlotId>,
+           std::unique_ptr<sbe::PlanStage>>
+generateCollScan(OperationContext* opCtx,
+                 const Collection* collection,
+                 const CollectionScanNode* csn,
+                 sbe::value::SlotIdGenerator* slotIdGenerator,
+                 PlanYieldPolicy* yieldPolicy);
+}  // namespace mongo::stage_builder

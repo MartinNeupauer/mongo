@@ -32,11 +32,6 @@
 #include "mongo/db/exec/sbe/values/value.h"
 
 namespace mongo::sbe::value {
-/*
- * System reserved slot ids.
- */
-enum SystemSlots : int64_t { kResultSlot = -1, kRecordIdSlot = -2 };
-
 /**
  * A reusable id generator suitable for use with integer ids that generates each new id by adding an
  * increment to the previously generated id. This generator is not thread safe; calls to

@@ -52,8 +52,10 @@ public:
           _queryParams{queryParams},
           _decisionReads{decisionReads} {}
 
-    plan_ranker::CandidatePlan plan(std::vector<std::unique_ptr<QuerySolution>> solutions,
-                                    std::vector<std::unique_ptr<sbe::PlanStage>> roots) final;
+    plan_ranker::CandidatePlan plan(
+        std::vector<std::unique_ptr<QuerySolution>> solutions,
+        std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots)
+        final;
 
 private:
     /**

@@ -72,6 +72,8 @@ class Parser {
         value::SlotId slotId;
     };
     std::vector<std::unique_ptr<FrameSymbolTable>> _frameLookupTable;
+    boost::optional<value::SlotId> _resultSlot;
+    boost::optional<value::SlotId> _recordIdSlot;
 
     FrameSymbolTable* newFrameSymbolTable() {
         auto table = std::make_unique<FrameSymbolTable>();
@@ -101,13 +103,16 @@ class Parser {
     boost::optional<value::SlotId> lookupSlot(const std::string& name) {
         if (name.empty()) {
             return boost::none;
-        } else if (name == "$$RESULT") {
-            return value::SystemSlots::kResultSlot;
-        } else if (name == "$$RID") {
-            return value::SystemSlots::kRecordIdSlot;
         } else if (_symbolsLookupTable.find(name) == _symbolsLookupTable.end()) {
             _symbolsLookupTable[name] = _slotIdGenerator.generate();
+
             std::cout << "mapping " << name << " to " << _symbolsLookupTable[name] << std::endl;
+
+            if (name == "$$RESULT") {
+                _resultSlot = _symbolsLookupTable[name];
+            } else if (name == "$$RID") {
+                _recordIdSlot = _symbolsLookupTable[name];
+            }
         }
         return _symbolsLookupTable[name];
     }
@@ -209,6 +214,11 @@ public:
     std::unique_ptr<PlanStage> parse(OperationContext* opCtx,
                                      std::string_view defaultDb,
                                      std::string_view line);
+
+    std::pair<boost::optional<value::SlotId>, boost::optional<value::SlotId>> getTopLevelSlots()
+        const {
+        return {_resultSlot, _recordIdSlot};
+    }
 };
 }  // namespace sbe
 }  // namespace mongo

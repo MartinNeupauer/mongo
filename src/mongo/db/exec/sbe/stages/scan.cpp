@@ -39,20 +39,32 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
                      const std::vector<std::string>& fields,
                      const std::vector<value::SlotId>& vars,
                      boost::optional<value::SlotId> seekKeySlot,
-                     PlanYieldPolicy* yieldPolicy)
+                     bool forward,
+                     PlanYieldPolicy* yieldPolicy,
+                     ScanOpenCallback openCallback)
     : PlanStage(seekKeySlot ? "seek"_sd : "scan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
       _fields(fields),
       _vars(vars),
-      _seekKeySlot(seekKeySlot) {
+      _seekKeySlot(seekKeySlot),
+      _forward(forward),
+      _openCallback(openCallback) {
     invariant(_fields.size() == _vars.size());
+    invariant(!_seekKeySlot || _forward);
 }
 
 std::unique_ptr<PlanStage> ScanStage::clone() {
-    return std::make_unique<ScanStage>(
-        _name, _recordSlot, _recordIdSlot, _fields, _vars, _seekKeySlot, _yieldPolicy);
+    return std::make_unique<ScanStage>(_name,
+                                       _recordSlot,
+                                       _recordIdSlot,
+                                       _fields,
+                                       _vars,
+                                       _seekKeySlot,
+                                       _forward,
+                                       _yieldPolicy,
+                                       _openCallback);
 }
 
 void ScanStage::prepare(CompileCtx& ctx) {
@@ -147,6 +159,12 @@ void ScanStage::open(bool reOpen) {
         invariant(_coll);
     }
 
+    // TODO: this is currently used only to wait for oplog entries to become visible, so we
+    // may want to consider to move this logic into storage API instead.
+    if (_openCallback) {
+        _openCallback(_opCtx, _coll->getCollection(), reOpen);
+    }
+
     if (auto collection = _coll->getCollection()) {
         if (_seekKeyAccessor) {
             auto [tag, val] = _seekKeyAccessor->getViewOfValue();
@@ -158,7 +176,7 @@ void ScanStage::open(bool reOpen) {
         }
 
         if (!_cursor || !_seekKeyAccessor) {
-            _cursor = collection->getCursor(_opCtx);
+            _cursor = collection->getCursor(_opCtx, _forward);
         }
     } else {
         _cursor.reset();
@@ -180,10 +198,6 @@ PlanState ScanStage::getNext() {
     _firstGetNext = false;
 
     if (!nextRecord) {
-        return trackPlanState(PlanState::IS_EOF);
-    }
-
-    if (_seekKeyAccessor && nextRecord->id != _key) {
         return trackPlanState(PlanState::IS_EOF);
     }
 

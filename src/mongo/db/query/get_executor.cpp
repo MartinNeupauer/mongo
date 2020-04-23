@@ -350,13 +350,14 @@ bool shouldWaitForOplogVisibility(OperationContext* opCtx,
 }
 
 namespace {
-template <typename PlanStageType>
+template <typename PlanStageType, typename PlanStageDataType>
 struct PrepareExecutionResult {
-    PrepareExecutionResult(unique_ptr<CanonicalQuery> canonicalQuery,
-                           std::vector<unique_ptr<QuerySolution>> querySolutions,
-                           std::vector<unique_ptr<PlanStageType>> roots,
-                           boost::optional<size_t> decisionWorks = boost::none,
-                           bool needSubplanning = false)
+    PrepareExecutionResult(
+        std::unique_ptr<CanonicalQuery> canonicalQuery,
+        std::vector<std::unique_ptr<QuerySolution>> querySolutions,
+        std::vector<std::pair<unique_ptr<PlanStageType>, PlanStageDataType>> roots,
+        boost::optional<size_t> decisionWorks = boost::none,
+        bool needSubplanning = false)
         : canonicalQuery(std::move(canonicalQuery)),
           querySolutions(std::move(querySolutions)),
           roots(std::move(roots)),
@@ -365,7 +366,7 @@ struct PrepareExecutionResult {
 
     unique_ptr<CanonicalQuery> canonicalQuery;
     std::vector<unique_ptr<QuerySolution>> querySolutions;
-    std::vector<unique_ptr<PlanStageType>> roots;
+    std::vector<std::pair<unique_ptr<PlanStageType>, PlanStageDataType>> roots;
     boost::optional<size_t> decisionWorks;
     bool needSubplanning;
 };
@@ -382,8 +383,8 @@ struct PrepareExecutionResult {
  *
  * If an execution tree could not be created, returns an error Status.
  */
-template <typename PlanStageType>
-StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
+template <typename PlanStageType, typename PlanStageDataType = void*>
+StatusWith<PrepareExecutionResult<PlanStageType, PlanStageDataType>> prepareExecution(
     OperationContext* opCtx,
     Collection* collection,
     WorkingSet* ws,
@@ -391,8 +392,10 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
     PlanYieldPolicy* yieldPolicy,
     size_t plannerOptions) {
     invariant(canonicalQuery);
-    unique_ptr<PlanStageType> root;
+
     constexpr auto isSlotBased = std::is_same_v<PlanStageType, sbe::PlanStage>;
+    std::vector<std::pair<std::unique_ptr<PlanStageType>, PlanStageDataType>> roots;
+    std::vector<std::unique_ptr<QuerySolution>> solutions;
 
     // This can happen as we're called by internal clients as well.
     if (nullptr == collection) {
@@ -403,21 +406,16 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                     "ns"_attr = ns,
                     "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
         if constexpr (isSlotBased) {
-            root = sbe::makeS<sbe::MakeObjStage>(
+            roots.emplace_back(
                 sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 0, boost::none),
-                sbe::value::SystemSlots::kResultSlot,
-                boost::none,
-                std::vector<std::string>{},
-                std::vector<std::string>{},
-                std::vector<sbe::value::SlotId>{},
-                true,
-                false);
+                PlanStageDataType{});
         } else {
-            root = std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get());
+            roots.emplace_back(std::make_unique<EOFStage>(canonicalQuery->getExpCtx().get()),
+                               nullptr);
         }
-        return PrepareExecutionResult(std::move(canonicalQuery),
-                                      make_vector<std::unique_ptr<QuerySolution>>(nullptr),
-                                      make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
+        solutions.emplace_back(nullptr);
+        return PrepareExecutionResult(
+            std::move(canonicalQuery), std::move(solutions), std::move(roots));
     }
 
     // Fill out the planning params.  We use these for both cached solutions and non-cached.
@@ -457,28 +455,28 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
             canonicalQuery->requestAdditionalMetadata(
                 QueryMetadataBitSet{}.set(DocumentMetadataFields::kRecordId));
         } else {
-            root = std::make_unique<IDHackStage>(
+            std::unique_ptr<PlanStageType> stage = std::make_unique<IDHackStage>(
                 canonicalQuery->getExpCtx().get(), canonicalQuery.get(), ws, descriptor);
 
             // Might have to filter out orphaned docs.
             if (plannerParams.options & QueryPlannerParams::INCLUDE_SHARD_FILTER) {
-                root = std::make_unique<ShardFilterStage>(
+                stage = std::make_unique<ShardFilterStage>(
                     canonicalQuery->getExpCtx().get(),
                     CollectionShardingState::get(opCtx, canonicalQuery->nss())
                         ->getOwnershipFilter(
                             opCtx,
                             CollectionShardingState::OrphanCleanupPolicy::kDisallowOrphanCleanup),
                     ws,
-                    std::move(root));
+                    std::move(stage));
             }
 
             const auto* cqProjection = canonicalQuery->getProj();
 
             // Add a SortKeyGeneratorStage if the query requested sortKey metadata.
             if (canonicalQuery->metadataDeps()[DocumentMetadataFields::kSortKey]) {
-                root = std::make_unique<SortKeyGeneratorStage>(
+                stage = std::make_unique<SortKeyGeneratorStage>(
                     canonicalQuery->getExpCtx(),
-                    std::move(root),
+                    std::move(stage),
                     ws,
                     canonicalQuery->getQueryRequest().getSort());
             }
@@ -488,39 +486,40 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                 // the resulting documents. If a projection was also specified, it will be ignored,
                 // with the exception the $meta sortKey projection, which can be used along with the
                 // returnKey.
-                root = std::make_unique<ReturnKeyStage>(
+                stage = std::make_unique<ReturnKeyStage>(
                     canonicalQuery->getExpCtx().get(),
                     cqProjection
                         ? QueryPlannerCommon::extractSortKeyMetaFieldsFromProjection(*cqProjection)
                         : std::vector<FieldPath>{},
                     ws,
-                    std::move(root));
+                    std::move(stage));
             } else if (cqProjection) {
                 // There might be a projection. The idhack stage will always fetch the full
                 // document, so we don't support covered projections. However, we might use the
                 // simple inclusion fast path.
                 // Stuff the right data into the params depending on what proj impl we use.
                 if (!cqProjection->isSimple()) {
-                    root = std::make_unique<ProjectionStageDefault>(
+                    stage = std::make_unique<ProjectionStageDefault>(
                         canonicalQuery->getExpCtx().get(),
                         canonicalQuery->getQueryRequest().getProj(),
                         canonicalQuery->getProj(),
                         ws,
-                        std::move(root));
+                        std::move(stage));
                 } else {
-                    root = std::make_unique<ProjectionStageSimple>(
+                    stage = std::make_unique<ProjectionStageSimple>(
                         canonicalQuery->getExpCtx().get(),
                         canonicalQuery->getQueryRequest().getProj(),
                         canonicalQuery->getProj(),
                         ws,
-                        std::move(root));
+                        std::move(stage));
                 }
             }
 
+            roots.emplace_back(std::move(stage), nullptr);
+            solutions.emplace_back(nullptr);
+
             return PrepareExecutionResult(
-                std::move(canonicalQuery),
-                make_vector<std::unique_ptr<QuerySolution>>(nullptr),
-                make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
+                std::move(canonicalQuery), std::move(solutions), std::move(roots));
         }
     }
 
@@ -561,8 +560,9 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                                     redact(canonicalQuery->toStringShort()));
                 }
 
-                root = stage_builder::buildExecutableTree<PlanStageType>(
-                    opCtx, collection, *canonicalQuery, *querySolution, yieldPolicy, ws);
+                auto&& [root, data] =
+                    stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
+                        opCtx, collection, *canonicalQuery, *querySolution, yieldPolicy, ws);
 
                 if constexpr (!isSlotBased) {
                     // Add a CachedPlanStage on top of the previous root.
@@ -577,11 +577,14 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                                                              cs->decisionWorks,
                                                              std::move(root));
                 }
-                return PrepareExecutionResult(
-                    std::move(canonicalQuery),
-                    make_vector<std::unique_ptr<QuerySolution>>(std::move(querySolution)),
-                    make_vector<std::unique_ptr<PlanStageType>>(std::move(root)),
-                    cs->decisionWorks);
+
+                roots.emplace_back(std::move(root), std::move(data));
+                solutions.emplace_back(std::move(querySolution));
+
+                return PrepareExecutionResult(std::move(canonicalQuery),
+                                              std::move(solutions),
+                                              std::move(roots),
+                                              cs->decisionWorks);
             }
         }
     }
@@ -595,15 +598,17 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                     "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()));
 
         if constexpr (!isSlotBased) {
-            root = std::make_unique<SubplanStage>(canonicalQuery->getExpCtx().get(),
-                                                  collection,
-                                                  ws,
-                                                  plannerParams,
-                                                  canonicalQuery.get());
+            roots.emplace_back(std::make_unique<SubplanStage>(canonicalQuery->getExpCtx().get(),
+                                                              collection,
+                                                              ws,
+                                                              plannerParams,
+                                                              canonicalQuery.get()),
+                               nullptr);
+            solutions.emplace_back(nullptr);
         }
         return PrepareExecutionResult(std::move(canonicalQuery),
-                                      make_vector<std::unique_ptr<QuerySolution>>(nullptr),
-                                      make_vector<std::unique_ptr<PlanStageType>>(std::move(root)),
+                                      std::move(solutions),
+                                      std::move(roots),
                                       boost::none /* decisionWorks */,
                                       true /* needSubplanning */);
     }
@@ -614,7 +619,7 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
             str::stream() << "error processing query: " << canonicalQuery->toString()
                           << " planner returned error");
     }
-    auto solutions = std::move(statusWithSolutions.getValue());
+    solutions = std::move(statusWithSolutions.getValue());
     // The planner should have returned an error status if there are no solutions.
     invariant(solutions.size() > 0);
 
@@ -627,8 +632,9 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                                   "Fast-count is not supprted by SBE yet"};
                 } else {
                     // We're not going to cache anything that's fast count.
-                    auto root = stage_builder::buildExecutableTree<PlanStageType>(
-                        opCtx, collection, *canonicalQuery, *solutions[i], yieldPolicy, ws);
+                    auto&& [root, data] =
+                        stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
+                            opCtx, collection, *canonicalQuery, *solutions[i], yieldPolicy, ws);
 
                     LOGV2_DEBUG(20925,
                                 2,
@@ -639,20 +645,20 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                                 "Explain_getPlanSummary_root_get"_attr =
                                     Explain::getPlanSummary(root.get()));
 
+                    roots.emplace_back(std::move(root), std::move(data));
+                    solutions.emplace_back(std::move(solutions[i]));
 
                     return PrepareExecutionResult(
-                        std::move(canonicalQuery),
-                        make_vector<std::unique_ptr<QuerySolution>>(std::move(solutions[i])),
-                        make_vector<std::unique_ptr<PlanStageType>>(std::move(root)));
+                        std::move(canonicalQuery), std::move(solutions), std::move(roots));
                 }
             }
         }
     }
 
-    std::vector<std::unique_ptr<PlanStageType>> roots;
+    invariant(roots.size() == 0);
     if (1 == solutions.size()) {
         // Only one possible plan. Run it. Build the stages from the solution.
-        roots.push_back(stage_builder::buildExecutableTree<PlanStageType>(
+        roots.push_back(stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
             opCtx, collection, *canonicalQuery, *solutions[0], yieldPolicy, ws));
         LOGV2_DEBUG(20926,
                     2,
@@ -660,14 +666,14 @@ StatusWith<PrepareExecutionResult<PlanStageType>> prepareExecution(
                     "{canonicalQuery_Short}, planSummary: {Explain_getPlanSummary_root_get}",
                     "canonicalQuery_Short"_attr = redact(canonicalQuery->toStringShort()),
                     "Explain_getPlanSummary_root_get"_attr =
-                        Explain::getPlanSummary(roots.back().get()));
+                        Explain::getPlanSummary(roots.back().first.get()));
     } else {
         for (size_t ix = 0; ix < solutions.size(); ++ix) {
             if (solutions[ix]->cacheData.get()) {
                 solutions[ix]->cacheData->indexFilterApplied = plannerParams.indexFiltersApplied;
             }
 
-            roots.push_back(stage_builder::buildExecutableTree<PlanStageType>(
+            roots.push_back(stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
                 opCtx, collection, *canonicalQuery, *solutions[ix], yieldPolicy, ws));
         }
     }
@@ -691,12 +697,12 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
     invariant(result.roots.size() > 0);
     if (result.roots.size() == 1) {
         invariant(result.querySolutions.size() == 1);
-        invariant(result.roots[0]);
+        invariant(result.roots[0].first);
         // We must have a tree of stages in order to have a valid plan executor, but the query
         // solution may be null.
         return PlanExecutor::make(std::move(result.canonicalQuery),
                                   std::move(ws),
-                                  std::move(result.roots[0]),
+                                  std::move(result.roots[0].first),
                                   collection,
                                   yieldPolicy,
                                   {},
@@ -710,7 +716,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
             canonicalQuery->getExpCtx().get(), collection, result.canonicalQuery.get());
         for (size_t ix = 0; ix < result.querySolutions.size(); ++ix) {
             multiPlanStage->addPlan(
-                std::move(result.querySolutions[ix]), std::move(result.roots[ix]), ws.get());
+                std::move(result.querySolutions[ix]), std::move(result.roots[ix].first), ws.get());
         }
         return PlanExecutor::make(std::move(result.canonicalQuery),
                                   std::move(ws),
@@ -730,27 +736,30 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
 std::unique_ptr<sbe::RuntimePlanner> makeRuntimePlannerIfNeeded(
     OperationContext* opCtx,
     Collection* collection,
-    const PrepareExecutionResult<sbe::PlanStage>& result,
+    const PrepareExecutionResult<sbe::PlanStage, stage_builder::PlanStageData>& result,
     PlanYieldPolicySBE* yieldPolicy,
     size_t plannerOptions) {
-    if (result.roots.size() == 1) {
+    if (result.roots.empty()) {
+        invariant(result.needSubplanning);
+        // If the query can be run as sub-queries, the needSubplanning flag will be set to true
+        // and we'll need to create a runtime planner to build a composite solution and pick the
+        // best plan for each sub-query.
+        QueryPlannerParams plannerParams;
+        plannerParams.options = plannerOptions;
+        fillOutPlannerParams(opCtx, collection, result.canonicalQuery.get(), &plannerParams);
+
+        return std::make_unique<sbe::SubPlanner>(
+            opCtx, collection, *result.canonicalQuery, plannerParams, yieldPolicy);
+    } else if (result.roots.size() == 1) {
         // If we have a single solution but it was created from a cached plan, we will need to
         // do the runtime planning to check if the cached plan still performs efficiently, or
         // requires re-planning. The 'decisionWorks' is used to determine whether the existing
         // cache entry should be evicted, and the query re-planned.
-        //
-        // If the query can be run as sub-queries, the needSubplanning flag will be set to true
-        // and we'll need to create a runtime planner to build a composite solution and pick the
-        // best plan for each sub-query.
-        if (result.decisionWorks || result.needSubplanning) {
+        if (result.decisionWorks) {
             QueryPlannerParams plannerParams;
             plannerParams.options = plannerOptions;
             fillOutPlannerParams(opCtx, collection, result.canonicalQuery.get(), &plannerParams);
 
-            if (result.needSubplanning) {
-                return std::make_unique<sbe::SubPlanner>(
-                    opCtx, collection, *result.canonicalQuery, plannerParams, yieldPolicy);
-            }
             return std::make_unique<sbe::CachedSolutionPlanner>(opCtx,
                                                                 collection,
                                                                 *result.canonicalQuery,
@@ -778,14 +787,13 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor
                                              opCtx->getServiceContext()->getFastClockSource(),
                                              internalQueryExecYieldIterations.load(),
                                              Milliseconds{internalQueryExecYieldPeriodMS.load()});
-    auto executionResult = prepareExecution<sbe::PlanStage>(
+    auto executionResult = prepareExecution<sbe::PlanStage, stage_builder::PlanStageData>(
         opCtx, collection, ws.get(), std::move(cq), yieldPolicy.get(), plannerOptions);
     if (!executionResult.isOK()) {
         return executionResult.getStatus();
     }
 
     auto&& result = executionResult.getValue();
-    invariant(result.roots.size() > 0);
 
     if (auto planner = makeRuntimePlannerIfNeeded(
             opCtx, collection, result, yieldPolicy.get(), plannerOptions)) {
@@ -793,10 +801,8 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getSlotBasedExecutor
         auto plan = planner->plan(std::move(result.querySolutions), std::move(result.roots));
         return PlanExecutor::make(opCtx,
                                   std::move(result.canonicalQuery),
-                                  std::move(plan.root),
-                                  {},                // ns
-                                  plan.data.first,   // resultSlot
-                                  plan.data.second,  // recordIdSlot
+                                  {std::move(plan.root), std::move(plan.data)},
+                                  {},
                                   std::move(plan.results),
                                   std::move(yieldPolicy));
     }
@@ -1043,7 +1049,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorDelete(
     unique_ptr<QuerySolution> querySolution =
         std::move(executionResult.getValue().querySolutions[0]);
     invariant(executionResult.getValue().roots.size() == 1);
-    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0]);
+    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0].first);
 
     deleteStageParams->canonicalQuery = cq.get();
 
@@ -1205,7 +1211,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorUpdate(
     unique_ptr<QuerySolution> querySolution =
         std::move(executionResult.getValue().querySolutions[0]);
     invariant(executionResult.getValue().roots.size() == 1);
-    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0]);
+    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0].first);
 
     invariant(root);
     updateStageParams.canonicalQuery = cq.get();
@@ -1459,7 +1465,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorCount(
     unique_ptr<QuerySolution> querySolution =
         std::move(executionResult.getValue().querySolutions[0]);
     invariant(executionResult.getValue().roots.size() == 1);
-    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0]);
+    unique_ptr<PlanStage> root = std::move(executionResult.getValue().roots[0].first);
 
     invariant(root);
 
@@ -1778,7 +1784,7 @@ StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getExecutorForS
     invariant(soln);
 
     unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
-    auto root = stage_builder::buildExecutableTree<PlanStage>(
+    auto&& [root, _] = stage_builder::buildExecutableTree<PlanStage>(
         opCtx, collection, *parsedDistinct->getQuery(), *soln, nullptr, ws.get());
 
     LOGV2_DEBUG(20931,
@@ -1824,12 +1830,13 @@ getExecutorDistinctFromIndexSolutions(OperationContext* opCtx,
             // Build and return the SSR over solutions[i].
             unique_ptr<WorkingSet> ws = std::make_unique<WorkingSet>();
             unique_ptr<QuerySolution> currentSolution = std::move(solutions[i]);
-            auto root = stage_builder::buildExecutableTree<PlanStage>(opCtx,
-                                                                      collection,
-                                                                      *parsedDistinct->getQuery(),
-                                                                      *currentSolution,
-                                                                      nullptr,
-                                                                      ws.get());
+            auto&& [root, _] =
+                stage_builder::buildExecutableTree<PlanStage>(opCtx,
+                                                              collection,
+                                                              *parsedDistinct->getQuery(),
+                                                              *currentSolution,
+                                                              nullptr,
+                                                              ws.get());
 
             LOGV2_DEBUG(20932,
                         2,

@@ -42,7 +42,7 @@
 namespace mongo::sbe {
 plan_ranker::CandidatePlan CachedSolutionPlanner::plan(
     std::vector<std::unique_ptr<QuerySolution>> solutions,
-    std::vector<std::unique_ptr<PlanStage>> roots) {
+    std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots) {
     invariant(solutions.size() == 1);
     invariant(solutions.size() == roots.size());
 
@@ -119,9 +119,10 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
     auto solutions = uassertStatusOK(QueryPlanner::plan(_cq, _queryParams));
     if (solutions.size() == 1) {
         // Only one possible plan. Build the stages from the solution.
-        auto root = stage_builder::buildExecutableTree<PlanStage>(
-            _opCtx, _collection, _cq, *solutions[0], _yieldPolicy);
-        auto [slots, _] = prepareExecutionPlan(root.get());
+        auto&& [root, data] =
+            stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
+                _opCtx, _collection, _cq, *solutions[0], _yieldPolicy);
+        prepareExecutionPlan(root.get(), &data);
         LOGV2_DEBUG(
             2058101,
             1,
@@ -131,18 +132,18 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
             "canonicalQuery_Short"_attr = redact(_cq.toStringShort()),
             "Explain_getPlanSummary_child_get"_attr = Explain::getPlanSummary(root.get()),
             "shouldCache_yes_no"_attr = (shouldCache ? "yes" : "no"));
-        return {std::move(solutions[0]), std::move(root), slots};
+        return {std::move(solutions[0]), std::move(root), std::move(data)};
     }
 
     // Many solutions. Build a plan stage tree for each solution and create a multi planner to pick
     // the best, update the cache, and so on.
-    std::vector<std::unique_ptr<PlanStage>> roots;
+    std::vector<std::pair<std::unique_ptr<PlanStage>, stage_builder::PlanStageData>> roots;
     for (auto&& solution : solutions) {
         if (solution->cacheData.get()) {
             solution->cacheData->indexFilterApplied = _queryParams.indexFiltersApplied;
         }
 
-        roots.push_back(stage_builder::buildExecutableTree<PlanStage>(
+        roots.push_back(stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
             _opCtx, _collection, _cq, *solution, nullptr));
     }
 

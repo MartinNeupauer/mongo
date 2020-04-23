@@ -65,6 +65,7 @@ public:
 
         sbe::Parser parser;
         auto root = parser.parse(opCtx, dbname, cmdObj["sbe"].String());
+        auto [resultSlot, recordIdSlot] = parser.getTopLevelSlots();
 
         std::unique_ptr<PlanExecutor, PlanExecutor::Deleter> exec;
         BSONArrayBuilder firstBatch;
@@ -72,7 +73,8 @@ public:
         NamespaceString nss{dbname, "$cmd.sbe"_sd};
         invariant(nss.isCollectionlessCursorNamespace());
 
-        exec = uassertStatusOK(PlanExecutor::make(opCtx, nullptr, std::move(root), nss, nullptr));
+        exec = uassertStatusOK(PlanExecutor::make(
+            opCtx, nullptr, {std::move(root), {resultSlot, recordIdSlot}}, nss, nullptr));
 
         for (long long objCount = 0; objCount < batchSize; objCount++) {
             BSONObj next;

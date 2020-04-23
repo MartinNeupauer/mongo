@@ -38,6 +38,7 @@
 #include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/query/plan_yield_policy_sbe.h"
 #include "mongo/db/query/query_solution.h"
+#include "mongo/db/query/sbe_stage_builder.h"
 #include "mongo/db/storage/snapshot.h"
 #include "mongo/stdx/unordered_set.h"
 
@@ -231,21 +232,19 @@ public:
         std::unique_ptr<QuerySolution> qs = nullptr);
 
     /**
-     * This overload is for SBE.
+     * These overloads are for SBE.
      */
     static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
         OperationContext* opCtx,
         std::unique_ptr<CanonicalQuery> cq,
-        std::unique_ptr<sbe::PlanStage> root,
+        std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
         NamespaceString nss,
         std::unique_ptr<PlanYieldPolicySBE> yieldPolicy);
     static StatusWith<std::unique_ptr<PlanExecutor, PlanExecutor::Deleter>> make(
         OperationContext* opCtx,
         std::unique_ptr<CanonicalQuery> cq,
-        std::unique_ptr<sbe::PlanStage> root,
+        std::pair<std::unique_ptr<sbe::PlanStage>, stage_builder::PlanStageData> root,
         NamespaceString nss,
-        sbe::value::SlotAccessor* resultSlot,
-        sbe::value::SlotAccessor* recordIdSlot,
         std::queue<std::pair<BSONObj, boost::optional<RecordId>>> stash,
         std::unique_ptr<PlanYieldPolicySBE> yieldPolicy);
 

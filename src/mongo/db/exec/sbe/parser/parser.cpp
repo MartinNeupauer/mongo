@@ -67,6 +67,7 @@ static constexpr auto syntax = R"(
                                IDENT? # optional variable name of the record id delivered by the scan
                                IDENT_LIST_WITH_RENAMES  # list of projected fields (may be empty)
                                IDENT # collection name to scan
+                               FORWARD_FLAG # forward scan or not
 
                 PSCAN <- 'pscan' IDENT? # optional variable name of the root object (record) delivered by the scan
                                  IDENT? # optional variable name of the record id delivered by the scan
@@ -461,19 +462,23 @@ void Parser::walkScan(AstQuery& ast) {
     std::string dbName = _defaultDb;
     std::string collName;
     int projectsPos;
+    int forwardPos;
 
-    if (ast.nodes.size() == 4) {
+    if (ast.nodes.size() == 5) {
         recordName = std::move(ast.nodes[0]->identifier);
         recordIdName = std::move(ast.nodes[1]->identifier);
         projectsPos = 2;
         collName = std::move(ast.nodes[3]->identifier);
-    } else if (ast.nodes.size() == 3) {
+        forwardPos = 4;
+    } else if (ast.nodes.size() == 4) {
         recordName = std::move(ast.nodes[0]->identifier);
         projectsPos = 1;
         collName = std::move(ast.nodes[2]->identifier);
-    } else if (ast.nodes.size() == 2) {
+        forwardPos = 3;
+    } else if (ast.nodes.size() == 3) {
         projectsPos = 0;
         collName = std::move(ast.nodes[1]->identifier);
+        forwardPos = 2;
     } else {
         MONGO_UNREACHABLE;
     }
@@ -483,6 +488,7 @@ void Parser::walkScan(AstQuery& ast) {
     auto collection = ctxColl.getCollection();
     NamespaceStringOrUUID name =
         collection ? NamespaceStringOrUUID{dbName, collection->uuid()} : nssColl;
+    const auto forward = (ast.nodes[forwardPos]->token == "true") ? true : false;
 
     ast.stage = makeS<ScanStage>(name,
                                  lookupSlot(recordName),
@@ -490,6 +496,7 @@ void Parser::walkScan(AstQuery& ast) {
                                  ast.nodes[projectsPos]->identifiers,
                                  lookupSlots(ast.nodes[projectsPos]->renames),
                                  boost::none,
+                                 forward,
                                  nullptr);
 }
 
@@ -569,6 +576,7 @@ void Parser::walkSeek(AstQuery& ast) {
                                  ast.nodes[projectsPos]->identifiers,
                                  lookupSlots(ast.nodes[projectsPos]->renames),
                                  lookupSlot(ast.nodes[0]->identifier),
+                                 true /* forward */,
                                  nullptr);
 }
 void Parser::walkIndexScan(AstQuery& ast) {
