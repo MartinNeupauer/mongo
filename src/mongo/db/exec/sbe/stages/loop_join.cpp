@@ -112,8 +112,7 @@ PlanState LoopJoinStage::getNext() {
                 if (!_predicateCode) {
                     pass = true;
                 } else {
-                    auto [owned, tag, val] = _bytecode.run(_predicateCode.get());
-                    pass = (tag == value::TypeTags::Boolean) && (val != 0);
+                    pass = _bytecode.runPredicate(_predicateCode.get());
                 }
             }
         } while (state == PlanState::ADVANCED && !pass);

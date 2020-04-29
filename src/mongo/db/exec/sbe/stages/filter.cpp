@@ -108,6 +108,9 @@ void BranchStage::open(bool reOpen) {
 
     // run the filter expressions here
     auto [owned, tag, val] = _bytecode.run(_filterCode.get());
+    if (owned) {
+        value::releaseValue(tag, val);
+    }
     if (tag == value::TypeTags::Boolean) {
         if (val) {
             _activeBranch = 0;

@@ -219,8 +219,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
 
                     // check early out condition
                     if (_finalCode) {
-                        auto [owned, tag, val] = _bytecode.run(_finalCode.get());
-                        if (tag == value::TypeTags::Boolean && val != 0) {
+                        if (_bytecode.runPredicate(_finalCode.get())) {
                             earlyExit = true;
                             break;
                         }

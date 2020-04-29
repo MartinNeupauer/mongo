@@ -1056,7 +1056,17 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
     return {owned, tag, val};
 }
+bool ByteCode::runPredicate(CodeFragment* code) {
+    auto [owned, tag, val] = run(code);
 
+    bool pass = (tag == value::TypeTags::Boolean) && (val != 0);
+
+    if (owned) {
+        value::releaseValue(tag, val);
+    }
+
+    return pass;
+}
 }  // namespace vm
 }  // namespace sbe
 }  // namespace mongo

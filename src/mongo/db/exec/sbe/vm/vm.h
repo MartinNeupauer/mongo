@@ -357,6 +357,7 @@ public:
     ~ByteCode();
 
     std::tuple<uint8_t, value::TypeTags, value::Value> run(CodeFragment* code);
+    bool runPredicate(CodeFragment* code);
 };
 }  // namespace vm
 }  // namespace sbe

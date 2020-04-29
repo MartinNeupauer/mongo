@@ -73,8 +73,7 @@ public:
             _specificStats.numTested++;
 
             // run the filter expressions here
-            auto [owned, tag, val] = _bytecode.run(_filterCode.get());
-            auto pass = (tag == value::TypeTags::Boolean) && (val != 0);
+            auto pass = _bytecode.runPredicate(_filterCode.get());
             if (!pass) {
                 close();
                 return;
@@ -104,8 +103,7 @@ public:
                 _specificStats.numTested++;
 
                 // run the filter expressions here
-                auto [owned, tag, val] = _bytecode.run(_filterCode.get());
-                pass = (tag == value::TypeTags::Boolean) && (val != 0);
+                pass = _bytecode.runPredicate(_filterCode.get());
             }
         } while (state == PlanState::ADVANCED && !pass);
 

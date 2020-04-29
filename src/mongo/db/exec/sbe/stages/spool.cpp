@@ -210,8 +210,7 @@ PlanState SpoolLazyProducerStage::getNext() {
         auto pass{true};
 
         if (_predicateCode) {
-            auto [owned, tag, val] = _bytecode.run(_predicateCode.get());
-            pass = (tag == value::TypeTags::Boolean && val != 0);
+            pass = _bytecode.runPredicate(_predicateCode.get());
         }
 
         if (pass) {
