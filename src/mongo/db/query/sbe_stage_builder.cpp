@@ -37,14 +37,21 @@
 #include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
+#include "mongo/db/exec/sbe/stages/ix_scan.h"
 #include "mongo/db/exec/sbe/stages/limit_skip.h"
 #include "mongo/db/exec/sbe/stages/loop_join.h"
 #include "mongo/db/exec/sbe/stages/makeobj.h"
 #include "mongo/db/exec/sbe/stages/project.h"
 #include "mongo/db/exec/sbe/stages/scan.h"
 #include "mongo/db/exec/sbe/stages/sort.h"
+#include "mongo/db/exec/sbe/stages/text_match.h"
 #include "mongo/db/exec/sbe/stages/traverse.h"
 #include "mongo/db/exec/sbe/stages/union.h"
+#include "mongo/db/fts/fts_index_format.h"
+#include "mongo/db/fts/fts_query_impl.h"
+#include "mongo/db/fts/fts_spec.h"
+#include "mongo/db/index/fts_access_method.h"
+#include "mongo/db/index/index_access_method.h"
 #include "mongo/db/query/sbe_stage_builder_coll_scan.h"
 #include "mongo/db/query/sbe_stage_builder_filter.h"
 #include "mongo/db/query/sbe_stage_builder_index_scan.h"
@@ -76,18 +83,13 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildIndexScan(
     return std::move(stage);
 }
 
-std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySolutionNode* root) {
-    auto fn = static_cast<const FetchNode*>(root);
-    auto inputStage = build(fn->children[0]);
-
-    uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _data.recordIdSlot);
-
-    auto recordIdKeySlot = _data.recordIdSlot;
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::makeLoopJoinForFetch(
+    std::unique_ptr<sbe::PlanStage> inputStage, sbe::value::SlotId recordIdKeySlot) {
     _data.resultSlot = _slotIdGenerator.generate();
     _data.recordIdSlot = _slotIdGenerator.generate();
 
     // Scan the collection in the range [recordIdKeySlot, Inf).
-    auto collScan = sbe::makeS<sbe::ScanStage>(
+    auto scanStage = sbe::makeS<sbe::ScanStage>(
         NamespaceStringOrUUID{_collection->ns().db().toString(), _collection->uuid()},
         _data.resultSlot,
         _data.recordIdSlot,
@@ -99,12 +101,21 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
 
     // Get the recordIdKeySlot from the outer side (e.g., IXSCAN) and feed it to the inner side,
     // limiting the result set to 1 row.
-    auto stage = sbe::makeS<sbe::LoopJoinStage>(
+    return sbe::makeS<sbe::LoopJoinStage>(
         std::move(inputStage),
-        sbe::makeS<sbe::LimitSkipStage>(std::move(collScan), 1, boost::none),
+        sbe::makeS<sbe::LimitSkipStage>(std::move(scanStage), 1, boost::none),
         sbe::makeSV(),
-        sbe::makeSV(*recordIdKeySlot),
+        sbe::makeSV(recordIdKeySlot),
         nullptr);
+}
+
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySolutionNode* root) {
+    auto fn = static_cast<const FetchNode*>(root);
+    auto inputStage = build(fn->children[0]);
+
+    uassert(ErrorCodes::InternalError, "RecordId slot is not defined", _data.recordIdSlot);
+
+    auto stage = makeLoopJoinForFetch(std::move(inputStage), *_data.recordIdSlot);
 
     if (fn->filter) {
         stage = generateFilter(
@@ -302,6 +313,88 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySoluti
     return stage;
 }
 
+std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildText(const QuerySolutionNode* root) {
+    auto textNode = static_cast<const TextNode*>(root);
+
+    invariant(_collection);
+    auto&& indexName = textNode->index.identifier.catalogName;
+    const auto desc = _collection->getIndexCatalog()->findIndexByName(_opCtx, indexName);
+    invariant(desc);
+    const auto accessMethod = static_cast<const FTSAccessMethod*>(
+        _collection->getIndexCatalog()->getEntry(desc)->accessMethod());
+    invariant(accessMethod);
+    auto&& ftsSpec = accessMethod->getSpec();
+
+    // We assume here that node->ftsQuery is an FTSQueryImpl, not an FTSQueryNoop. In practice, this
+    // means that it is illegal to use the StageBuilder on a QuerySolution created by planning a
+    // query that contains "no-op" expressions.
+    auto ftsQuery = static_cast<fts::FTSQueryImpl&>(*textNode->ftsQuery);
+
+    // A vector of the output slots for each index scan stage. Each stage outputs a record id and a
+    // record, so we expect each inner vector to be of length two.
+    std::vector<sbe::value::SlotVector> ixscanOutputSlots;
+
+    const bool forward = true;
+    const bool inclusive = true;
+    auto makeKeyString = [&](const BSONObj& bsonKey) {
+        return std::make_unique<KeyString::Value>(
+            IndexEntryComparison::makeKeyStringFromBSONKeyForSeek(
+                bsonKey,
+                accessMethod->getSortedDataInterface()->getKeyStringVersion(),
+                accessMethod->getSortedDataInterface()->getOrdering(),
+                forward,
+                inclusive));
+    };
+
+    std::vector<std::unique_ptr<sbe::PlanStage>> indexScanList;
+    for (const auto& term : ftsQuery.getTermsForBounds()) {
+        // TODO: Should we scan in the opposite direction?
+        auto startKeyBson = fts::FTSIndexFormat::getIndexKey(
+            0, term, textNode->indexPrefix, ftsSpec.getTextIndexVersion());
+        auto endKeyBson = fts::FTSIndexFormat::getIndexKey(
+            fts::MAX_WEIGHT, term, textNode->indexPrefix, ftsSpec.getTextIndexVersion());
+
+        auto recordSlot = _slotIdGenerator.generate();
+        auto&& [recordIdSlot, ixscan] = generateSingleIntervalIndexScan(_collection,
+                                                                        indexName,
+                                                                        forward,
+                                                                        makeKeyString(startKeyBson),
+                                                                        makeKeyString(endKeyBson),
+                                                                        recordSlot,
+                                                                        &_slotIdGenerator,
+                                                                        _yieldPolicy);
+        indexScanList.push_back(std::move(ixscan));
+        ixscanOutputSlots.push_back(sbe::makeSV(recordIdSlot, recordSlot));
+    }
+
+    // Union will output a slot for the record id and another for the record.
+    _data.recordIdSlot = _slotIdGenerator.generate();
+    auto unionRecordOutputSlot = _slotIdGenerator.generate();
+    auto unionOutputSlots = sbe::makeSV(*_data.recordIdSlot, unionRecordOutputSlot);
+
+    // Index scan output slots become the input slots to the union.
+    auto unionStage =
+        sbe::makeS<sbe::UnionStage>(std::move(indexScanList), ixscanOutputSlots, unionOutputSlots);
+
+    // TODO: If text score metadata is requested, then we should sum over the text scores inside the
+    // index keys for a given document. This will require expression evaluation to be able to
+    // extract the score directly from the key string.
+    auto hashAggStage = sbe::makeS<sbe::HashAggStage>(
+        std::move(unionStage), sbe::makeSV(*_data.recordIdSlot), sbe::makeEM());
+
+    auto nljStage = makeLoopJoinForFetch(std::move(hashAggStage), *_data.recordIdSlot);
+
+    // Add a special stage to apply 'ftsQuery' to matching documents, and then add a FilterStage to
+    // discard documents which do not match.
+    auto textMatchResultSlot = _slotIdGenerator.generate();
+    auto textMatchStage = sbe::makeS<sbe::TextMatchStage>(
+        std::move(nljStage), ftsQuery, ftsSpec, *_data.resultSlot, textMatchResultSlot);
+
+    // Filter based on the contents of the slot filled out by the TextMatchStage.
+    return sbe::makeS<sbe::FilterStage<false>>(std::move(textMatchStage),
+                                               sbe::makeE<sbe::EVariable>(textMatchResultSlot));
+}
+
 // Returns a non-null pointer to the root of a plan tree, or a non-OK status if the PlanStage tree
 // could not be constructed.
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolutionNode* root) {
@@ -319,7 +412,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::build(const QuerySolution
             {STAGE_SORT_KEY_GENERATOR, std::mem_fn(&SlotBasedStageBuilder::buildSortKeyGeneraror)},
             {STAGE_PROJECTION_SIMPLE, std::mem_fn(&SlotBasedStageBuilder::buildProjectionSimple)},
             {STAGE_PROJECTION_DEFAULT, std::mem_fn(&SlotBasedStageBuilder::buildProjectionDefault)},
-            {STAGE_OR, &SlotBasedStageBuilder::buildOr}};
+            {STAGE_OR, &SlotBasedStageBuilder::buildOr},
+            {STAGE_TEXT, &SlotBasedStageBuilder::buildText}};
 
     uassert(ErrorCodes::InternalErrorNotSupported,
             str::stream() << "Can't build exec tree for node: " << root->toString(),

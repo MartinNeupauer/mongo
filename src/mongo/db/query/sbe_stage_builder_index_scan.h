@@ -43,4 +43,32 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateIndexScan
     sbe::value::SlotIdGenerator* slotIdGenerator,
     sbe::value::SpoolIdGenerator* spoolIdGenerator,
     PlanYieldPolicy* yieldPolicy);
+
+/**
+ * Constructs the most simple version of an index scan from the single interval index bounds. The
+ * generated subtree will have the following form:
+ *
+ *         nlj [] [lowKeySlot, highKeySlot]
+ *              left
+ *                  project [lowKeySlot = KS(...), highKeySlot = KS(...)]
+ *                  limit 1
+ *                  coscan
+ *               right
+ *                  ixseek lowKeySlot highKeySlot recordIdSlot [] @coll @index
+ *
+ * The inner branch of the nested loop join produces a single row with the low/high keys which is
+ * fed to the ixscan.
+ *
+ * If 'recordSlot' is provided, than the corresponding slot will be filled out with each KeyString
+ * in the index.
+ */
+std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateSingleIntervalIndexScan(
+    const Collection* collection,
+    const std::string& indexName,
+    bool forward,
+    std::unique_ptr<KeyString::Value> lowKey,
+    std::unique_ptr<KeyString::Value> highKey,
+    boost::optional<sbe::value::SlotId> recordSlot,
+    sbe::value::SlotIdGenerator* slotIdGenerator,
+    PlanYieldPolicy* yieldPolicy);
 }  // namespace mongo::stage_builder

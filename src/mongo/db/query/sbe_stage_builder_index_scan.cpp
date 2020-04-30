@@ -232,68 +232,6 @@ makeIntervalsFromIndexBounds(const IndexBounds& bounds,
 }
 
 /**
- * Constructs the most simple version of an index scan from the single interval index bounds. The
- * generated subtree will have the following form:
- *
- *         nlj [] [lowKeySlot, highKeySlot]
- *              left
- *                  project [lowKeySlot = KS(...), highKeySlot = KS(...)]
- *                  limit 1
- *                  coscan
- *               right
- *                  ixseek lowKeySlot highKeySlot recordIdSlot [] @coll @index
- *
- * The inner branch of the nested loop join produces a single row with the low/high keys which is
- * fed to the ixscan.
- */
-std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateSingleIntervalIndexScan(
-    const Collection* collection,
-    const std::string& indexName,
-    bool forward,
-    std::unique_ptr<KeyString::Value> lowKey,
-    std::unique_ptr<KeyString::Value> highKey,
-    sbe::value::SlotIdGenerator* slotIdGenerator,
-    PlanYieldPolicy* yieldPolicy) {
-    auto recordIdSlot = slotIdGenerator->generate();
-    auto lowKeySlot = slotIdGenerator->generate();
-    auto highKeySlot = slotIdGenerator->generate();
-
-    // Construct a constant table scan to deliver a single row with two fields 'lowKeySlot' and
-    // 'highKeySlot', representing seek boundaries, into the index scan.
-    auto project = sbe::makeProjectStage(
-        sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
-        lowKeySlot,
-        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                   sbe::value::bitcastFrom(lowKey.release())),
-        highKeySlot,
-        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
-                                   sbe::value::bitcastFrom(highKey.release())));
-
-    // Scan the index in the range {'lowKeySlot', 'highKeySlot'} (subject to inclusive or
-    // exclusive boundaries), and produce a single field recordIdSlot that can be used to
-    // position into the collection.
-    auto ixscan = sbe::makeS<sbe::IndexScanStage>(
-        NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
-        indexName,
-        forward,
-        boost::none,
-        recordIdSlot,
-        std::vector<std::string>{},
-        sbe::makeSV(),
-        lowKeySlot,
-        highKeySlot,
-        yieldPolicy);
-
-    // Finally, get the keys from the outer side and feed them to the inner side.
-    return {recordIdSlot,
-            sbe::makeS<sbe::LoopJoinStage>(std::move(project),
-                                           std::move(ixscan),
-                                           sbe::makeSV(),
-                                           sbe::makeSV(lowKeySlot, highKeySlot),
-                                           nullptr)};
-}
-
-/**
  * Constructs an optimized version of an index scan for multi-interval index bounds for the case
  * when the bounds can be decomposed in a number of single-interval bounds. In this case, instead
  * of building a generic index scan to navigate through the index using the 'IndexBoundsChecker',
@@ -600,6 +538,55 @@ generateGenericMultiIntervalIndexScan(const Collection* collection,
 }
 }  // namespace
 
+std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateSingleIntervalIndexScan(
+    const Collection* collection,
+    const std::string& indexName,
+    bool forward,
+    std::unique_ptr<KeyString::Value> lowKey,
+    std::unique_ptr<KeyString::Value> highKey,
+    boost::optional<sbe::value::SlotId> recordSlot,
+    sbe::value::SlotIdGenerator* slotIdGenerator,
+    PlanYieldPolicy* yieldPolicy) {
+    auto recordIdSlot = slotIdGenerator->generate();
+    auto lowKeySlot = slotIdGenerator->generate();
+    auto highKeySlot = slotIdGenerator->generate();
+
+    // Construct a constant table scan to deliver a single row with two fields 'lowKeySlot' and
+    // 'highKeySlot', representing seek boundaries, into the index scan.
+    auto project = sbe::makeProjectStage(
+        sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
+        lowKeySlot,
+        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                   sbe::value::bitcastFrom(lowKey.release())),
+        highKeySlot,
+        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::ksValue,
+                                   sbe::value::bitcastFrom(highKey.release())));
+
+    // Scan the index in the range {'lowKeySlot', 'highKeySlot'} (subject to inclusive or
+    // exclusive boundaries), and produce a single field recordIdSlot that can be used to
+    // position into the collection.
+    auto ixscan = sbe::makeS<sbe::IndexScanStage>(
+        NamespaceStringOrUUID{collection->ns().db().toString(), collection->uuid()},
+        indexName,
+        forward,
+        recordSlot,
+        recordIdSlot,
+        std::vector<std::string>{},
+        sbe::makeSV(),
+        lowKeySlot,
+        highKeySlot,
+        yieldPolicy);
+
+    // Finally, get the keys from the outer side and feed them to the inner side.
+    return {recordIdSlot,
+            sbe::makeS<sbe::LoopJoinStage>(std::move(project),
+                                           std::move(ixscan),
+                                           sbe::makeSV(),
+                                           sbe::makeSV(lowKeySlot, highKeySlot),
+                                           nullptr)};
+}
+
+
 std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateIndexScan(
     OperationContext* opCtx,
     const Collection* collection,
@@ -632,6 +619,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateIndexScan
                                                    ixn->direction == 1,
                                                    std::move(lowKey),
                                                    std::move(highKey),
+                                                   boost::none,
                                                    slotIdGenerator,
                                                    yieldPolicy);
         } else if (intervals.size() > 1) {

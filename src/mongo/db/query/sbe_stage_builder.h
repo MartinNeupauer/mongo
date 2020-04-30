@@ -88,6 +88,10 @@ private:
     std::unique_ptr<sbe::PlanStage> buildProjectionSimple(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildProjectionDefault(const QuerySolutionNode* root);
     std::unique_ptr<sbe::PlanStage> buildOr(const QuerySolutionNode* root);
+    std::unique_ptr<sbe::PlanStage> buildText(const QuerySolutionNode* root);
+
+    std::unique_ptr<sbe::PlanStage> makeLoopJoinForFetch(std::unique_ptr<sbe::PlanStage> inputStage,
+                                                         sbe::value::SlotId recordIdKeySlot);
 
     sbe::value::SlotIdGenerator _slotIdGenerator;
     sbe::value::FrameIdGenerator _frameIdGenerator;
