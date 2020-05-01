@@ -33,7 +33,6 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
-#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -41,10 +40,7 @@ namespace mongo::sbe {
 class ProjectStage final : public PlanStage {
     const std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> _projects;
 
-    std::map<value::SlotId,
-             std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>,
-             std::less<>>
-        _fields;
+    SlotMap<std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>> _fields;
 
     vm::ByteCode _bytecode;
 

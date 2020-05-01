@@ -81,8 +81,8 @@ private:
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
+    FieldAccessorMap _fieldAccessors;
+    SlotAccessorMap _varAccessors;
 
     value::SlotAccessor* _seekKeyLowAccessor{nullptr};
     value::SlotAccessor* _seekKeyHiAccessor{nullptr};

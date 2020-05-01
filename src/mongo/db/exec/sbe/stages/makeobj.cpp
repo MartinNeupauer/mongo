@@ -111,7 +111,7 @@ PlanState MakeObjStage::getNext() {
     if (state == PlanState::ADVANCED) {
         auto [tag, val] = value::makeNewObject();
         auto obj = value::getObjectView(val);
-        std::set<size_t> alreadyProjected;
+        absl::flat_hash_set<size_t> alreadyProjected;
 
         _obj.reset(tag, val);
 

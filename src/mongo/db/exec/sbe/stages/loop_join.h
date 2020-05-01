@@ -45,7 +45,7 @@ class LoopJoinStage final : public PlanStage {
     // If not set then this is a cross product.
     const std::unique_ptr<EExpression> _predicate;
 
-    std::set<value::SlotId, std::less<>> _outerRefs;
+    SlotSet _outerRefs;
 
     std::vector<value::SlotAccessor*> _correlatedAccessors;
     std::unique_ptr<vm::CodeFragment> _predicateCode;

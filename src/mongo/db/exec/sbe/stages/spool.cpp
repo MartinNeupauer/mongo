@@ -48,7 +48,7 @@ void SpoolEagerProducerStage::prepare(CompileCtx& ctx) {
         _buffer = ctx.getSpoolBuffer(_spoolId);
     }
 
-    std::set<value::SlotId> dupCheck;
+    SlotSet dupCheck;
     size_t counter = 0;
 
     for (auto slot : _vals) {
@@ -169,7 +169,7 @@ void SpoolLazyProducerStage::prepare(CompileCtx& ctx) {
         _predicateCode = _predicate->compile(ctx);
     }
 
-    std::set<value::SlotId> dupCheck;
+    SlotSet dupCheck;
 
     for (auto slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);

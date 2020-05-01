@@ -55,7 +55,7 @@ std::unique_ptr<PlanStage> UnionStage::clone() {
     return std::make_unique<UnionStage>(std::move(inputStages), _inputVals, _outputVals);
 }
 void UnionStage::prepare(CompileCtx& ctx) {
-    std::set<value::SlotId> dupCheck;
+    SlotSet dupCheck;
 
     for (size_t childNum = 0; childNum < _children.size(); childNum++) {
         _children[childNum]->prepare(ctx);

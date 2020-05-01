@@ -32,10 +32,9 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/value.h"
 
-#include <map>
-#include <set>
+#include <absl/container/flat_hash_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
 namespace mongo::sbe {
@@ -48,8 +47,8 @@ class MakeObjStage final : public PlanStage {
     const bool _forceNewObject;
     const bool _returnOldObject;
 
-    std::set<std::string, std::less<>> _restrictFieldsSet;
-    std::map<std::string, size_t, std::less<>> _projectFieldsMap;
+    absl::flat_hash_set<std::string> _restrictFieldsSet;
+    absl::flat_hash_map<std::string, size_t> _projectFieldsMap;
 
     std::vector<std::pair<std::string, value::SlotAccessor*>> _projects;
 

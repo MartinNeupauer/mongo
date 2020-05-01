@@ -61,7 +61,7 @@ std::unique_ptr<PlanStage> BranchStage::clone() {
 }
 
 void BranchStage::prepare(CompileCtx& ctx) {
-    std::set<value::SlotId> dupCheck;
+    SlotSet dupCheck;
 
     _children[0]->prepare(ctx);
     _children[1]->prepare(ctx);

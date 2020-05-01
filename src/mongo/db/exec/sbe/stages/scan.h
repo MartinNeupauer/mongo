@@ -76,8 +76,8 @@ private:
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
+    FieldAccessorMap _fieldAccessors;
+    SlotAccessorMap _varAccessors;
     value::SlotAccessor* _seekKeyAccessor{nullptr};
 
     bool _open{false};
@@ -155,8 +155,8 @@ private:
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
+    FieldAccessorMap _fieldAccessors;
+    SlotAccessorMap _varAccessors;
 
     size_t _currentRange{std::numeric_limits<std::size_t>::max()};
     Range _range;

@@ -56,7 +56,7 @@ std::unique_ptr<PlanStage> SortStage::clone() {
 void SortStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    std::set<value::SlotId> dupCheck;
+    SlotSet dupCheck;
 
     size_t counter = 0;
     // process order by fields

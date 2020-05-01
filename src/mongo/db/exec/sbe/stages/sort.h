@@ -31,8 +31,6 @@
 
 #include "mongo/db/exec/sbe/stages/stages.h"
 
-#include <map>
-
 namespace mongo::sbe {
 class SortStage final : public PlanStage {
     using TableType = std::
@@ -49,7 +47,7 @@ class SortStage final : public PlanStage {
     std::vector<value::SlotAccessor*> _inKeyAccessors;
     std::vector<value::SlotAccessor*> _inValueAccessors;
 
-    std::map<value::SlotId, std::unique_ptr<value::SlotAccessor>, std::less<>> _outAccessors;
+    SlotMap<std::unique_ptr<value::SlotAccessor>> _outAccessors;
 
     TableType _st;
     TableType::iterator _stIt;

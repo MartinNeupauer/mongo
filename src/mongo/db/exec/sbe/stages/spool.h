@@ -53,7 +53,7 @@ class SpoolEagerProducerStage final : public PlanStage {
 
     const std::vector<value::SlotId> _vals;
     std::vector<value::SlotAccessor*> _inAccessors;
-    std::unordered_map<value::SlotId, value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
+    SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 
 public:
     SpoolEagerProducerStage(std::unique_ptr<PlanStage> input,
@@ -146,7 +146,7 @@ class SpoolConsumerStage final : public PlanStage {
     const SpoolId _spoolId;
 
     const std::vector<value::SlotId> _vals;
-    std::unordered_map<value::SlotId, value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
+    SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 
 public:
     SpoolConsumerStage(SpoolId spoolId, const std::vector<value::SlotId>& vals)
@@ -161,7 +161,7 @@ public:
             _buffer = ctx.getSpoolBuffer(_spoolId);
         }
 
-        std::set<value::SlotId> dupCheck;
+        SlotSet dupCheck;
         size_t counter = 0;
 
         for (auto slot : _vals) {

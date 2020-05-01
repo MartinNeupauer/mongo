@@ -34,9 +34,7 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/stdx/unordered_map.h"
 
-#include <map>
 #include <unordered_map>
-#include <unordered_set>
 
 namespace mongo {
 namespace sbe {
@@ -50,9 +48,8 @@ class HashAggStage final : public PlanStage {
     const std::vector<value::SlotId> _gbs;
     const std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> _aggs;
 
-    // now that _gbs is saved vector<value::Accessor*> should be enough
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _outAccessors;
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inKeyAccessors;
+    SlotAccessorMap _outAccessors;
+    SlotAccessorMap _inKeyAccessors;
     std::vector<std::unique_ptr<HashKeyAccessor>> _outKeyAccessors;
 
     std::vector<std::unique_ptr<HashAggAccessor>> _outAggAccessors;

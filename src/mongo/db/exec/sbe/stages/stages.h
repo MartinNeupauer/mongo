@@ -36,6 +36,8 @@
 #include "mongo/db/operation_context.h"
 #include "mongo/db/query/plan_yield_policy.h"
 
+#include <absl/container/flat_hash_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <memory>
 #include <vector>
 
@@ -45,6 +47,17 @@ namespace sbe {
 struct CompileCtx;
 class PlanStage;
 enum class PlanState { ADVANCED, IS_EOF };
+
+/**
+ * Commonly used containers
+ */
+template <typename T>
+using SlotMap = absl::flat_hash_map<value::SlotId, T>;
+using SlotAccessorMap = SlotMap<value::SlotAccessor*>;
+using FieldAccessorMap =
+    absl::flat_hash_map<std::string, std::unique_ptr<value::ViewOfValueAccessor>>;
+using SlotSet = absl::flat_hash_set<value::SlotId>;
+using SlotVector = std::vector<value::SlotId>;
 
 /**
  * Provides methods to detach and re-attach to an operation context, which derived classes may

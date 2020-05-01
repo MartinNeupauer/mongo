@@ -32,7 +32,6 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
-#include <map>
 #include <unordered_map>
 #include <vector>
 
@@ -51,20 +50,20 @@ class HashJoinStage final : public PlanStage {
     const std::vector<value::SlotId> _innerProjects;
 
     // all defined values from the outer side (i.e. they come from the hash table)
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _outOuterAccessors;
+    SlotAccessorMap _outOuterAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inOuterKeyAccessors;
+    SlotAccessorMap _inOuterKeyAccessors;
     // accessors of output keys
     std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
 
     // accessors of input projection values that are build inserted into the hash table
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inOuterProjectAccessors;
+    SlotAccessorMap _inOuterProjectAccessors;
     // accessors of output projections
     std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _inInnerKeyAccessors;
+    SlotAccessorMap _inInnerKeyAccessors;
 
     // key used to probe inside the hash table
     value::MaterializedRow _probeKey;

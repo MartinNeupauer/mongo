@@ -44,8 +44,8 @@ class BSONScanStage final : public PlanStage {
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
 
-    std::map<std::string, std::unique_ptr<value::ViewOfValueAccessor>, std::less<>> _fieldAccessors;
-    std::map<value::SlotId, value::SlotAccessor*, std::less<>> _varAccessors;
+    FieldAccessorMap _fieldAccessors;
+    SlotAccessorMap _varAccessors;
 
     const char* _bsonCurrent;
 
