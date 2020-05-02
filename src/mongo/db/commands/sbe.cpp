@@ -74,7 +74,11 @@ public:
         invariant(nss.isCollectionlessCursorNamespace());
 
         exec = uassertStatusOK(PlanExecutor::make(
-            opCtx, nullptr, {std::move(root), {resultSlot, recordIdSlot}}, nss, nullptr));
+            opCtx,
+            nullptr,
+            {std::move(root), stage_builder::PlanStageData{resultSlot, recordIdSlot}},
+            nss,
+            nullptr));
 
         for (long long objCount = 0; objCount < batchSize; objCount++) {
             BSONObj next;
