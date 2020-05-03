@@ -713,7 +713,7 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
         // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
         // and so on. The working set will be shared by all candidate plans.
         auto multiPlanStage = std::make_unique<MultiPlanStage>(
-            canonicalQuery->getExpCtx().get(), collection, result.canonicalQuery.get());
+            result.canonicalQuery->getExpCtx().get(), collection, result.canonicalQuery.get());
         for (size_t ix = 0; ix < result.querySolutions.size(); ++ix) {
             multiPlanStage->addPlan(
                 std::move(result.querySolutions[ix]), std::move(result.roots[ix].first), ws.get());
