@@ -197,11 +197,11 @@ PlanExecutor::ExecState PlanExecutorSBE::getNext(BSONObj* out, RecordId* dlOut) 
 
     if (!_stash.empty()) {
         auto&& [doc, recordId] = _stash.front();
-        _stash.pop();
         *out = std::move(doc);
         if (dlOut && recordId) {
             *dlOut = *recordId;
         }
+        _stash.pop();
         return PlanExecutor::ExecState::ADVANCED;
     } else if (_root->getCommonStats()->isEOF) {
         _root->close();
