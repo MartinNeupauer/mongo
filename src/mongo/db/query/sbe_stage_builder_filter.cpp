@@ -200,7 +200,7 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
                         }()))));
 
     std::unique_ptr<sbe::PlanStage> innerBranch;
-    if (level == path.numParts() - 1) {
+    if (level == path.numParts() - 1u) {
         // Once the end of the traversal path is reached, evaluate the given predicate and project
         // out the result as 'elemPredicateVar'. The 'rhs' BSON element will contain the value to
         // compare the document field against.
