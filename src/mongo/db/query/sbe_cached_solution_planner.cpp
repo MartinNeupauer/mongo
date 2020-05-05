@@ -144,7 +144,7 @@ plan_ranker::CandidatePlan CachedSolutionPlanner::replan(bool shouldCache) const
         }
 
         roots.push_back(stage_builder::buildExecutableTree<PlanStage, stage_builder::PlanStageData>(
-            _opCtx, _collection, _cq, *solution, nullptr));
+            _opCtx, _collection, _cq, *solution, _yieldPolicy));
     }
 
     const auto cachingMode =
