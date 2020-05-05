@@ -36,14 +36,14 @@ namespace sbe {
 BSONScanStage::BSONScanStage(const char* bsonBegin,
                              const char* bsonEnd,
                              boost::optional<value::SlotId> recordSlot,
-                             const std::vector<std::string>& fields,
-                             const std::vector<value::SlotId>& vars)
+                             std::vector<std::string> fields,
+                             value::SlotVector vars)
     : PlanStage("bsonscan"_sd),
       _bsonBegin(bsonBegin),
       _bsonEnd(bsonEnd),
       _recordSlot(recordSlot),
-      _fields(fields),
-      _vars(vars),
+      _fields(std::move(fields)),
+      _vars(std::move(vars)),
       _bsonCurrent(bsonBegin) {}
 
 std::unique_ptr<PlanStage> BSONScanStage::clone() {

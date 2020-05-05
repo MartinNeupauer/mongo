@@ -33,12 +33,12 @@
 namespace mongo::sbe {
 LoopJoinStage::LoopJoinStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<PlanStage> inner,
-                             const std::vector<value::SlotId>& outerProjects,
-                             const std::vector<value::SlotId>& outerCorrelated,
+                             value::SlotVector outerProjects,
+                             value::SlotVector outerCorrelated,
                              std::unique_ptr<EExpression> predicate)
     : PlanStage("nlj"_sd),
-      _outerProjects(outerProjects),
-      _outerCorrelated(outerCorrelated),
+      _outerProjects(std::move(outerProjects)),
+      _outerCorrelated(std::move(outerCorrelated)),
       _predicate(std::move(predicate)) {
     _children.emplace_back(std::move(outer));
     _children.emplace_back(std::move(inner));

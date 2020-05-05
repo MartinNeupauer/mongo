@@ -32,13 +32,13 @@
 namespace mongo {
 namespace sbe {
 ProjectStage::ProjectStage(std::unique_ptr<PlanStage> input,
-                           std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects)
+                           value::SlotMap<std::unique_ptr<EExpression>> projects)
     : PlanStage("project"_sd), _projects(std::move(projects)) {
     _children.emplace_back(std::move(input));
 }
 
 std::unique_ptr<PlanStage> ProjectStage::clone() {
-    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects;
+    value::SlotMap<std::unique_ptr<EExpression>> projects;
     for (auto& [k, v] : _projects) {
         projects.emplace(k, v->clone());
     }

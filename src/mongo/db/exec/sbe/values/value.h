@@ -29,6 +29,8 @@
 
 #pragma once
 
+#include <absl/container/flat_hash_map.h>
+#include <absl/container/flat_hash_set.h>
 #include <array>
 #include <cstdint>
 #include <ostream>
@@ -839,6 +841,16 @@ public:
         _container[_it]._fields[_slot].reset(owned, tag, val);
     }
 };
+
+/**
+ * Commonly used containers
+ */
+template <typename T>
+using SlotMap = absl::flat_hash_map<SlotId, T>;
+using SlotAccessorMap = SlotMap<SlotAccessor*>;
+using FieldAccessorMap = absl::flat_hash_map<std::string, std::unique_ptr<ViewOfValueAccessor>>;
+using SlotSet = absl::flat_hash_set<SlotId>;
+using SlotVector = std::vector<SlotId>;
 
 }  // namespace value
 }  // namespace sbe

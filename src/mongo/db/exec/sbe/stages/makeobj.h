@@ -43,7 +43,7 @@ class MakeObjStage final : public PlanStage {
     const boost::optional<value::SlotId> _rootSlot;
     const std::vector<std::string> _restrictFields;
     const std::vector<std::string> _projectFields;
-    const std::vector<value::SlotId> _projectVars;
+    const value::SlotVector _projectVars;
     const bool _forceNewObject;
     const bool _returnOldObject;
 
@@ -68,9 +68,9 @@ public:
     MakeObjStage(std::unique_ptr<PlanStage> input,
                  value::SlotId objSlot,
                  boost::optional<value::SlotId> rootSlot,
-                 const std::vector<std::string>& restrictFields,
-                 const std::vector<std::string>& projectFields,
-                 const std::vector<value::SlotId>& projectVars,
+                 std::vector<std::string> restrictFields,
+                 std::vector<std::string> projectFields,
+                 value::SlotVector projectVars,
                  bool forceNewObject,
                  bool returnOldObject);
 

@@ -60,16 +60,13 @@ ExeGenerator::GenResult ExeGenerator::walkImpl(const Scan& op, const ABT& body) 
                                          outputSlot,
                                          boost::none,
                                          std::vector<std::string>{},
-                                         std::vector<value::SlotId>{},
+                                         sbe::makeSV(),
                                          boost::none,
                                          true,
                                          nullptr);
     } else {
-        _currentStage = makeS<BSONScanStage>(op.bsonBegin(),
-                                             op.bsonEnd(),
-                                             outputSlot,
-                                             std::vector<std::string>{},
-                                             std::vector<value::SlotId>{});
+        _currentStage = makeS<BSONScanStage>(
+            op.bsonBegin(), op.bsonEnd(), outputSlot, std::vector<std::string>{}, sbe::makeSV());
     }
 
     auto resultOutput = generateOutputPhase(op.rowsetVar(), body);

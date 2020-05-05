@@ -712,7 +712,7 @@ void Parser::walkSort(AstQuery& ast) {
 
     ast.stage = makeS<SortStage>(std::move(ast.nodes[2]->stage),
                                  lookupSlots(ast.nodes[0]->identifiers),
-                                 dirs,
+                                 std::move(dirs),
                                  lookupSlots(ast.nodes[1]->identifiers),
                                  std::numeric_limits<std::size_t>::max());
 }
@@ -721,8 +721,8 @@ void Parser::walkUnion(AstQuery& ast) {
     walkChildren(ast);
 
     std::vector<std::unique_ptr<PlanStage>> inputStages;
-    std::vector<std::vector<value::SlotId>> inputVals;
-    std::vector<value::SlotId> outputVals{lookupSlots(ast.nodes[0]->identifiers)};
+    std::vector<value::SlotVector> inputVals;
+    value::SlotVector outputVals{lookupSlots(ast.nodes[0]->identifiers)};
 
     for (size_t idx = 0; idx < ast.nodes[1]->nodes.size(); idx++) {
         inputVals.push_back(lookupSlots(ast.nodes[1]->nodes[idx]->identifiers));
@@ -736,7 +736,8 @@ void Parser::walkUnion(AstQuery& ast) {
                     return slots.size() == size;
                 }));
 
-    ast.stage = makeS<UnionStage>(std::move(inputStages), inputVals, outputVals);
+    ast.stage =
+        makeS<UnionStage>(std::move(inputStages), std::move(inputVals), std::move(outputVals));
 }
 
 void Parser::walkUnionBranch(AstQuery& ast) {
@@ -879,7 +880,7 @@ void Parser::walkTraverse(AstQuery& ast) {
                                      lookupSlotStrict(ast.nodes[2]->identifier),
                                      lookupSlotStrict(ast.nodes[0]->identifier),
                                      lookupSlotStrict(ast.nodes[1]->identifier),
-                                     std::vector<value::SlotId>{},
+                                     sbe::makeSV(),
                                      foldPos ? std::move(ast.nodes[foldPos]->expr) : nullptr,
                                      finalPos ? std::move(ast.nodes[finalPos]->expr) : nullptr);
 }
@@ -907,21 +908,21 @@ void Parser::walkExchange(AstQuery& ast) {
 void Parser::walkBranch(AstQuery& ast) {
     walkChildren(ast);
 
-    std::vector<value::SlotId> outputVals{lookupSlots(ast.nodes[1]->identifiers)};
-    std::vector<value::SlotId> inputThenVals{lookupSlots(ast.nodes[2]->identifiers)};
-    std::vector<value::SlotId> inputElseVals{lookupSlots(ast.nodes[4]->identifiers)};
+    value::SlotVector outputVals{lookupSlots(ast.nodes[1]->identifiers)};
+    value::SlotVector inputThenVals{lookupSlots(ast.nodes[2]->identifiers)};
+    value::SlotVector inputElseVals{lookupSlots(ast.nodes[4]->identifiers)};
 
     ast.stage = makeS<BranchStage>(std::move(ast.nodes[3]->stage),
                                    std::move(ast.nodes[5]->stage),
                                    std::move(ast.nodes[0]->expr),
-                                   inputThenVals,
-                                   inputElseVals,
-                                   outputVals);
+                                   std::move(inputThenVals),
+                                   std::move(inputElseVals),
+                                   std::move(outputVals));
 }
 std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
                                                  value::SlotId inputSlot,
                                                  std::unique_ptr<PlanStage> inputStage,
-                                                 std::vector<value::SlotId> correlated,
+                                                 value::SlotVector correlated,
                                                  value::SlotId outputSlot) {
     if (ast.nodes.size() == 1) {
         if (ast.nodes[0]->tag == "EXPR"_) {
@@ -956,7 +957,7 @@ std::unique_ptr<PlanStage> Parser::walkPathValue(AstQuery& ast,
             traverseIn,
             outputSlot,
             outputSlot,
-            correlated,
+            std::move(correlated),
             nullptr,
             nullptr);
 
@@ -1083,7 +1084,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
 
     std::vector<std::string> fieldNames;
     std::vector<std::string> fieldRestrictNames;
-    std::vector<value::SlotId> fieldVars;
+    value::SlotVector fieldVars;
     std::unique_ptr<PlanStage> stage = makeS<LimitSkipStage>(makeS<CoScanStage>(), 1, boost::none);
 
     for (size_t idx = ast.nodes.size(); idx-- > 0;) {
@@ -1153,7 +1154,7 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
                                              traverseIn,
                                              traverseOut,
                                              traverseOut,
-                                             std::vector<value::SlotId>{},
+                                             sbe::makeSV(),
                                              nullptr,
                                              nullptr);
                     break;
@@ -1182,9 +1183,9 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
     stage = makeS<MakeObjStage>(std::move(stage),
                                 outputSlot,
                                 inputSlot,
-                                fieldRestrictNames,
-                                fieldNames,
-                                fieldVars,
+                                std::move(fieldRestrictNames),
+                                std::move(fieldNames),
+                                std::move(fieldVars),
                                 newObj,
                                 retOldObj);
 

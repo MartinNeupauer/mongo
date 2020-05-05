@@ -117,13 +117,13 @@ void ExchangePipe::putFullBuffer(std::unique_ptr<ExchangeBuffer> b) {
 }
 
 ExchangeState::ExchangeState(size_t numOfProducers,
-                             const std::vector<value::SlotId>& fields,
+                             value::SlotVector fields,
                              ExchangePolicy policy,
                              std::unique_ptr<EExpression> partition,
                              std::unique_ptr<EExpression> orderLess)
     : _policy(policy),
       _numOfProducers(numOfProducers),
-      _fields(fields),
+      _fields(std::move(fields)),
       _partition(std::move(partition)),
       _orderLess(std::move(orderLess)) {}
 
@@ -154,14 +154,14 @@ void ExchangeConsumer::putBuffer(size_t producerId) {
 
 ExchangeConsumer::ExchangeConsumer(std::unique_ptr<PlanStage> input,
                                    size_t numOfProducers,
-                                   const std::vector<value::SlotId>& fields,
+                                   value::SlotVector fields,
                                    ExchangePolicy policy,
                                    std::unique_ptr<EExpression> partition,
                                    std::unique_ptr<EExpression> orderLess)
     : PlanStage("exchange"_sd) {
     _children.emplace_back(std::move(input));
     _state = std::make_shared<ExchangeState>(
-        numOfProducers, fields, policy, std::move(partition), std::move(orderLess));
+        numOfProducers, std::move(fields), policy, std::move(partition), std::move(orderLess));
 
     _tid = _state->addConsumer(this);
     _orderPreserving = _state->isOrderPreserving();

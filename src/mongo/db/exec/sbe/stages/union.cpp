@@ -35,15 +35,15 @@
 
 namespace mongo::sbe {
 UnionStage::UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
-                       const std::vector<std::vector<value::SlotId>>& inputVals,
-                       const std::vector<value::SlotId>& outputVals)
-    : PlanStage("union"_sd), _inputVals{inputVals}, _outputVals{outputVals} {
+                       std::vector<value::SlotVector> inputVals,
+                       value::SlotVector outputVals)
+    : PlanStage("union"_sd), _inputVals{std::move(inputVals)}, _outputVals{std::move(outputVals)} {
     _children = std::move(inputStages);
 
     invariant(_children.size() > 0);
     invariant(_children.size() == _inputVals.size());
     invariant(std::all_of(
-        _inputVals.begin(), _inputVals.end(), [size = outputVals.size()](const auto& slots) {
+        _inputVals.begin(), _inputVals.end(), [size = _outputVals.size()](const auto& slots) {
             return slots.size() == size;
         }));
 }
@@ -55,7 +55,7 @@ std::unique_ptr<PlanStage> UnionStage::clone() {
     return std::make_unique<UnionStage>(std::move(inputStages), _inputVals, _outputVals);
 }
 void UnionStage::prepare(CompileCtx& ctx) {
-    SlotSet dupCheck;
+    value::SlotSet dupCheck;
 
     for (size_t childNum = 0; childNum < _children.size(); childNum++) {
         _children[childNum]->prepare(ctx);

@@ -50,8 +50,8 @@ public:
     ScanStage(const NamespaceStringOrUUID& name,
               boost::optional<value::SlotId> recordSlot,
               boost::optional<value::SlotId> recordIdSlot,
-              const std::vector<std::string>& fields,
-              const std::vector<value::SlotId>& vars,
+              std::vector<std::string> fields,
+              value::SlotVector vars,
               boost::optional<value::SlotId> seekKeySlot,
               bool forward,
               PlanYieldPolicy* yieldPolicy,
@@ -74,7 +74,7 @@ private:
     const boost::optional<value::SlotId> _recordSlot;
     const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<value::SlotId> _vars;
+    const value::SlotVector _vars;
     const boost::optional<value::SlotId> _seekKeySlot;
     const bool _forward;
     ScanOpenCallback _openCallback;
@@ -82,8 +82,8 @@ private:
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    FieldAccessorMap _fieldAccessors;
-    SlotAccessorMap _varAccessors;
+    value::FieldAccessorMap _fieldAccessors;
+    value::SlotAccessorMap _varAccessors;
     value::SlotAccessor* _seekKeyAccessor{nullptr};
 
     bool _open{false};
@@ -125,16 +125,16 @@ public:
     ParallelScanStage(const NamespaceStringOrUUID& name,
                       boost::optional<value::SlotId> recordSlot,
                       boost::optional<value::SlotId> recordIdSlot,
-                      const std::vector<std::string>& fields,
-                      const std::vector<value::SlotId>& vars,
+                      std::vector<std::string> fields,
+                      value::SlotVector vars,
                       PlanYieldPolicy* yieldPolicy);
 
     ParallelScanStage(const std::shared_ptr<ParallelState>& state,
                       const NamespaceStringOrUUID& name,
                       boost::optional<value::SlotId> recordSlot,
                       boost::optional<value::SlotId> recordIdSlot,
-                      const std::vector<std::string>& fields,
-                      const std::vector<value::SlotId>& vars,
+                      std::vector<std::string> fields,
+                      value::SlotVector vars,
                       PlanYieldPolicy* yieldPolicy);
 
     std::unique_ptr<PlanStage> clone() final;
@@ -154,15 +154,15 @@ private:
     const boost::optional<value::SlotId> _recordSlot;
     const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<value::SlotId> _vars;
+    const value::SlotVector _vars;
 
     std::shared_ptr<ParallelState> _state;
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    FieldAccessorMap _fieldAccessors;
-    SlotAccessorMap _varAccessors;
+    value::FieldAccessorMap _fieldAccessors;
+    value::SlotAccessorMap _varAccessors;
 
     size_t _currentRange{std::numeric_limits<std::size_t>::max()};
     Range _range;

@@ -33,13 +33,13 @@
 namespace mongo {
 namespace sbe {
 HashAggStage::HashAggStage(std::unique_ptr<PlanStage> input,
-                           const std::vector<value::SlotId>& gbs,
-                           std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs)
-    : PlanStage("group"_sd), _gbs(gbs), _aggs(std::move(aggs)) {
+                           value::SlotVector gbs,
+                           value::SlotMap<std::unique_ptr<EExpression>> aggs)
+    : PlanStage("group"_sd), _gbs(std::move(gbs)), _aggs(std::move(aggs)) {
     _children.emplace_back(std::move(input));
 }
 std::unique_ptr<PlanStage> HashAggStage::clone() {
-    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs;
+    value::SlotMap<std::unique_ptr<EExpression>> aggs;
     for (auto& [k, v] : _aggs) {
         aggs.emplace(k, v->clone());
     }

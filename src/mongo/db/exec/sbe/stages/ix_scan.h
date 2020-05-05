@@ -49,8 +49,8 @@ public:
                    bool forward,
                    boost::optional<value::SlotId> recordSlot,
                    boost::optional<value::SlotId> recordISlot,
-                   const std::vector<std::string>& fields,
-                   const std::vector<value::SlotId>& vars,
+                   std::vector<std::string> fields,
+                   value::SlotVector vars,
                    boost::optional<value::SlotId> seekKeySlotLow,
                    boost::optional<value::SlotId> seekKeySlotHi,
                    PlanYieldPolicy* yieldPolicy);
@@ -74,15 +74,15 @@ private:
     const boost::optional<value::SlotId> _recordSlot;
     const boost::optional<value::SlotId> _recordIdSlot;
     const std::vector<std::string> _fields;
-    const std::vector<value::SlotId> _vars;
+    const value::SlotVector _vars;
     const boost::optional<value::SlotId> _seekKeySlotLow;
     const boost::optional<value::SlotId> _seekKeySlotHi;
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
     std::unique_ptr<value::ViewOfValueAccessor> _recordIdAccessor;
 
-    FieldAccessorMap _fieldAccessors;
-    SlotAccessorMap _varAccessors;
+    value::FieldAccessorMap _fieldAccessors;
+    value::SlotAccessorMap _varAccessors;
 
     value::SlotAccessor* _seekKeyLowAccessor{nullptr};
     value::SlotAccessor* _seekKeyHiAccessor{nullptr};

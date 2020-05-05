@@ -146,7 +146,7 @@ class ExchangeState {
     std::vector<Future<void>> _producerResults;
 
     // variables (fields) that pass through the exchange
-    const std::vector<value::SlotId> _fields;
+    const value::SlotVector _fields;
 
     // partitioning function
     const std::unique_ptr<EExpression> _partition;
@@ -166,7 +166,7 @@ class ExchangeState {
 
 public:
     ExchangeState(size_t numOfProducers,
-                  const std::vector<value::SlotId>& fields,
+                  value::SlotVector fields,
                   ExchangePolicy policy,
                   std::unique_ptr<EExpression> partition,
                   std::unique_ptr<EExpression> orderLess);
@@ -258,7 +258,7 @@ class ExchangeConsumer final : public PlanStage {
 public:
     ExchangeConsumer(std::unique_ptr<PlanStage> input,
                      size_t numOfProducers,
-                     const std::vector<value::SlotId>& fields,
+                     value::SlotVector fields,
                      ExchangePolicy policy,
                      std::unique_ptr<EExpression> partition,
                      std::unique_ptr<EExpression> orderLess);

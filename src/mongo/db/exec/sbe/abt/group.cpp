@@ -76,11 +76,11 @@ ExeGenerator::GenResult ExeGenerator::walk(const Group& op,
     _currentStage = std::move(resultInput.stage);
 
     auto binder = body.cast<ValueBinder>();
-    std::vector<value::SlotId> gbs;
+    value::SlotVector gbs;
     for (auto gb : op.gbs()) {
         gbs.push_back(getSlot(binder, gb));
     }
-    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs;
+    value::SlotMap<std::unique_ptr<EExpression>> aggs;
 
     _currentStage = makeS<HashAggStage>(std::move(_currentStage), gbs, std::move(aggs));
 

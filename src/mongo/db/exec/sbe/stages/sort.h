@@ -39,24 +39,24 @@ class SortStage final : public PlanStage {
     using SortKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using SortValueAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
-    const std::vector<value::SlotId> _obs;
+    const value::SlotVector _obs;
     const std::vector<value::SortDirection> _dirs;
-    const std::vector<value::SlotId> _vals;
+    const value::SlotVector _vals;
     const size_t _limit;
 
     std::vector<value::SlotAccessor*> _inKeyAccessors;
     std::vector<value::SlotAccessor*> _inValueAccessors;
 
-    SlotMap<std::unique_ptr<value::SlotAccessor>> _outAccessors;
+    value::SlotMap<std::unique_ptr<value::SlotAccessor>> _outAccessors;
 
     TableType _st;
     TableType::iterator _stIt;
 
 public:
     SortStage(std::unique_ptr<PlanStage> input,
-              const std::vector<value::SlotId>& obs,
-              const std::vector<value::SortDirection>& dirs,
-              const std::vector<value::SlotId>& vals,
+              value::SlotVector obs,
+              std::vector<value::SortDirection> dirs,
+              value::SlotVector vals,
               size_t limit);
 
     std::unique_ptr<PlanStage> clone() final;

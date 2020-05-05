@@ -88,7 +88,7 @@ inline std::vector<std::unique_ptr<EExpression>> makeEs(Ts&&... pack) {
 
 namespace detail {
 // base case
-inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExpression>>& result,
+inline void makeEM_unwind(value::SlotMap<std::unique_ptr<EExpression>>& result,
                           value::SlotId slot,
                           std::unique_ptr<EExpression> expr) {
     result.emplace(slot, std::move(expr));
@@ -96,7 +96,7 @@ inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExp
 
 // recursive case
 template <typename... Ts>
-inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExpression>>& result,
+inline void makeEM_unwind(value::SlotMap<std::unique_ptr<EExpression>>& result,
                           value::SlotId slot,
                           std::unique_ptr<EExpression> expr,
                           Ts&&... rest) {
@@ -107,9 +107,20 @@ inline void makeEM_unwind(std::unordered_map<value::SlotId, std::unique_ptr<EExp
 
 template <typename... Ts>
 auto makeEM(Ts&&... pack) {
-    std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> result;
-    detail::makeEM_unwind(result, std::forward<Ts>(pack)...);
+    value::SlotMap<std::unique_ptr<EExpression>> result;
+    if constexpr (sizeof...(pack) > 0) {
+        result.reserve(sizeof...(Ts) / 2);
+        detail::makeEM_unwind(result, std::forward<Ts>(pack)...);
+    }
     return result;
+}
+
+template <typename... Args>
+auto makeSV(Args&&... args) {
+    value::SlotVector v;
+    v.reserve(sizeof...(Args));
+    (v.push_back(std::forward<Args>(args)), ...);
+    return v;
 }
 
 class EConstant final : public EExpression {

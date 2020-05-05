@@ -45,11 +45,11 @@ class HashAggStage final : public PlanStage {
     using HashKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using HashAggAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
-    const std::vector<value::SlotId> _gbs;
-    const std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> _aggs;
+    const value::SlotVector _gbs;
+    const value::SlotMap<std::unique_ptr<EExpression>> _aggs;
 
-    SlotAccessorMap _outAccessors;
-    SlotAccessorMap _inKeyAccessors;
+    value::SlotAccessorMap _outAccessors;
+    value::SlotAccessorMap _inKeyAccessors;
     std::vector<std::unique_ptr<HashKeyAccessor>> _outKeyAccessors;
 
     std::vector<std::unique_ptr<HashAggAccessor>> _outAggAccessors;
@@ -64,8 +64,8 @@ class HashAggStage final : public PlanStage {
 
 public:
     HashAggStage(std::unique_ptr<PlanStage> input,
-                 const std::vector<value::SlotId>& gbs,
-                 std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> aggs);
+                 value::SlotVector gbs,
+                 value::SlotMap<std::unique_ptr<EExpression>> aggs);
 
     std::unique_ptr<PlanStage> clone() final;
 

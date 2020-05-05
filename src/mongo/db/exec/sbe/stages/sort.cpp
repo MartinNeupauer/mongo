@@ -36,14 +36,14 @@
 namespace mongo {
 namespace sbe {
 SortStage::SortStage(std::unique_ptr<PlanStage> input,
-                     const std::vector<value::SlotId>& obs,
-                     const std::vector<value::SortDirection>& dirs,
-                     const std::vector<value::SlotId>& vals,
+                     value::SlotVector obs,
+                     std::vector<value::SortDirection> dirs,
+                     value::SlotVector vals,
                      size_t limit)
     : PlanStage("sort"_sd),
-      _obs(obs),
-      _dirs(dirs),
-      _vals(vals),
+      _obs(std::move(obs)),
+      _dirs(std::move(dirs)),
+      _vals(std::move(vals)),
       _limit(limit),
       _st(value::MaterializedRowComparator{_dirs}) {
     _children.emplace_back(std::move(input));
@@ -56,7 +56,7 @@ std::unique_ptr<PlanStage> SortStage::clone() {
 void SortStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    SlotSet dupCheck;
+    value::SlotSet dupCheck;
 
     size_t counter = 0;
     // process order by fields

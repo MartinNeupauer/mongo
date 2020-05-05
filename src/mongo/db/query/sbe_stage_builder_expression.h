@@ -53,6 +53,6 @@ generateExpression(Expression* expr,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
                    sbe::value::FrameIdGenerator* frameIdGenerator,
                    sbe::value::SlotId inputVar,
-                   std::vector<sbe::value::SlotId>* relevantSlots = nullptr);
+                   sbe::value::SlotVector* relevantSlots = nullptr);
 
 }  // namespace mongo::stage_builder

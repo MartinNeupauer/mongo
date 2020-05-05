@@ -279,7 +279,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateSingleInt
         boost::none,
         recordIdSlot,
         std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
+        sbe::makeSV(),
         lowKeySlot,
         highKeySlot,
         yieldPolicy);
@@ -288,8 +288,8 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateSingleInt
     return {recordIdSlot,
             sbe::makeS<sbe::LoopJoinStage>(std::move(project),
                                            std::move(ixscan),
-                                           std::vector<sbe::value::SlotId>{},
-                                           std::vector<sbe::value::SlotId>{lowKeySlot, highKeySlot},
+                                           sbe::makeSV(),
+                                           sbe::makeSV(lowKeySlot, highKeySlot),
                                            nullptr)};
 }
 
@@ -382,7 +382,7 @@ generateOptimizedMultiIntervalIndexScan(
         boost::none,
         recordIdSlot,
         std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
+        sbe::makeSV(),
         lowKeySlot,
         highKeySlot,
         yieldPolicy);
@@ -391,8 +391,8 @@ generateOptimizedMultiIntervalIndexScan(
     return {recordIdSlot,
             sbe::makeS<sbe::LoopJoinStage>(std::move(project),
                                            std::move(ixscan),
-                                           std::vector<sbe::value::SlotId>{},
-                                           std::vector<sbe::value::SlotId>{lowKeySlot, highKeySlot},
+                                           sbe::makeSV(),
+                                           sbe::makeSV(lowKeySlot, highKeySlot),
                                            nullptr)};
 }
 
@@ -444,17 +444,14 @@ makeRecursiveBranchForGenericIndexScan(const Collection* collection,
         resultSlot,
         recordIdSlot,
         std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
+        sbe::makeSV(),
         lowKeySlot,
         boost::none,
         yieldPolicy);
 
     // Get the low key from the outer side and feed it to the inner side (ixscan).
-    auto nlj = sbe::makeS<sbe::LoopJoinStage>(std::move(project),
-                                              std::move(ixscan),
-                                              std::vector<sbe::value::SlotId>{},
-                                              std::vector<sbe::value::SlotId>{lowKeySlot},
-                                              nullptr);
+    auto nlj = sbe::makeS<sbe::LoopJoinStage>(
+        std::move(project), std::move(ixscan), sbe::makeSV(), sbe::makeSV(lowKeySlot), nullptr);
 
     // Inject another nested loop join with the outer branch being a stack spool, and the inner an
     // index scan nljoin which just constructed above. The stack spool is populated from the values
@@ -465,12 +462,11 @@ makeRecursiveBranchForGenericIndexScan(const Collection* collection,
     auto checkBoundsSlot = slotIdGenerator->generate();
     return {checkBoundsSlot,
             sbe::makeS<sbe::LoopJoinStage>(
-                sbe::makeS<sbe::SpoolConsumerStage<true>>(
-                    spoolId, std::vector<sbe::value::SlotId>{seekKeySlot}),
+                sbe::makeS<sbe::SpoolConsumerStage<true>>(spoolId, sbe::makeSV(seekKeySlot)),
                 sbe::makeS<sbe::CheckBoundsStage>(
                     std::move(nlj), params, resultSlot, recordIdSlot, checkBoundsSlot),
-                std::vector<sbe::value::SlotId>{},
-                std::vector<sbe::value::SlotId>{seekKeySlot},
+                sbe::makeSV(),
+                sbe::makeSV(seekKeySlot),
                 nullptr)};
 }
 
@@ -554,7 +550,7 @@ generateGenericMultiIntervalIndexScan(const Collection* collection,
                     boost::none,
                     std::vector<std::string>{},
                     std::vector<std::string>{},
-                    std::vector<sbe::value::SlotId>{},
+                    sbe::makeSV(),
                     true,
                     false)};
     }
@@ -580,8 +576,8 @@ generateGenericMultiIntervalIndexScan(const Collection* collection,
     auto unionStage = sbe::makeS<sbe::UnionStage>(
         make_vector<std::unique_ptr<sbe::PlanStage>>(std::move(anchorBranch),
                                                      std::move(recursiveBranch)),
-        std::vector<std::vector<sbe::value::SlotId>>{{anchorSlot}, {recursiveSlot}},
-        std::vector<sbe::value::SlotId>{resultSlot});
+        std::vector<sbe::value::SlotVector>{sbe::makeSV(anchorSlot), sbe::makeSV(recursiveSlot)},
+        sbe::makeSV(resultSlot));
 
     // Stick in a lazy producer spool on top. The specified predicate will ensure that we will only
     // store the seek key values in the spool (that is, if the value type is not a number, or not
@@ -589,7 +585,7 @@ generateGenericMultiIntervalIndexScan(const Collection* collection,
     auto spool = sbe::makeS<sbe::SpoolLazyProducerStage>(
         std::move(unionStage),
         spoolId,
-        std::vector<sbe::value::SlotId>{resultSlot},
+        sbe::makeSV(resultSlot),
         sbe::makeE<sbe::EPrimUnary>(
             sbe::EPrimUnary::logicNot,
             sbe::makeE<sbe::EFunction>("isNumber"sv,
@@ -662,10 +658,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateIndexScan
     }();
 
     if (ixn->shouldDedup) {
-        stage = sbe::makeS<sbe::HashAggStage>(
-            std::move(stage),
-            std::vector<sbe::value::SlotId>{slot},
-            std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>>{});
+        stage = sbe::makeS<sbe::HashAggStage>(std::move(stage), sbe::makeSV(slot), sbe::makeEM());
     }
 
     return {slot, std::move(stage)};

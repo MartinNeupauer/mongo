@@ -238,7 +238,7 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
         fieldVar,
         traversePredicateVar,
         elemPredicateVar,
-        std::vector<sbe::value::SlotId>{},
+        sbe::makeSV(),
         sbe::makeE<sbe::EPrimBinary>(sbe::EPrimBinary::logicOr,
                                      sbe::makeE<sbe::EVariable>(traversePredicateVar),
                                      sbe::makeE<sbe::EVariable>(elemPredicateVar)),

@@ -38,7 +38,7 @@ class TraverseStage final : public PlanStage {
     const value::SlotId _inField;
     const value::SlotId _outField;
     const value::SlotId _outFieldInner;
-    std::vector<value::SlotId> _correlatedSlots;
+    const value::SlotVector _correlatedSlots;
     const std::unique_ptr<EExpression> _fold;
     const std::unique_ptr<EExpression> _final;
     const boost::optional<size_t> _nestedArraysDepth;
@@ -67,7 +67,7 @@ public:
                   value::SlotId inField,
                   value::SlotId outField,
                   value::SlotId outFieldInner,
-                  const std::vector<value::SlotId>& outerCorrelated,
+                  value::SlotVector outerCorrelated,
                   std::unique_ptr<EExpression> foldExpr,
                   std::unique_ptr<EExpression> finalExpr,
                   boost::optional<size_t> nestedArraysDepth = boost::none);

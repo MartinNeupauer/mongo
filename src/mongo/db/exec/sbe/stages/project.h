@@ -38,9 +38,8 @@
 
 namespace mongo::sbe {
 class ProjectStage final : public PlanStage {
-    const std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> _projects;
-
-    SlotMap<std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>> _fields;
+    const value::SlotMap<std::unique_ptr<EExpression>> _projects;
+    value::SlotMap<std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>> _fields;
 
     vm::ByteCode _bytecode;
 
@@ -48,7 +47,7 @@ class ProjectStage final : public PlanStage {
 
 public:
     ProjectStage(std::unique_ptr<PlanStage> input,
-                 std::unordered_map<value::SlotId, std::unique_ptr<EExpression>> projects);
+                 value::SlotMap<std::unique_ptr<EExpression>> projects);
 
     std::unique_ptr<PlanStage> clone() final;
 

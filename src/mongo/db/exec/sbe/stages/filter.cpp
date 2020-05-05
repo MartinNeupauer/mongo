@@ -32,19 +32,20 @@
 #include <set>
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
+
 namespace mongo {
 namespace sbe {
 BranchStage::BranchStage(std::unique_ptr<PlanStage> inputThen,
                          std::unique_ptr<PlanStage> inputElse,
                          std::unique_ptr<EExpression> filter,
-                         const std::vector<value::SlotId>& inputThenVals,
-                         const std::vector<value::SlotId>& inputElseVals,
-                         const std::vector<value::SlotId>& outputVals)
+                         value::SlotVector inputThenVals,
+                         value::SlotVector inputElseVals,
+                         value::SlotVector outputVals)
     : PlanStage("branch"_sd),
       _filter(std::move(filter)),
-      _inputThenVals(inputThenVals),
-      _inputElseVals(inputElseVals),
-      _outputVals(outputVals) {
+      _inputThenVals(std::move(inputThenVals)),
+      _inputElseVals(std::move(inputElseVals)),
+      _outputVals(std::move(outputVals)) {
     invariant(_inputThenVals.size() == _outputVals.size());
     invariant(_inputElseVals.size() == _outputVals.size());
     _children.emplace_back(std::move(inputThen));
@@ -61,7 +62,7 @@ std::unique_ptr<PlanStage> BranchStage::clone() {
 }
 
 void BranchStage::prepare(CompileCtx& ctx) {
-    SlotSet dupCheck;
+    value::SlotSet dupCheck;
 
     _children[0]->prepare(ctx);
     _children[1]->prepare(ctx);

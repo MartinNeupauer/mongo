@@ -35,15 +35,15 @@ namespace mongo {
 namespace sbe {
 HashJoinStage::HashJoinStage(std::unique_ptr<PlanStage> outer,
                              std::unique_ptr<PlanStage> inner,
-                             const std::vector<value::SlotId>& outerCond,
-                             const std::vector<value::SlotId>& outerProjects,
-                             const std::vector<value::SlotId>& innerCond,
-                             const std::vector<value::SlotId>& innerProjects)
+                             value::SlotVector outerCond,
+                             value::SlotVector outerProjects,
+                             value::SlotVector innerCond,
+                             value::SlotVector innerProjects)
     : PlanStage("hj"_sd),
-      _outerCond(outerCond),
-      _outerProjects(outerProjects),
-      _innerCond(innerCond),
-      _innerProjects(innerProjects)  // DEAD CODE !!!!
+      _outerCond(std::move(outerCond)),
+      _outerProjects(std::move(outerProjects)),
+      _innerCond(std::move(innerCond)),
+      _innerProjects(std::move(innerProjects))  // DEAD CODE !!!!
 {
     if (_outerCond.size() != _innerCond.size()) {
         uasserted(ErrorCodes::InternalError, "left and right size do not match");

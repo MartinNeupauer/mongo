@@ -36,8 +36,8 @@ namespace sbe {
 ScanStage::ScanStage(const NamespaceStringOrUUID& name,
                      boost::optional<value::SlotId> recordSlot,
                      boost::optional<value::SlotId> recordIdSlot,
-                     const std::vector<std::string>& fields,
-                     const std::vector<value::SlotId>& vars,
+                     std::vector<std::string> fields,
+                     value::SlotVector vars,
                      boost::optional<value::SlotId> seekKeySlot,
                      bool forward,
                      PlanYieldPolicy* yieldPolicy,
@@ -46,8 +46,8 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
-      _fields(fields),
-      _vars(vars),
+      _fields(std::move(fields)),
+      _vars(std::move(vars)),
       _seekKeySlot(seekKeySlot),
       _forward(forward),
       _openCallback(openCallback) {
@@ -304,15 +304,15 @@ std::vector<DebugPrinter::Block> ScanStage::debugPrint() {
 ParallelScanStage::ParallelScanStage(const NamespaceStringOrUUID& name,
                                      boost::optional<value::SlotId> recordSlot,
                                      boost::optional<value::SlotId> recordIdSlot,
-                                     const std::vector<std::string>& fields,
-                                     const std::vector<value::SlotId>& vars,
+                                     std::vector<std::string> fields,
+                                     value::SlotVector vars,
                                      PlanYieldPolicy* yieldPolicy)
     : PlanStage("pscan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
-      _fields(fields),
-      _vars(vars) {
+      _fields(std::move(fields)),
+      _vars(std::move(vars)) {
     invariant(_fields.size() == _vars.size());
 
     _state = std::make_shared<ParallelState>();
@@ -322,15 +322,15 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
                                      const NamespaceStringOrUUID& name,
                                      boost::optional<value::SlotId> recordSlot,
                                      boost::optional<value::SlotId> recordIdSlot,
-                                     const std::vector<std::string>& fields,
-                                     const std::vector<value::SlotId>& vars,
+                                     std::vector<std::string> fields,
+                                     value::SlotVector vars,
                                      PlanYieldPolicy* yieldPolicy)
     : PlanStage("pscan"_sd, yieldPolicy),
       _name(name),
       _recordSlot(recordSlot),
       _recordIdSlot(recordIdSlot),
-      _fields(fields),
-      _vars(vars),
+      _fields(std::move(fields)),
+      _vars(std::move(vars)),
       _state(state) {
     invariant(_fields.size() == _vars.size());
 }

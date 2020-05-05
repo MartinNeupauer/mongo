@@ -125,8 +125,8 @@ class Parser {
         return *slot;
     }
 
-    std::vector<value::SlotId> lookupSlots(const std::vector<std::string>& names) {
-        std::vector<value::SlotId> result;
+    value::SlotVector lookupSlots(const std::vector<std::string>& names) {
+        value::SlotVector result;
         std::transform(names.begin(),
                        names.end(),
                        std::back_inserter(result),
@@ -135,8 +135,8 @@ class Parser {
     }
 
     template <typename T>
-    std::unordered_map<value::SlotId, T> lookupSlots(std::unordered_map<std::string, T> map) {
-        std::unordered_map<value::SlotId, T> result;
+    sbe::value::SlotMap<T> lookupSlots(std::unordered_map<std::string, T> map) {
+        sbe::value::SlotMap<T> result;
         for (auto&& [k, v] : map) {
             result[lookupSlotStrict(k)] = std::move(v);
         }
@@ -206,7 +206,7 @@ class Parser {
     std::unique_ptr<PlanStage> walkPathValue(AstQuery& ast,
                                              value::SlotId inputSlot,
                                              std::unique_ptr<PlanStage> inputStage,
-                                             std::vector<value::SlotId> correlated,
+                                             value::SlotVector correlated,
                                              value::SlotId outputSlot);
 
 public:

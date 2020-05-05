@@ -38,14 +38,14 @@
 namespace mongo::sbe {
 class LoopJoinStage final : public PlanStage {
     // Set of variables coming from the outer side.
-    const std::vector<value::SlotId> _outerProjects;
+    const value::SlotVector _outerProjects;
     // Set of correlated variables from the outer side that are visible on the inner side. They must
     // be also present in the _outerProjects.
-    const std::vector<value::SlotId> _outerCorrelated;
+    const value::SlotVector _outerCorrelated;
     // If not set then this is a cross product.
     const std::unique_ptr<EExpression> _predicate;
 
-    SlotSet _outerRefs;
+    value::SlotSet _outerRefs;
 
     std::vector<value::SlotAccessor*> _correlatedAccessors;
     std::unique_ptr<vm::CodeFragment> _predicateCode;
@@ -59,8 +59,8 @@ class LoopJoinStage final : public PlanStage {
 public:
     LoopJoinStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
-                  const std::vector<value::SlotId>& outerProjects,
-                  const std::vector<value::SlotId>& outerCorrelated,
+                  value::SlotVector outerProjects,
+                  value::SlotVector outerCorrelated,
                   std::unique_ptr<EExpression> predicate);
 
     std::unique_ptr<PlanStage> clone() final;

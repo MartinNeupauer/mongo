@@ -186,21 +186,21 @@ ExeGenerator::GenResult ExeGenerator::walk(const PathTraverse& op, const ABT& c)
     _pathCtx = saveCtx;
     _currentStage = std::move(saveCurrent);
 
-    std::vector<value::SlotId> correlatedSlots;
+    value::SlotVector correlatedSlots;
     if (_pathCtx->topLevelTraverse) {
-        std::unordered_set<value::SlotId> slots;
+        value::SlotSet slots;
         for (auto& v : op.correlated()) {
             auto slot = getSlot(v->binding(), v->id());
             slots.insert(slot);
         }
-        correlatedSlots = std::vector<value::SlotId>(slots.begin(), slots.end());
+        correlatedSlots = value::SlotVector(slots.begin(), slots.end());
     }
     _currentStage = makeS<TraverseStage>(std::move(_currentStage),
                                          std::move(resultStage),
                                          inputSlot,
                                          outputSlot,
                                          outputSlot,
-                                         correlatedSlots,
+                                         std::move(correlatedSlots),
                                          nullptr,
                                          nullptr);
 

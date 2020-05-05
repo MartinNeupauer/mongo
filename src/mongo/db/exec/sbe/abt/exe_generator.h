@@ -61,7 +61,7 @@ class ExeGenerator {
         boost::optional<value::SlotId> inputMkObjSlot;
         std::vector<std::string> restrictFields;
         std::vector<std::string> projectFields;
-        std::vector<value::SlotId> projectVars;
+        value::SlotVector projectVars;
         bool forceNewObject{false};
         bool returnOldObject{true};
     };
@@ -80,7 +80,7 @@ class ExeGenerator {
 
         std::vector<std::string> restrictFields;
         std::vector<std::string> projectFields;
-        std::vector<value::SlotId> projectVars;
+        value::SlotVector projectVars;
         bool forceNewObject{false};
         bool returnOldObject{true};
     };

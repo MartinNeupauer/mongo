@@ -81,7 +81,7 @@ struct ProjectionTraversalVisitorContext {
 
     // See the comment above the generateExpression() declaration for an explanation of the
     // 'relevantSlots' list.
-    std::vector<sbe::value::SlotId> relevantSlots;
+    sbe::value::SlotVector relevantSlots;
 
     const auto& topFrontField() const {
         invariant(!levels.empty());
@@ -121,7 +121,7 @@ struct ProjectionTraversalVisitorContext {
                                                eval->inputSlot,
                                                eval->outputSlot,
                                                eval->outputSlot,
-                                               std::vector<sbe::value::SlotId>{},
+                                               sbe::makeSV(),
                                                nullptr,
                                                nullptr)};
     }
@@ -209,8 +209,8 @@ public:
         using namespace std::literals;
 
         const auto isInclusion = _context->projectType == projection_ast::ProjectType::kInclusion;
-        std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projects;
-        std::vector<sbe::value::SlotId> projectSlots;
+        sbe::value::SlotMap<std::unique_ptr<sbe::EExpression>> projects;
+        sbe::value::SlotVector projectSlots;
         std::vector<std::string> projectFields;
         std::vector<std::string> restrictFields;
         auto inputStage{std::move(_context->topLevel().fieldPathExpressionsTraverseStage)};
@@ -245,15 +245,15 @@ public:
                                                             _context->topLevel().basePath.top()))));
                                     _context->topLevel().basePath.pop();
 
-                                    inputStage = sbe::makeS<sbe::TraverseStage>(
-                                        std::move(inputStage),
-                                        std::move(stage),
-                                        eval->inputSlot,
-                                        eval->outputSlot,
-                                        eval->outputSlot,
-                                        std::vector<sbe::value::SlotId>{},
-                                        nullptr,
-                                        nullptr);
+                                    inputStage =
+                                        sbe::makeS<sbe::TraverseStage>(std::move(inputStage),
+                                                                       std::move(stage),
+                                                                       eval->inputSlot,
+                                                                       eval->outputSlot,
+                                                                       eval->outputSlot,
+                                                                       sbe::makeSV(),
+                                                                       nullptr,
+                                                                       nullptr);
                                 }},
                        eval->expr);
         }
@@ -275,8 +275,8 @@ public:
                                                               outputSlot,
                                                               boost::none,
                                                               std::vector<std::string>{},
-                                                              projectFields,
-                                                              projectSlots,
+                                                              std::move(projectFields),
+                                                              std::move(projectSlots),
                                                               true,
                                                               false),
                                 sbe::makeE<sbe::EFunction>("isObject"sv,
@@ -285,9 +285,9 @@ public:
                           : sbe::makeS<sbe::MakeObjStage>(std::move(inputStage),
                                                           outputSlot,
                                                           _context->topLevel().inputSlot,
-                                                          restrictFields,
-                                                          projectFields,
-                                                          projectSlots,
+                                                          std::move(restrictFields),
+                                                          std::move(projectFields),
+                                                          std::move(projectSlots),
                                                           false,
                                                           true)}});
         _context->popLevel();

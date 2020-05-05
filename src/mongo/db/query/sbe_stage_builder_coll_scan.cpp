@@ -134,14 +134,14 @@ generateOptimizedOplogScan(OperationContext* opCtx,
     // need it either when 'maxTs' bound has been provided, so that we can apply an EOF filter, of
     // if we need to track the latest oplog timestamp.
     auto [fields, slots, tsSlot] = [&]() -> std::tuple<std::vector<std::string>,
-                                                       std::vector<sbe::value::SlotId>,
+                                                       sbe::value::SlotVector,
                                                        boost::optional<sbe::value::SlotId>> {
         // Don't project the 'ts' if stopApplyingFilterAfterFirstMatch is 'true'. We will have
         // another scan stage where it will be done.
         if (!csn->stopApplyingFilterAfterFirstMatch &&
             (csn->maxTs || csn->shouldTrackLatestOplogTimestamp)) {
             auto tsSlot = slotIdGenerator->generate();
-            return {{repl::OpTime::kTimestampFieldName}, {tsSlot}, tsSlot};
+            return {{repl::OpTime::kTimestampFieldName}, sbe::makeSV(tsSlot), tsSlot};
         }
         return {};
     }();
@@ -150,8 +150,8 @@ generateOptimizedOplogScan(OperationContext* opCtx,
     auto stage = sbe::makeS<sbe::ScanStage>(nss,
                                             resultSlot,
                                             recordIdSlot,
-                                            fields,
-                                            slots,
+                                            std::move(fields),
+                                            std::move(slots),
                                             seekRecordIdSlot,
                                             true /* forward */,
                                             yieldPolicy,
@@ -169,8 +169,8 @@ generateOptimizedOplogScan(OperationContext* opCtx,
                 sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64,
                                            (*seekRecordId).repr())),
             std::move(stage),
-            std::vector<sbe::value::SlotId>{},
-            std::vector<sbe::value::SlotId>{*seekRecordIdSlot},
+            sbe::makeSV(),
+            sbe::makeSV(*seekRecordIdSlot),
             nullptr);
     }
 
@@ -217,11 +217,11 @@ generateOptimizedOplogScan(OperationContext* opCtx,
         if (csn->stopApplyingFilterAfterFirstMatch) {
             std::tie(fields, slots, tsSlot) =
                 [&]() -> std::tuple<std::vector<std::string>,
-                                    std::vector<sbe::value::SlotId>,
+                                    sbe::value::SlotVector,
                                     boost::optional<sbe::value::SlotId>> {
                 if (csn->shouldTrackLatestOplogTimestamp) {
                     auto tsSlot = slotIdGenerator->generate();
-                    return {{repl::OpTime::kTimestampFieldName}, {tsSlot}, tsSlot};
+                    return {{repl::OpTime::kTimestampFieldName}, sbe::makeSV(tsSlot), tsSlot};
                 }
                 return {};
             }();
@@ -235,13 +235,13 @@ generateOptimizedOplogScan(OperationContext* opCtx,
                 sbe::makeS<sbe::ScanStage>(nss,
                                            resultSlot,
                                            recordIdSlot,
-                                           fields,
-                                           slots,
+                                           std::move(fields),
+                                           std::move(slots),
                                            seekRecordIdSlot,
                                            true /* forward */,
                                            yieldPolicy),
-                std::vector<sbe::value::SlotId>{},
-                std::vector<sbe::value::SlotId>{*seekRecordIdSlot},
+                sbe::makeSV(),
+                sbe::makeSV(*seekRecordIdSlot),
                 nullptr);
         }
     }
@@ -276,13 +276,13 @@ generateGenericCollScan(const Collection* collection,
 
     // See if we need to project out an oplog latest timestamp.
     auto [fields, slots, tsSlot] = [&]() -> std::tuple<std::vector<std::string>,
-                                                       std::vector<sbe::value::SlotId>,
+                                                       sbe::value::SlotVector,
                                                        boost::optional<sbe::value::SlotId>> {
         if (csn->shouldTrackLatestOplogTimestamp) {
             invariant(collection->ns().isOplog());
 
             auto tsSlot = slotIdGenerator->generate();
-            return {{repl::OpTime::kTimestampFieldName}, {tsSlot}, tsSlot};
+            return {{repl::OpTime::kTimestampFieldName}, sbe::makeSV(tsSlot), tsSlot};
         }
         return {};
     }();
@@ -290,12 +290,12 @@ generateGenericCollScan(const Collection* collection,
     NamespaceStringOrUUID nss{collection->ns().db().toString(), collection->uuid()};
     auto stage = canUseParallelScan
         ? sbe::makeS<sbe::ParallelScanStage>(
-              nss, resultSlot, recordIdSlot, fields, slots, yieldPolicy)
+              nss, resultSlot, recordIdSlot, std::move(fields), std::move(slots), yieldPolicy)
         : sbe::makeS<sbe::ScanStage>(nss,
                                      resultSlot,
                                      recordIdSlot,
-                                     fields,
-                                     slots,
+                                     std::move(fields),
+                                     std::move(slots),
                                      seekRecordIdSlot,
                                      forward,
                                      yieldPolicy,
@@ -315,8 +315,8 @@ generateGenericCollScan(const Collection* collection,
                 sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::NumberInt64,
                                            (*csn->resumeAfterRecordId).repr())),
             sbe::makeS<sbe::LimitSkipStage>(std::move(stage), boost::none, 1),
-            std::vector<sbe::value::SlotId>{},
-            std::vector<sbe::value::SlotId>{*seekRecordIdSlot},
+            sbe::makeSV(),
+            sbe::makeSV(*seekRecordIdSlot),
             nullptr);
     }
 
@@ -356,7 +356,7 @@ generateCollScan(OperationContext* opCtx,
 
     size_t localDop = internalQueryDefaultDOP.load();
     if (csn->direction == CollectionScanParams::FORWARD && localDop > 1) {
-        std::vector<sbe::value::SlotId> slots = {resultSlot, recordIdSlot};
+        auto slots = sbe::makeSV(resultSlot, recordIdSlot);
         if (oplogTsSlot) {
             slots.push_back(*oplogTsSlot);
         }

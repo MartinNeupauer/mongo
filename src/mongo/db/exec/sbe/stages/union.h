@@ -55,8 +55,8 @@ class UnionStage final : public PlanStage {
         }
     };
 
-    const std::vector<std::vector<value::SlotId>> _inputVals;
-    const std::vector<value::SlotId> _outputVals;
+    const std::vector<value::SlotVector> _inputVals;
+    const value::SlotVector _outputVals;
     std::unordered_map<PlanStage*, std::vector<value::SlotAccessor*>> _inValueAccessors;
     std::vector<value::ViewOfValueAccessor> _outValueAccessors;
     std::queue<UnionBranch> _remainingBranchesToDrain;
@@ -64,8 +64,8 @@ class UnionStage final : public PlanStage {
 
 public:
     UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
-               const std::vector<std::vector<value::SlotId>>& inputVals,
-               const std::vector<value::SlotId>& outputVals);
+               std::vector<value::SlotVector> inputVals,
+               value::SlotVector outputVals);
 
     std::unique_ptr<PlanStage> clone() final;
 

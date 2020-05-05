@@ -40,12 +40,12 @@ class BSONScanStage final : public PlanStage {
 
     const boost::optional<value::SlotId> _recordSlot;
     const std::vector<std::string> _fields;
-    const std::vector<value::SlotId> _vars;
+    const value::SlotVector _vars;
 
     std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
 
-    FieldAccessorMap _fieldAccessors;
-    SlotAccessorMap _varAccessors;
+    value::FieldAccessorMap _fieldAccessors;
+    value::SlotAccessorMap _varAccessors;
 
     const char* _bsonCurrent;
 
@@ -55,8 +55,8 @@ public:
     BSONScanStage(const char* bsonBegin,
                   const char* bsonEnd,
                   boost::optional<value::SlotId> recordSlot,
-                  const std::vector<std::string>& fields,
-                  const std::vector<value::SlotId>& vars);
+                  std::vector<std::string> fields,
+                  value::SlotVector vars);
 
     std::unique_ptr<PlanStage> clone() final;
 

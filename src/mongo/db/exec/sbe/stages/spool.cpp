@@ -32,8 +32,8 @@
 namespace mongo::sbe {
 SpoolEagerProducerStage::SpoolEagerProducerStage(std::unique_ptr<PlanStage> input,
                                                  SpoolId spoolId,
-                                                 const std::vector<value::SlotId>& vals)
-    : PlanStage{"espool"_sd}, _spoolId{spoolId}, _vals{vals} {
+                                                 value::SlotVector vals)
+    : PlanStage{"espool"_sd}, _spoolId{spoolId}, _vals{std::move(vals)} {
     _children.emplace_back(std::move(input));
 }
 
@@ -48,7 +48,7 @@ void SpoolEagerProducerStage::prepare(CompileCtx& ctx) {
         _buffer = ctx.getSpoolBuffer(_spoolId);
     }
 
-    SlotSet dupCheck;
+    value::SlotSet dupCheck;
     size_t counter = 0;
 
     for (auto slot : _vals) {
@@ -146,9 +146,12 @@ std::vector<DebugPrinter::Block> SpoolEagerProducerStage::debugPrint() {
 
 SpoolLazyProducerStage::SpoolLazyProducerStage(std::unique_ptr<PlanStage> input,
                                                SpoolId spoolId,
-                                               const std::vector<value::SlotId>& vals,
+                                               value::SlotVector vals,
                                                std::unique_ptr<EExpression> predicate)
-    : PlanStage{"lspool"_sd}, _spoolId{spoolId}, _vals{vals}, _predicate{std::move(predicate)} {
+    : PlanStage{"lspool"_sd},
+      _spoolId{spoolId},
+      _vals{std::move(vals)},
+      _predicate{std::move(predicate)} {
     _children.emplace_back(std::move(input));
 }
 
@@ -169,7 +172,7 @@ void SpoolLazyProducerStage::prepare(CompileCtx& ctx) {
         _predicateCode = _predicate->compile(ctx);
     }
 
-    SlotSet dupCheck;
+    value::SlotSet dupCheck;
 
     for (auto slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);

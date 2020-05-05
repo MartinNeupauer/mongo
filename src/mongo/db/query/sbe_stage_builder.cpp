@@ -92,7 +92,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
         _data.resultSlot,
         _data.recordIdSlot,
         std::vector<std::string>{},
-        std::vector<sbe::value::SlotId>{},
+        sbe::makeSV(),
         recordIdKeySlot,
         true,
         nullptr);
@@ -102,8 +102,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildFetch(const QuerySol
     auto stage = sbe::makeS<sbe::LoopJoinStage>(
         std::move(inputStage),
         sbe::makeS<sbe::LimitSkipStage>(std::move(collScan), 1, boost::none),
-        std::vector<sbe::value::SlotId>{},
-        std::vector<sbe::value::SlotId>{*recordIdKeySlot},
+        sbe::makeSV(),
+        sbe::makeSV(*recordIdKeySlot),
         nullptr);
 
     if (fn->filter) {
@@ -140,9 +140,9 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
     const auto sn = static_cast<const SortNode*>(root);
     auto sortPattern = SortPattern{sn->pattern, _cq.getExpCtx()};
     auto inputStage = build(sn->children[0]);
-    std::vector<sbe::value::SlotId> orderBy;
+    sbe::value::SlotVector orderBy;
     std::vector<sbe::value::SortDirection> direction;
-    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projectMap;
+    sbe::value::SlotMap<std::unique_ptr<sbe::EExpression>> projectMap;
 
     for (const auto& part : sortPattern) {
         uassert(ErrorCodes::InternalErrorNotSupported,
@@ -199,13 +199,13 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
                                                     orderBy[idx],
                                                     resultVar,
                                                     innerVar,
-                                                    std::vector<sbe::value::SlotId>{},
+                                                    sbe::makeSV(),
                                                     std::move(minmax),
                                                     nullptr);
         orderBy[idx] = resultVar;
     }
 
-    std::vector<sbe::value::SlotId> values;
+    sbe::value::SlotVector values;
     values.push_back(*_data.resultSlot);
     if (_data.recordIdSlot) {
         // Break ties with record id if awailable.
@@ -217,9 +217,9 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
         values.push_back(*_data.oplogTsSlot);
     }
     return sbe::makeS<sbe::SortStage>(std::move(inputStage),
-                                      orderBy,
-                                      direction,
-                                      values,
+                                      std::move(orderBy),
+                                      std::move(direction),
+                                      std::move(values),
                                       sn->limit ? sn->limit
                                                 : std::numeric_limits<std::size_t>::max());
 }
@@ -237,8 +237,8 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionSimple(
 
     auto pn = static_cast<const ProjectionNodeSimple*>(root);
     auto inputStage = build(pn->children[0]);
-    std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> projections;
-    std::vector<sbe::value::SlotId> fieldSlots;
+    sbe::value::SlotMap<std::unique_ptr<sbe::EExpression>> projections;
+    sbe::value::SlotVector fieldSlots;
 
     for (const auto& field : pn->proj.getRequiredFields()) {
         fieldSlots.push_back(_slotIdGenerator.generate());
@@ -276,7 +276,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildProjectionDefault(
 
 std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySolutionNode* root) {
     std::vector<std::unique_ptr<sbe::PlanStage>> inputStages;
-    std::vector<std::vector<sbe::value::SlotId>> inputSlots;
+    std::vector<sbe::value::SlotVector> inputSlots;
 
     auto orn = static_cast<const OrNode*>(root);
     for (auto&& child : orn->children) {
@@ -286,14 +286,12 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySoluti
     }
 
     _data.recordIdSlot = _slotIdGenerator.generate();
-    std::vector<sbe::value::SlotId> outputSlots{*_data.recordIdSlot};
-    auto stage = sbe::makeS<sbe::UnionStage>(std::move(inputStages), inputSlots, outputSlots);
+    auto stage = sbe::makeS<sbe::UnionStage>(
+        std::move(inputStages), std::move(inputSlots), sbe::makeSV(*_data.recordIdSlot));
 
     if (orn->dedup) {
         stage = sbe::makeS<sbe::HashAggStage>(
-            std::move(stage),
-            outputSlots,
-            std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>>{});
+            std::move(stage), sbe::makeSV(*_data.recordIdSlot), sbe::makeEM());
     }
 
     if (orn->filter) {

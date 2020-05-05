@@ -162,9 +162,9 @@ public:
 
 class BranchStage final : public PlanStage {
     const std::unique_ptr<EExpression> _filter;
-    const std::vector<value::SlotId> _inputThenVals;
-    const std::vector<value::SlotId> _inputElseVals;
-    const std::vector<value::SlotId> _outputVals;
+    const value::SlotVector _inputThenVals;
+    const value::SlotVector _inputElseVals;
+    const value::SlotVector _outputVals;
     std::unique_ptr<vm::CodeFragment> _filterCode;
 
     std::vector<value::SlotAccessor*> _inputThenAccessors;
@@ -182,9 +182,9 @@ public:
     BranchStage(std::unique_ptr<PlanStage> inputThen,
                 std::unique_ptr<PlanStage> inputElse,
                 std::unique_ptr<EExpression> filter,
-                const std::vector<value::SlotId>& inputThenVals,
-                const std::vector<value::SlotId>& inputElseVals,
-                const std::vector<value::SlotId>& outputVals);
+                value::SlotVector inputThenVals,
+                value::SlotVector inputElseVals,
+                value::SlotVector outputVals);
 
     std::unique_ptr<PlanStage> clone() final;
 

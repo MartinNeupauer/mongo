@@ -35,17 +35,17 @@ namespace mongo::sbe {
 MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
                            value::SlotId objSlot,
                            boost::optional<value::SlotId> rootSlot,
-                           const std::vector<std::string>& restrictFields,
-                           const std::vector<std::string>& projectFields,
-                           const std::vector<value::SlotId>& projectVars,
+                           std::vector<std::string> restrictFields,
+                           std::vector<std::string> projectFields,
+                           value::SlotVector projectVars,
                            bool forceNewObject,
                            bool returnOldObject)
     : PlanStage("mkobj"_sd),
       _objSlot(objSlot),
       _rootSlot(rootSlot),
-      _restrictFields(restrictFields),
-      _projectFields(projectFields),
-      _projectVars(projectVars),
+      _restrictFields(std::move(restrictFields)),
+      _projectFields(std::move(projectFields)),
+      _projectVars(std::move(projectVars)),
       _forceNewObject(forceNewObject),
       _returnOldObject(returnOldObject) {
     _children.emplace_back(std::move(input));

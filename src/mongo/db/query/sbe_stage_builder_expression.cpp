@@ -72,7 +72,7 @@ struct ExpressionVisitorContext {
                              sbe::value::SlotIdGenerator* slotIdGenerator,
                              sbe::value::FrameIdGenerator* frameIdGenerator,
                              sbe::value::SlotId rootSlot,
-                             std::vector<sbe::value::SlotId>* relevantSlots)
+                             sbe::value::SlotVector* relevantSlots)
         : traverseStage(std::move(inputStage)),
           slotIdGenerator(slotIdGenerator),
           frameIdGenerator(frameIdGenerator),
@@ -81,7 +81,7 @@ struct ExpressionVisitorContext {
 
     struct VarsFrame {
         std::deque<Variables::Id> variablesToBind;
-        std::unordered_map<sbe::value::SlotId, std::unique_ptr<sbe::EExpression>> boundVariables;
+        sbe::value::SlotMap<std::unique_ptr<sbe::EExpression>> boundVariables;
 
         template <class... Args>
         VarsFrame(Args&&... args)
@@ -91,14 +91,14 @@ struct ExpressionVisitorContext {
 
     struct LogicalExpressionEvalFrame {
         std::unique_ptr<sbe::PlanStage> savedTraverseStage;
-        std::vector<sbe::value::SlotId> savedRelevantSlots;
+        sbe::value::SlotVector savedRelevantSlots;
 
         sbe::value::SlotId nextBranchResultSlot;
 
         std::vector<std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>>> branches;
 
         LogicalExpressionEvalFrame(std::unique_ptr<sbe::PlanStage> traverseStage,
-                                   const std::vector<sbe::value::SlotId>& relevantSlots,
+                                   const sbe::value::SlotVector& relevantSlots,
                                    sbe::value::SlotId nextBranchResultSlot)
             : savedTraverseStage(std::move(traverseStage)),
               savedRelevantSlots(relevantSlots),
@@ -108,7 +108,7 @@ struct ExpressionVisitorContext {
 
     // See the comment above the generateExpression() declaration for an explanation of the
     // 'relevantSlots' list.
-    std::vector<sbe::value::SlotId>* relevantSlots;
+    sbe::value::SlotVector* relevantSlots;
 
     void ensureArity(size_t arity) {
         invariant(exprs.size() >= arity);
@@ -273,7 +273,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverseH
                                            fieldSlot,
                                            outputSlot,
                                            outputSlot,
-                                           std::vector<sbe::value::SlotId>{},
+                                           sbe::makeSV(),
                                            nullptr,
                                            nullptr,
                                            1)};
@@ -309,7 +309,7 @@ std::pair<sbe::value::SlotId, std::unique_ptr<sbe::PlanStage>> generateTraverse(
                                                inputSlot,
                                                outputSlot,
                                                innerBranchOutputSlot,
-                                               std::vector<sbe::value::SlotId>{},
+                                               sbe::makeSV(),
                                                nullptr,
                                                nullptr)};
     }
@@ -1228,18 +1228,16 @@ private:
         LogicalExpressionEvalFrame.branches.emplace_back(
             std::make_pair(lastBranchResultSlot, std::move(lastBranch)));
 
-        std::vector<std::vector<sbe::value::SlotId>> branchSlots;
+        std::vector<sbe::value::SlotVector> branchSlots;
         std::vector<std::unique_ptr<sbe::PlanStage>> branchStages;
         for (auto&& [slot, stage] : LogicalExpressionEvalFrame.branches) {
-            branchSlots.push_back(std::vector<sbe::value::SlotId>{slot});
+            branchSlots.push_back(sbe::makeSV(slot));
             branchStages.push_back(std::move(stage));
         }
 
         auto branchResultSlot = _context->slotIdGenerator->generate();
-        auto unionOfBranches =
-            sbe::makeS<sbe::UnionStage>(std::move(branchStages),
-                                        branchSlots,
-                                        std::vector<sbe::value::SlotId>{branchResultSlot});
+        auto unionOfBranches = sbe::makeS<sbe::UnionStage>(
+            std::move(branchStages), std::move(branchSlots), sbe::makeSV(branchResultSlot));
 
         // Restore 'relevantSlots' to the way it was before we started translating the logic
         // operator.
@@ -1248,7 +1246,7 @@ private:
         // Get a list of slots that are used by $let expressions. These slots need to be available
         // to the inner side of the LoopJoinStage, in case any of the branches want to reference one
         // of the variables bound by the $let.
-        std::vector<sbe::value::SlotId> letBindings;
+        sbe::value::SlotVector letBindings;
         for (auto&& [_, slot] : _context->environment) {
             letBindings.push_back(slot);
         }
@@ -1269,8 +1267,8 @@ private:
         auto stage = sbe::makeS<sbe::LoopJoinStage>(
             std::move(LogicalExpressionEvalFrame.savedTraverseStage),
             sbe::makeS<sbe::LimitSkipStage>(std::move(unionOfBranches), 1, boost::none),
-            relevantSlotsWithLetBindings,
-            letBindings,
+            std::move(relevantSlotsWithLetBindings),
+            std::move(letBindings),
             nullptr /* predicate */);
 
         // We've already restored all necessary state from the top 'logicalExpressionEvalFrameStack'
@@ -1323,8 +1321,8 @@ generateExpression(Expression* expr,
                    sbe::value::SlotIdGenerator* slotIdGenerator,
                    sbe::value::FrameIdGenerator* frameIdGenerator,
                    sbe::value::SlotId rootSlot,
-                   std::vector<sbe::value::SlotId>* relevantSlots) {
-    std::vector<sbe::value::SlotId> tempRelevantSlots = {rootSlot};
+                   sbe::value::SlotVector* relevantSlots) {
+    auto tempRelevantSlots = sbe::makeSV(rootSlot);
     relevantSlots = relevantSlots ? relevantSlots : &tempRelevantSlots;
 
     ExpressionVisitorContext context(

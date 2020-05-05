@@ -51,14 +51,14 @@ class SpoolEagerProducerStage final : public PlanStage {
     size_t _bufferIt;
     const SpoolId _spoolId;
 
-    const std::vector<value::SlotId> _vals;
+    const value::SlotVector _vals;
     std::vector<value::SlotAccessor*> _inAccessors;
-    SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
+    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 
 public:
     SpoolEagerProducerStage(std::unique_ptr<PlanStage> input,
                             SpoolId spoolId,
-                            const std::vector<value::SlotId>& vals);
+                            value::SlotVector vals);
 
     std::unique_ptr<PlanStage> clone() final;
 
@@ -95,9 +95,9 @@ class SpoolLazyProducerStage final : public PlanStage {
     std::shared_ptr<SpoolBuffer> _buffer{nullptr};
     const SpoolId _spoolId;
 
-    const std::vector<value::SlotId> _vals;
+    const value::SlotVector _vals;
     std::vector<value::SlotAccessor*> _inAccessors;
-    std::unordered_map<value::SlotId, value::ViewOfValueAccessor> _outAccessors;
+    value::SlotMap<value::ViewOfValueAccessor> _outAccessors;
 
     std::unique_ptr<EExpression> _predicate;
     std::unique_ptr<vm::CodeFragment> _predicateCode;
@@ -107,7 +107,7 @@ class SpoolLazyProducerStage final : public PlanStage {
 public:
     SpoolLazyProducerStage(std::unique_ptr<PlanStage> input,
                            SpoolId spoolId,
-                           const std::vector<value::SlotId>& vals,
+                           value::SlotVector vals,
                            std::unique_ptr<EExpression> predicate);
 
     std::unique_ptr<PlanStage> clone() final;
@@ -145,12 +145,14 @@ class SpoolConsumerStage final : public PlanStage {
     size_t _bufferIt;
     const SpoolId _spoolId;
 
-    const std::vector<value::SlotId> _vals;
-    SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
+    const value::SlotVector _vals;
+    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 
 public:
-    SpoolConsumerStage(SpoolId spoolId, const std::vector<value::SlotId>& vals)
-        : PlanStage{IsStack ? "sspool"_sd : "cspool"_sd}, _spoolId{spoolId}, _vals{vals} {}
+    SpoolConsumerStage(SpoolId spoolId, value::SlotVector vals)
+        : PlanStage{IsStack ? "sspool"_sd : "cspool"_sd},
+          _spoolId{spoolId},
+          _vals{std::move(vals)} {}
 
     std::unique_ptr<PlanStage> clone() {
         return std::make_unique<SpoolConsumerStage<IsStack>>(_spoolId, _vals);
@@ -161,7 +163,7 @@ public:
             _buffer = ctx.getSpoolBuffer(_spoolId);
         }
 
-        SlotSet dupCheck;
+        value::SlotSet dupCheck;
         size_t counter = 0;
 
         for (auto slot : _vals) {

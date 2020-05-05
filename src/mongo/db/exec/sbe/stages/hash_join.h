@@ -44,26 +44,26 @@ class HashJoinStage final : public PlanStage {
     using HashKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
     using HashProjectAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
 
-    const std::vector<value::SlotId> _outerCond;
-    const std::vector<value::SlotId> _outerProjects;
-    const std::vector<value::SlotId> _innerCond;
-    const std::vector<value::SlotId> _innerProjects;
+    const value::SlotVector _outerCond;
+    const value::SlotVector _outerProjects;
+    const value::SlotVector _innerCond;
+    const value::SlotVector _innerProjects;
 
     // all defined values from the outer side (i.e. they come from the hash table)
-    SlotAccessorMap _outOuterAccessors;
+    value::SlotAccessorMap _outOuterAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    SlotAccessorMap _inOuterKeyAccessors;
+    value::SlotAccessorMap _inOuterKeyAccessors;
     // accessors of output keys
     std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
 
     // accessors of input projection values that are build inserted into the hash table
-    SlotAccessorMap _inOuterProjectAccessors;
+    value::SlotAccessorMap _inOuterProjectAccessors;
     // accessors of output projections
     std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    SlotAccessorMap _inInnerKeyAccessors;
+    value::SlotAccessorMap _inInnerKeyAccessors;
 
     // key used to probe inside the hash table
     value::MaterializedRow _probeKey;
@@ -79,10 +79,10 @@ class HashJoinStage final : public PlanStage {
 public:
     HashJoinStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
-                  const std::vector<value::SlotId>& outerCond,
-                  const std::vector<value::SlotId>& outerProjects,
-                  const std::vector<value::SlotId>& innerCond,
-                  const std::vector<value::SlotId>& innerProjects);
+                  value::SlotVector outerCond,
+                  value::SlotVector outerProjects,
+                  value::SlotVector innerCond,
+                  value::SlotVector innerProjects);
 
     std::unique_ptr<PlanStage> clone() final;
 
