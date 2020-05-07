@@ -4,15 +4,10 @@
 (function() {
 "use strict";
 
-load("jstests/aggregation/extras/utils.js");  // For arrayEq.
+load("jstests/sbe/utils.js");  // For 'testCursorCommandSBE()'.
 
-const coll = db.sbe_agg;
+const coll = db.fts_sbe;
 coll.drop();
-
-function toggleSBE(isSBE) {
-    assert.commandWorked(
-        db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": isSBE}));
-}
 
 assert.commandWorked(coll.createIndex({a: "text"}));
 assert.commandWorked(coll.insert([
@@ -25,14 +20,9 @@ assert.commandWorked(coll.insert([
 ]));
 
 function testTextSearch(textQuery) {
+    const expectSort = false;
     const filter = {$text: {$search: textQuery}};
-    toggleSBE(true);
-    const resultsWithSBE = coll.find(filter).toArray();
-    toggleSBE(false);
-    const resultsWithDefault = coll.find(filter).toArray();
-    assert(arrayEq(resultsWithSBE, resultsWithDefault),
-           `actual=${tojson(resultsWithSBE)}, expected=${tojson(resultsWithDefault)}, textQuery=${
-               tojson(textQuery)}`);
+    testCursorCommandSBE(db, {find: coll.getName(), filter: filter}, expectSort);
 }
 
 testTextSearch("one");

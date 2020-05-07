@@ -209,8 +209,8 @@ public:
 class EPrimUnary final : public EExpression {
 public:
     enum Op {
-        negate,
         logicNot,
+        negate,
     };
 
 private:

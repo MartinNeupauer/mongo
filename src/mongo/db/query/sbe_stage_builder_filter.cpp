@@ -75,6 +75,17 @@
 namespace mongo::stage_builder {
 namespace {
 /**
+ * The various flavors of PathMatchExpressions require the same skeleton of traverse operators in
+ * order to perform implicit path traversal, but may translate differently to an SBE expression that
+ * actually applies the predicate against an individual array element.
+ *
+ * A function of this type can be called to generate an EExpression which applies a predicate to the
+ * value found in 'inputSlot'.
+ */
+using MakePredicateEExprFn =
+    std::function<std::unique_ptr<sbe::EExpression>(sbe::value::SlotId inputSlot)>;
+
+/**
  * A struct for storing context across calls to visit() methods in MatchExpressionVisitor's.
  */
 struct MatchExpressionVisitorContext {
@@ -140,8 +151,8 @@ private:
  *          elemPredicateVar1 // the result coming from the 'in' branch
  *          fieldVar1 // field 'a' projected in the 'from' branch, this is the field we will be
  *                    // traversing
- *          {traversePredicateVar || elemPredicateVar1} // the folding expression - combing results
- *                                                      // for each element
+ *          {traversePredicateVar || elemPredicateVar1} // the folding expression - combining
+ *                                                      // results for each element
  *          {traversePredicateVar} // final (early out) expression - when we hit the 'true' value,
  *                                 // we don't have to traverse the whole array
  *      in
@@ -172,8 +183,8 @@ private:
 std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorContext* context,
                                                        std::unique_ptr<sbe::PlanStage> inputStage,
                                                        sbe::value::SlotId inputVar,
-                                                       sbe::EPrimBinary::Op op,
-                                                       const ComparisonMatchExpression* expr,
+                                                       const PathMatchExpression* expr,
+                                                       MakePredicateEExprFn makeEExprCallback,
                                                        size_t level) {
     using namespace std::literals;
 
@@ -201,22 +212,10 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
 
     std::unique_ptr<sbe::PlanStage> innerBranch;
     if (level == path.numParts() - 1u) {
-        // Once the end of the traversal path is reached, evaluate the given predicate and project
-        // out the result as 'elemPredicateVar'. The 'rhs' BSON element will contain the value to
-        // compare the document field against.
-        const auto& rhs = expr->getData();
-        auto [tagView, valView] = sbe::bson::convertFrom(
-            true, rhs.rawdata(), rhs.rawdata() + rhs.size(), rhs.fieldNameSize() - 1);
-
-        // SBE EConstant assumes the ownership of the value so we have to make a copy here.
-
-        auto [tag, val] = sbe::value::copyValue(tagView, valView);
-
         innerBranch = sbe::makeProjectStage(
             sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
             elemPredicateVar,
-            sbe::makeE<sbe::EPrimBinary>(
-                op, sbe::makeE<sbe::EVariable>(fieldVar), sbe::makeE<sbe::EConstant>(tag, val)));
+            makeEExprCallback(fieldVar));
     } else {
         // Generate nested traversal.
         innerBranch = sbe::makeProjectStage(
@@ -224,8 +223,8 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
                 context,
                 sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none),
                 fieldVar,
-                op,
                 expr,
+                makeEExprCallback,
                 level + 1),
             elemPredicateVar,
             sbe::makeE<sbe::EVariable>(traversePredicateVar));
@@ -247,15 +246,21 @@ std::unique_ptr<sbe::PlanStage> generateTraverseHelper(MatchExpressionVisitorCon
 }
 
 /**
- * For the given MatchExpression 'expr', generates a path traversal SBE plan stage sub-tree
- * implementing the comparison expression.
+ * For the given PathMatchExpression 'expr', generates a path traversal SBE plan stage sub-tree
+ * implementing the expression. Generates a sequence of nested traverse operators in order to
+ * perform nested array traversal, and then calls 'makeEExprCallback' in order to generate an SBE
+ * expression responsible for applying the predicate to individual array elements.
  */
 void generateTraverse(MatchExpressionVisitorContext* context,
-                      sbe::EPrimBinary::Op op,
-                      const ComparisonMatchExpression* expr) {
+                      const PathMatchExpression* expr,
+                      MakePredicateEExprFn makeEExprCallback) {
     context->predicateVars.push(context->slotIdGenerator->generate());
-    context->inputStage = generateTraverseHelper(
-        context, std::move(context->inputStage), context->inputVar, op, expr, 0);
+    context->inputStage = generateTraverseHelper(context,
+                                                 std::move(context->inputStage),
+                                                 context->inputVar,
+                                                 expr,
+                                                 std::move(makeEExprCallback),
+                                                 0);
 
     // If this comparison expression is a branch of a logical $and expression, but not the last
     // one, inject a filter stage to bail out early from the $and predicate without the need to
@@ -271,6 +276,27 @@ void generateTraverse(MatchExpressionVisitorContext* context,
             context->predicateVars.pop();
         }
     }
+}
+
+/**
+ * Generates a path traversal SBE plan stage sub-tree which implments the comparison match
+ * expression 'expr'. The comparison itself executes using the given 'binaryOp'.
+ */
+void generateTraverseForComparisonPredicate(MatchExpressionVisitorContext* context,
+                                            const ComparisonMatchExpression* expr,
+                                            sbe::EPrimBinary::Op binaryOp) {
+    auto makeEExprFn = [expr, binaryOp](sbe::value::SlotId inputSlot) {
+        const auto& rhs = expr->getData();
+        auto [tagView, valView] = sbe::bson::convertFrom(
+            true, rhs.rawdata(), rhs.rawdata() + rhs.size(), rhs.fieldNameSize() - 1);
+
+        // SBE EConstant assumes ownership of the value so we have to make a copy here.
+        auto [tag, val] = sbe::value::copyValue(tagView, valView);
+
+        return sbe::makeE<sbe::EPrimBinary>(
+            binaryOp, sbe::makeE<sbe::EVariable>(inputSlot), sbe::makeE<sbe::EConstant>(tag, val));
+    };
+    generateTraverse(context, expr, std::move(makeEExprFn));
 }
 
 /**
@@ -466,9 +492,7 @@ public:
     void visit(const OrMatchExpression* expr) final {
         _context->nestedLogicalExprs.push({expr, expr->numChildren()});
     }
-    void visit(const RegexMatchExpression* expr) final {
-        unsupportedExpression(expr);
-    }
+    void visit(const RegexMatchExpression* expr) final {}
     void visit(const SizeMatchExpression* expr) final {
         unsupportedExpression(expr);
     }
@@ -522,15 +546,15 @@ public:
     void visit(const ElemMatchObjectMatchExpression* expr) final {}
     void visit(const ElemMatchValueMatchExpression* expr) final {}
     void visit(const EqualityMatchExpression* expr) final {
-        generateTraverse(_context, sbe::EPrimBinary::eq, expr);
+        generateTraverseForComparisonPredicate(_context, expr, sbe::EPrimBinary::eq);
     }
     void visit(const ExistsMatchExpression* expr) final {}
     void visit(const ExprMatchExpression* expr) final {}
     void visit(const GTEMatchExpression* expr) final {
-        generateTraverse(_context, sbe::EPrimBinary::greaterEq, expr);
+        generateTraverseForComparisonPredicate(_context, expr, sbe::EPrimBinary::greaterEq);
     }
     void visit(const GTMatchExpression* expr) final {
-        generateTraverse(_context, sbe::EPrimBinary::greater, expr);
+        generateTraverseForComparisonPredicate(_context, expr, sbe::EPrimBinary::greater);
     }
     void visit(const GeoMatchExpression* expr) final {}
     void visit(const GeoNearMatchExpression* expr) final {}
@@ -556,10 +580,10 @@ public:
     void visit(const InternalSchemaUniqueItemsMatchExpression* expr) final {}
     void visit(const InternalSchemaXorMatchExpression* expr) final {}
     void visit(const LTEMatchExpression* expr) final {
-        generateTraverse(_context, sbe::EPrimBinary::lessEq, expr);
+        generateTraverseForComparisonPredicate(_context, expr, sbe::EPrimBinary::lessEq);
     }
     void visit(const LTMatchExpression* expr) final {
-        generateTraverse(_context, sbe::EPrimBinary::less, expr);
+        generateTraverseForComparisonPredicate(_context, expr, sbe::EPrimBinary::less);
     }
     void visit(const ModMatchExpression* expr) final {}
     void visit(const NorMatchExpression* expr) final {}
@@ -568,7 +592,39 @@ public:
         _context->nestedLogicalExprs.pop();
         generateLogicalOr(_context, expr);
     }
-    void visit(const RegexMatchExpression* expr) final {}
+
+    void visit(const RegexMatchExpression* expr) final {
+        auto makeEExprFn = [expr](sbe::value::SlotId inputSlot) {
+            auto regex = RegexMatchExpression::makeRegex(expr->getString(), expr->getFlags());
+            auto ownedRegexVal = sbe::value::bitcastFrom(regex.release());
+
+            // The "regexMatch" function returns Nothing when given any non-string input, so we need
+            // an explicit string check in the expression in order to capture the MQL semantics of
+            // regex returning false for non-strings. We generate the following expression:
+            //
+            //             and
+            //       /            \
+            //  isString            regexMatch
+            //    |                    |             \
+            //   var (inputSlot)   constant (regex)    var (inputSlot)
+            //
+            // TODO: In the future, this needs to account for the fact that the regex match
+            // expression matches strings, but also matches stored regexes. For example,
+            // {$match: {a: /foo/}} matches the document {a: /foo/} in addition to {a: "foobar"}.
+            return sbe::makeE<sbe::EPrimBinary>(
+                sbe::EPrimBinary::logicAnd,
+                sbe::makeE<sbe::EFunction>("isString",
+                                           sbe::makeEs(sbe::makeE<sbe::EVariable>(inputSlot))),
+                sbe::makeE<sbe::EFunction>(
+                    "regexMatch",
+                    sbe::makeEs(
+                        sbe::makeE<sbe::EConstant>(sbe::value::TypeTags::pcreRegex, ownedRegexVal),
+                        sbe::makeE<sbe::EVariable>(inputSlot))));
+        };
+
+        generateTraverse(_context, expr, std::move(makeEExprFn));
+    }
+
     void visit(const SizeMatchExpression* expr) final {}
     void visit(const TextMatchExpression* expr) final {}
     void visit(const TextNoOpMatchExpression* expr) final {}

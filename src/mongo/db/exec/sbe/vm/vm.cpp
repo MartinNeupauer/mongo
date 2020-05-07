@@ -27,12 +27,16 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/vm/vm.h"
+#include "mongo/db/exec/sbe/values/value.h"
+#include "mongo/platform/basic.h"
+
+#include <pcrecpp.h>
+#include <set>
+
 #include "mongo/db/exec/sbe/values/bson.h"
+#include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/db/storage/key_string.h"
 #include "mongo/util/fail_point.h"
-
-#include <set>
 
 MONGO_FAIL_POINT_DEFINE(failOnPoisonedFieldLookup);
 
@@ -719,11 +723,32 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToSet(uint8_
     return {ownAgg, tagAgg, valAgg};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinRegexMatch(uint8_t arity) {
+    invariant(arity == 2);
+
+    auto [ownedPcreRegex, typeTagPcreRegex, valuePcreRegex] = getFromStack(0);
+    auto [ownedInputStr, typeTagInputStr, valueInputStr] = getFromStack(1);
+
+    if (!value::isString(typeTagInputStr) || typeTagPcreRegex != value::TypeTags::pcreRegex) {
+        return {false, value::TypeTags::Nothing, 0};
+    }
+
+    auto stringView = value::getStringView(typeTagInputStr, valueInputStr);
+    pcrecpp::StringPiece pcreStringView{stringView.data(), static_cast<int>(stringView.size())};
+
+    auto pcreRegex = value::getPrceRegexView(valuePcreRegex);
+    auto regexMatchResult = pcreRegex->PartialMatch(pcreStringView);
+
+    return {false, value::TypeTags::Boolean, regexMatchResult};
+}
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
     switch (f) {
         case Builtin::split:
             return builtinSplit(arity);
+        case Builtin::regexMatch:
+            return builtinRegexMatch(arity);
         case Builtin::dropFields:
             return builtinDropFields(arity);
         case Builtin::newObj:
@@ -743,6 +768,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
     invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));
     MONGO_UNREACHABLE;
 }
+
 std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* code) {
     auto pcPointer = code->instrs().data();
     auto pcEnd = pcPointer + code->instrs().size();

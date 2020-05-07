@@ -41,6 +41,10 @@
 #include "mongo/platform/decimal128.h"
 #include "mongo/util/assert_util.h"
 
+namespace pcrecpp {
+class RE;
+}  // namespace pcrecpp
+
 namespace mongo {
 /**
  * Forward declaration.
@@ -91,7 +95,10 @@ enum class TypeTags : uint8_t {
     bsonObjectId,
 
     // KeyString::Value
-    ksValue
+    ksValue,
+
+    // Pointer to a compiled PCRE regular expression object.
+    pcreRegex,
 };
 
 std::ostream& operator<<(std::ostream& os, const TypeTags tag);
@@ -526,7 +533,13 @@ inline KeyString::Value* getKeyStringView(Value val) noexcept {
     return reinterpret_cast<KeyString::Value*>(val);
 }
 
+inline pcrecpp::RE* getPrceRegexView(Value val) noexcept {
+    return reinterpret_cast<pcrecpp::RE*>(val);
+}
+
 std::pair<TypeTags, Value> makeCopyKeyString(const KeyString::Value& inKey);
+
+std::pair<TypeTags, Value> makeCopyPcreRegex(const pcrecpp::RE&);
 
 void releaseValue(TypeTags tag, Value val) noexcept;
 
@@ -580,6 +593,8 @@ inline std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val) {
         }
         case TypeTags::ksValue:
             return makeCopyKeyString(*getKeyStringView(val));
+        case TypeTags::pcreRegex:
+            return makeCopyPcreRegex(*getPrceRegexView(val));
         default:
             break;
     }

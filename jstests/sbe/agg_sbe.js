@@ -4,9 +4,9 @@
 (function() {
 "use strict";
 
-load("jstests/aggregation/extras/utils.js");  // For arrayEq and orderedArrayEq.
+load("jstests/sbe/utils.js");  // For 'testCursorCommandSBE()'.
 
-const coll = db.sbe_agg;
+const coll = db.agg_sbe;
 coll.drop();
 
 assert.commandWorked(coll.insert([
@@ -39,29 +39,12 @@ assert.commandWorked(coll.insert([
     {_id: 28, d1: 4.6, d2: -4.6, dec1: NumberDecimal("4.6"), dec2: NumberDecimal("-4.6")}
 ]));
 
-function toggleSBE(isSBE) {
-    assert.commandWorked(
-        db.adminCommand({setParameter: 1, "internalQueryEnableSlotBasedExecutionEngine": isSBE}));
-}
-
 // Runs 'pipeline' with SBE enabled and disabled, and checks that the result sets are the same. If
 // 'expectSort' is true, then we verify that the two result sets have the same order. Otherwise, we
 // check that the results are the same but permit different orders.
 function testPipeline({pipeline, expectSort}) {
-    toggleSBE(true);
-    const resultsWithSBE = coll.aggregate(pipeline).toArray();
-    toggleSBE(false);
-    const resultsWithDefault = coll.aggregate(pipeline).toArray();
-
-    if (expectSort) {
-        assert(orderedArrayEq(resultsWithSBE, resultsWithDefault),
-               `actual=${tojson(resultsWithSBE)}, expected=${tojson(resultsWithDefault)}, query=${
-                   tojson(pipeline)}`);
-    } else {
-        assert(arrayEq(resultsWithSBE, resultsWithDefault),
-               `actual=${tojson(resultsWithSBE)}, expected=${tojson(resultsWithDefault)}, query=${
-                   tojson(pipeline)}`);
-    }
+    const aggCmd = {aggregate: coll.getName(), pipeline: pipeline, cursor: {}};
+    testCursorCommandSBE(db, aggCmd, expectSort);
 }
 
 testPipeline({pipeline: [{$match: {x: {$gt: 0}}}], expectSort: false});

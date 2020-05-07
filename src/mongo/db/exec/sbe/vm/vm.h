@@ -158,6 +158,7 @@ static_assert(sizeof(Instruction) == sizeof(uint8_t));
 
 enum class Builtin : uint8_t {
     split,
+    regexMatch,
     dropFields,
     newObj,
     ksToString,  // KeyString to string
@@ -342,6 +343,7 @@ class ByteCode {
                                                             value::Value fieldValue);
 
     std::tuple<bool, value::TypeTags, value::Value> builtinSplit(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinRegexMatch(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinDropFields(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinNewObj(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinKeyStringToString(uint8_t arity);

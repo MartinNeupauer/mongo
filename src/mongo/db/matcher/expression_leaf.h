@@ -334,6 +334,9 @@ class RegexMatchExpression : public LeafMatchExpression {
 public:
     static const std::set<char> kValidRegexFlags;
 
+    static std::unique_ptr<pcrecpp::RE> makeRegex(const std::string& regex,
+                                                  const std::string& flags);
+
     RegexMatchExpression(StringData path, const BSONElement& e);
     RegexMatchExpression(StringData path, StringData regex, StringData options);
 

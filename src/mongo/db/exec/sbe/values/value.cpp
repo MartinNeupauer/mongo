@@ -27,7 +27,12 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/values/value.h"
+
+#include <pcrecpp.h>
+
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/db/storage/key_string.h"
 
@@ -38,6 +43,11 @@ namespace value {
 std::pair<TypeTags, Value> makeCopyKeyString(const KeyString::Value& inKey) {
     auto k = new KeyString::Value(inKey);
     return {TypeTags::ksValue, reinterpret_cast<Value>(k)};
+}
+
+std::pair<TypeTags, Value> makeCopyPcreRegex(const pcrecpp::RE& regex) {
+    auto ownedRegexVal = sbe::value::bitcastFrom(new pcrecpp::RE(regex));
+    return {TypeTags::pcreRegex, ownedRegexVal};
 }
 
 void releaseValue(TypeTags tag, Value val) noexcept {
@@ -67,6 +77,9 @@ void releaseValue(TypeTags tag, Value val) noexcept {
             break;
         case TypeTags::ksValue:
             delete getKeyStringView(val);
+            break;
+        case TypeTags::pcreRegex:
+            delete getPrceRegexView(val);
             break;
         default:
             break;
@@ -279,6 +292,12 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
         case value::TypeTags::Timestamp: {
             Timestamp ts{bitcastTo<uint64_t>(val)};
             os << ts.toString();
+            break;
+        }
+        case value::TypeTags::pcreRegex: {
+            auto regex = getPrceRegexView(val);
+            // TODO: Also include the regex flags.
+            os << "/" << regex->pattern() << "/";
             break;
         }
         default:
