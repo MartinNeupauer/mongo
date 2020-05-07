@@ -646,6 +646,7 @@ StatusWith<PrepareExecutionResult<PlanStageType, PlanStageDataType>> prepareExec
                                     Explain::getPlanSummary(root.get()));
 
                     roots.emplace_back(std::move(root), std::move(data));
+                    solutions.clear();
                     solutions.emplace_back(std::move(solutions[i]));
 
                     return PrepareExecutionResult(
