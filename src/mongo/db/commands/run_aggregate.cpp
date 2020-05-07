@@ -110,7 +110,8 @@ bool canOptimizeAwayPipeline(const Pipeline* pipeline,
  * namespace used in the returned cursor, which will be registered with the global cursor manager,
  * and thus will be different from that in 'request'.
  */
-bool handleCursorCommand(boost::intrusive_ptr<ExpressionContext> expCtx,
+bool handleCursorCommand(OperationContext* opCtx,
+                         boost::intrusive_ptr<ExpressionContext> expCtx,
                          const NamespaceString& nsForCursor,
                          std::vector<ClientCursor*> cursors,
                          const AggregationRequest& request,
@@ -136,7 +137,7 @@ bool handleCursorCommand(boost::intrusive_ptr<ExpressionContext> expCtx,
 
             // If a time limit was set on the pipeline, remaining time is "rolled over" to the
             // cursor (for use by future getmore ops).
-            cursors[idx]->setLeftoverMaxTimeMicros(expCtx->opCtx->getRemainingMaxTimeMicros());
+            cursors[idx]->setLeftoverMaxTimeMicros(opCtx->getRemainingMaxTimeMicros());
 
             // Cursor needs to be in a saved state while we yield locks for getmore. State
             // will be restored in getMore().
@@ -152,10 +153,10 @@ bool handleCursorCommand(boost::intrusive_ptr<ExpressionContext> expCtx,
 
     CursorResponseBuilder::Options options;
     options.isInitialResponse = true;
-    options.atClusterTime = repl::ReadConcernArgs::get(expCtx->opCtx).getArgsAtClusterTime();
+    options.atClusterTime = repl::ReadConcernArgs::get(opCtx).getArgsAtClusterTime();
     CursorResponseBuilder responseBuilder(result, options);
 
-    auto curOp = CurOp::get(expCtx->opCtx);
+    auto curOp = CurOp::get(opCtx);
     auto cursor = cursors[0];
     invariant(cursor);
     auto exec = cursor->getExecutor();
@@ -228,7 +229,7 @@ bool handleCursorCommand(boost::intrusive_ptr<ExpressionContext> expCtx,
         }
         // If a time limit was set on the pipeline, remaining time is "rolled over" to the
         // cursor (for use by future getmore ops).
-        cursor->setLeftoverMaxTimeMicros(expCtx->opCtx->getRemainingMaxTimeMicros());
+        cursor->setLeftoverMaxTimeMicros(opCtx->getRemainingMaxTimeMicros());
 
         curOp->debug().cursorid = cursor->cursorid();
 
@@ -757,7 +758,7 @@ Status runAggregate(OperationContext* opCtx,
     } else {
         // Cursor must be specified, if explain is not.
         const bool keepCursor =
-            handleCursorCommand(expCtx, origNss, std::move(cursors), request, result);
+            handleCursorCommand(opCtx, expCtx, origNss, std::move(cursors), request, result);
         if (keepCursor) {
             cursorFreer.dismiss();
         }

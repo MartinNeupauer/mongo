@@ -30,9 +30,8 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
-
-#include <unordered_map>
-#include <unordered_set>
+#include "mongo/stdx/unordered_map.h"
+#include "mongo/stdx/unordered_set.h"
 
 namespace mongo {
 namespace sbe {
@@ -40,10 +39,10 @@ namespace abt {
 class ValueBinder final : public OperatorDynamic<ValueBinder, 0> {
     using Base = OperatorDynamic<ValueBinder, 0>;
     std::vector<VarId> _ids;
-    std::unordered_map<VarId, size_t> _indexes;
+    stdx::unordered_map<VarId, size_t> _indexes;
 
     // TODO - copying ValueBinder is problematic
-    std::unordered_map<VarId, std::unordered_set<Variable*>> _references;
+    stdx::unordered_map<VarId, stdx::unordered_set<Variable*>> _references;
 
     void addReference(Variable* v);
     void removeReference(Variable* v);

@@ -30,10 +30,10 @@
 #pragma once
 
 #include "mongo/db/exec/sbe/abt/base.h"
+#include "mongo/stdx/unordered_set.h"
 #include "mongo/util/assert_util.h"
 
 #include <string>
-#include <unordered_set>
 
 namespace mongo {
 namespace sbe {
@@ -95,7 +95,7 @@ public:
 class PathDrop final : public Operator<PathDrop, 0>, public PathSyntaxSort {
     using Base = Operator<PathDrop, 0>;
 
-    std::unordered_set<std::string> _names;
+    stdx::unordered_set<std::string> _names;
 
 public:
     const Type& type() const override {
@@ -105,7 +105,7 @@ public:
     const auto& names() const {
         return _names;
     }
-    PathDrop(std::unordered_set<std::string> names) : _names(std::move(names)) {}
+    PathDrop(stdx::unordered_set<std::string> names) : _names(std::move(names)) {}
 };
 
 /**
@@ -114,14 +114,14 @@ public:
 class PathKeep final : public Operator<PathKeep, 0>, public PathSyntaxSort {
     using Base = Operator<PathKeep, 0>;
 
-    std::unordered_set<std::string> _names;
+    stdx::unordered_set<std::string> _names;
 
 public:
     const Type& type() const override {
         return kVariantType;
     }
 
-    PathKeep(std::unordered_set<std::string> names) : _names(std::move(names)) {}
+    PathKeep(stdx::unordered_set<std::string> names) : _names(std::move(names)) {}
 };
 
 /**

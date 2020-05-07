@@ -31,6 +31,7 @@
 
 #include "mongo/db/exec/sbe/abt/base.h"
 #include "mongo/db/exec/sbe/values/slot_id_generator.h"
+#include "mongo/stdx/unordered_map.h"
 
 namespace mongo {
 namespace sbe {
@@ -92,7 +93,7 @@ class ExeGenerator {
     std::vector<std::unique_ptr<EExpression>>* _lambdaCtx{nullptr};
 
     std::unique_ptr<PlanStage> _currentStage;
-    std::unordered_map<const ValueBinder*, std::vector<SlotInfo>> _slots;
+    stdx::unordered_map<const ValueBinder*, std::vector<SlotInfo>> _slots;
 
     friend class SlotAllocator;
 

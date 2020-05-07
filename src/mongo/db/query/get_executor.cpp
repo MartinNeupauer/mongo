@@ -646,11 +646,11 @@ StatusWith<PrepareExecutionResult<PlanStageType, PlanStageDataType>> prepareExec
                                     Explain::getPlanSummary(root.get()));
 
                     roots.emplace_back(std::move(root), std::move(data));
-                    solutions.clear();
-                    solutions.emplace_back(std::move(solutions[i]));
 
                     return PrepareExecutionResult(
-                        std::move(canonicalQuery), std::move(solutions), std::move(roots));
+                        std::move(canonicalQuery),
+                        make_vector<std::unique_ptr<QuerySolution>>(std::move(solutions[i])),
+                        std::move(roots));
                 }
             }
         }
@@ -669,15 +669,43 @@ StatusWith<PrepareExecutionResult<PlanStageType, PlanStageDataType>> prepareExec
                     "Explain_getPlanSummary_root_get"_attr =
                         Explain::getPlanSummary(roots.back().first.get()));
     } else {
-        for (size_t ix = 0; ix < solutions.size(); ++ix) {
-            if (solutions[ix]->cacheData.get()) {
-                solutions[ix]->cacheData->indexFilterApplied = plannerParams.indexFiltersApplied;
+        if constexpr (isSlotBased) {
+            for (size_t ix = 0; ix < solutions.size(); ++ix) {
+                if (solutions[ix]->cacheData.get()) {
+                    solutions[ix]->cacheData->indexFilterApplied =
+                        plannerParams.indexFiltersApplied;
+                }
+
+                roots.push_back(
+                    stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
+                        opCtx, collection, *canonicalQuery, *solutions[ix], yieldPolicy, ws));
+            }
+        } else {
+            // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
+            // and so on. The working set will be shared by all candidate plans.
+            auto multiPlanStage = std::make_unique<MultiPlanStage>(
+                canonicalQuery->getExpCtx().get(), collection, canonicalQuery.get());
+
+            for (size_t ix = 0; ix < solutions.size(); ++ix) {
+                if (solutions[ix]->cacheData.get()) {
+                    solutions[ix]->cacheData->indexFilterApplied =
+                        plannerParams.indexFiltersApplied;
+                }
+
+                auto&& [nextPlanRoot, _] =
+                    stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
+                        opCtx, collection, *canonicalQuery, *solutions[ix], yieldPolicy, ws);
+
+                // Takes ownership of 'nextPlanRoot'.
+                multiPlanStage->addPlan(std::move(solutions[ix]), std::move(nextPlanRoot), ws);
             }
 
-            roots.push_back(stage_builder::buildExecutableTree<PlanStageType, PlanStageDataType>(
-                opCtx, collection, *canonicalQuery, *solutions[ix], yieldPolicy, ws));
+            roots.push_back({std::move(multiPlanStage), nullptr});
+            solutions.clear();
+            solutions.emplace_back(nullptr);
         }
     }
+
     return PrepareExecutionResult(
         std::move(canonicalQuery), std::move(solutions), std::move(roots));
 }
@@ -695,38 +723,18 @@ StatusWith<unique_ptr<PlanExecutor, PlanExecutor::Deleter>> getClassicExecutor(
         return executionResult.getStatus();
     }
     auto&& result = executionResult.getValue();
-    invariant(result.roots.size() > 0);
-    if (result.roots.size() == 1) {
-        invariant(result.querySolutions.size() == 1);
-        invariant(result.roots[0].first);
-        // We must have a tree of stages in order to have a valid plan executor, but the query
-        // solution may be null.
-        return PlanExecutor::make(std::move(result.canonicalQuery),
-                                  std::move(ws),
-                                  std::move(result.roots[0].first),
-                                  collection,
-                                  yieldPolicy,
-                                  {},
-                                  std::move(result.querySolutions[0]));
-    } else {
-        invariant(result.querySolutions.size() == result.roots.size());
-
-        // Many solutions. Create a MultiPlanStage to pick the best, update the cache,
-        // and so on. The working set will be shared by all candidate plans.
-        auto multiPlanStage = std::make_unique<MultiPlanStage>(
-            result.canonicalQuery->getExpCtx().get(), collection, result.canonicalQuery.get());
-        for (size_t ix = 0; ix < result.querySolutions.size(); ++ix) {
-            multiPlanStage->addPlan(
-                std::move(result.querySolutions[ix]), std::move(result.roots[ix].first), ws.get());
-        }
-        return PlanExecutor::make(std::move(result.canonicalQuery),
-                                  std::move(ws),
-                                  std::move(multiPlanStage),
-                                  collection,
-                                  yieldPolicy,
-                                  {},
-                                  nullptr /* querySolution */);
-    }
+    invariant(result.roots.size() == 1);
+    invariant(result.querySolutions.size() == 1);
+    invariant(result.roots[0].first);
+    // We must have a tree of stages in order to have a valid plan executor, but the query
+    // solution may be null.
+    return PlanExecutor::make(std::move(result.canonicalQuery),
+                              std::move(ws),
+                              std::move(result.roots[0].first),
+                              collection,
+                              yieldPolicy,
+                              {},
+                              std::move(result.querySolutions[0]));
 }
 
 /**

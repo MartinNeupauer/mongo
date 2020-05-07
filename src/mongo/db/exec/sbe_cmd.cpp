@@ -47,7 +47,7 @@ public:
     SBECommand() : BasicCommand("sbe") {}
 
     AllowedOnSecondary secondaryAllowed(ServiceContext* context) const override {
-        return AllowedOnSecondary::kOptIn;
+        return AllowedOnSecondary::kNever;
     }
 
     bool supportsWriteConcern(const BSONObj& cmd) const override {

@@ -57,7 +57,7 @@ class UnionStage final : public PlanStage {
 
     const std::vector<value::SlotVector> _inputVals;
     const value::SlotVector _outputVals;
-    std::unordered_map<PlanStage*, std::vector<value::SlotAccessor*>> _inValueAccessors;
+    stdx::unordered_map<PlanStage*, std::vector<value::SlotAccessor*>> _inValueAccessors;
     std::vector<value::ViewOfValueAccessor> _outValueAccessors;
     std::queue<UnionBranch> _remainingBranchesToDrain;
     PlanStage* _currentStage{nullptr};

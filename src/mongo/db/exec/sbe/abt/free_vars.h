@@ -29,7 +29,6 @@
 
 #pragma once
 #include "mongo/db/exec/sbe/abt/abt.h"
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -41,13 +40,13 @@ namespace abt {
  */
 class FreeVariables {
     using VarMultiSet = std::unordered_multimap<VarId, Variable*>;
-    using BindVarMap = std::unordered_map<VarId, ValueBinder*>;
+    using BindVarMap = stdx::unordered_map<VarId, ValueBinder*>;
 
     // free variables
-    std::unordered_map<ABT*, VarMultiSet> _freeVars;
+    stdx::unordered_map<ABT*, VarMultiSet> _freeVars;
 
     // defined variables
-    std::unordered_map<ABT*, BindVarMap> _definedVars;
+    stdx::unordered_map<ABT*, BindVarMap> _definedVars;
 
     void addFreeVar(ABT* e);
     void mergeFreeVars(ABT* current, ABT* other);
