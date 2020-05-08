@@ -241,7 +241,7 @@ void convertToBsonObj(BSONArrayBuilder& builder, value::Array* arr) {
                 builder.append(value::bitcastTo<double>(val));
                 break;
             case value::TypeTags::NumberDecimal:
-                builder.append(*value::getDecimalView(val));
+                builder.append(value::bitcastTo<Decimal128>(val));
                 break;
             case value::TypeTags::Date:
                 builder.append(Date_t::fromMillisSinceEpoch(value::bitcastTo<int64_t>(val)));
@@ -309,7 +309,7 @@ void convertToBsonObj(BSONObjBuilder& builder, value::Object* obj) {
                 builder.append(name, value::bitcastTo<double>(val));
                 break;
             case value::TypeTags::NumberDecimal:
-                builder.append(name, *value::getDecimalView(val));
+                builder.append(name, value::bitcastTo<Decimal128>(val));
                 break;
             case value::TypeTags::Date:
                 builder.append(name, Date_t::fromMillisSinceEpoch(value::bitcastTo<int64_t>(val)));

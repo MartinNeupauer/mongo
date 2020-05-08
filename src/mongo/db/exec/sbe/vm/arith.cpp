@@ -204,8 +204,8 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::genericAbs(value::Type
                     value::bitcastFrom(operand >= 0 ? operand : -operand)};
         }
         case value::TypeTags::NumberDecimal: {
-            auto operand = value::getDecimalView(operandValue);
-            auto [tag, value] = value::makeCopyDecimal(operand->toAbs());
+            auto operand = value::bitcastTo<Decimal128>(operandValue);
+            auto [tag, value] = value::makeCopyDecimal(operand.toAbs());
             return {true, tag, value};
         }
         default:

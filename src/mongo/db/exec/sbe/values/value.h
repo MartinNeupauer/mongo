@@ -301,12 +301,17 @@ Value bitcastFrom(const T in) noexcept {
 }
 template <typename T>
 T bitcastTo(const Value in) noexcept {
-    static_assert(sizeof(Value) >= sizeof(T));
-
     // casting from integer value to pointer is OK
     if constexpr (std::is_pointer_v<T>) {
+        static_assert(sizeof(Value) == sizeof(T));
         return reinterpret_cast<T>(in);
+    } else if constexpr (std::is_same_v<Decimal128, T>) {
+        static_assert(sizeof(Value) == sizeof(T*));
+        T val;
+        memcpy(&val, getRawPointerView(in), sizeof(T));
+        return val;
     } else {
+        static_assert(sizeof(Value) >= sizeof(T));
         T val;
         memcpy(&val, &in, sizeof(T));
         return val;
@@ -406,7 +411,7 @@ void releaseValue(TypeTags tag, Value val) noexcept;
 inline std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val) {
     switch (tag) {
         case TypeTags::NumberDecimal:
-            return makeCopyDecimal(*getDecimalView(val));
+            return makeCopyDecimal(bitcastTo<Decimal128>(val));
         case TypeTags::Array:
             return makeCopyArray(*getArrayView(val));
         case TypeTags::Object:
@@ -482,7 +487,7 @@ inline T numericCast(TypeTags tag, Value val) noexcept {
             }
         case TypeTags::NumberDecimal:
             if constexpr (std::is_same_v<T, Decimal128>) {
-                return *getDecimalView(val);
+                return bitcastTo<Decimal128>(val);
             }
             MONGO_UNREACHABLE;
         default:

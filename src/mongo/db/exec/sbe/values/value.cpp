@@ -145,7 +145,7 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             os << bitcastTo<double>(val);
             break;
         case value::TypeTags::NumberDecimal:
-            os << getDecimalView(val)->toString();
+            os << bitcastTo<Decimal128>(val).toString();
             break;
         case value::TypeTags::Boolean:
             os << ((val) ? "true" : "false");
@@ -315,17 +315,19 @@ BSONType tagToType(TypeTags tag) noexcept {
 std::size_t hashValue(TypeTags tag, Value val) noexcept {
     switch (tag) {
         case TypeTags::NumberInt32:
-            return bitcastTo<int32_t>(val);
+            return absl::Hash<int32_t>{}(bitcastTo<int32_t>(val));
         case TypeTags::NumberInt64:
-            return bitcastTo<int64_t>(val);
+            return absl::Hash<int64_t>{}(bitcastTo<int64_t>(val));
         case TypeTags::NumberDouble:
-            return bitcastTo<double>(val);
+            // Force doubles to integers for hashing.
+            return absl::Hash<int64_t>{}(bitcastTo<double>(val));
         case TypeTags::NumberDecimal:
-            return getDecimalView(val)->toLong();
+            // Force decimals to integers for hashing.
+            return absl::Hash<int64_t>{}(bitcastTo<Decimal128>(val).toLong());
         case TypeTags::Date:
-            return bitcastTo<int64_t>(val);
+            return absl::Hash<int64_t>{}(bitcastTo<int64_t>(val));
         case TypeTags::Timestamp:
-            return bitcastTo<uint64_t>(val);
+            return absl::Hash<uint64_t>{}(bitcastTo<uint64_t>(val));
         case TypeTags::Boolean:
             return val != 0;
         case TypeTags::Null:
@@ -334,12 +336,12 @@ std::size_t hashValue(TypeTags tag, Value val) noexcept {
         case TypeTags::StringBig:
         case TypeTags::bsonString: {
             auto sv = getStringView(tag, val);
-            return std::hash<std::string_view>()(sv);
+            return absl::Hash<std::string_view>{}(sv);
         }
         case TypeTags::ObjectId: {
             auto id = getObjectIdView(val);
-            return std::hash<uint64_t>()(readFromMemory<uint64_t>(id->data())) ^
-                std::hash<uint32_t>()(readFromMemory<uint32_t>(id->data() + 8));
+            return absl::Hash<uint64_t>{}(readFromMemory<uint64_t>(id->data())) ^
+                absl::Hash<uint32_t>{}(readFromMemory<uint32_t>(id->data() + 8));
         }
         case TypeTags::ksValue: {
             return getKeyStringView(val)->hash();

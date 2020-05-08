@@ -154,7 +154,7 @@ TEST(SBE_VM, Add) {
         auto [owned, tag, val] = interpreter.run(&code);
 
         ASSERT_EQUALS(tag, value::TypeTags::NumberDecimal);
-        ASSERT_EQUALS(value::getDecimalView(val)->toDouble(), -12.5);
+        ASSERT_EQUALS(value::bitcastTo<mongo::Decimal128>(val).toDouble(), -12.5);
         ASSERT_TRUE(owned);
 
         value::releaseValue(tag, val);

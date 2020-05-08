@@ -553,9 +553,7 @@ std::unique_ptr<vm::CodeFragment> EFail::compile(CompileCtx& ctx) {
     code->appendConstVal(value::TypeTags::NumberInt64,
                          value::bitcastFrom(static_cast<int64_t>(_code)));
 
-    auto [tag, val] = value::makeNewString(_message);
-    auto owned = true;
-    code->appendConstVal(tag, val, owned);
+    code->appendConstVal(value::TypeTags::StringBig, value::bitcastFrom(_message.c_str()));
 
     code->appendFail();
 
