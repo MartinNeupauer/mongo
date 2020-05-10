@@ -124,7 +124,11 @@ struct Instruction {
 
         getField,
 
-        sum,
+        aggSum,
+        aggMin,
+        aggMax,
+        aggFirst,
+        aggLast,
 
         exists,
         isNull,
@@ -233,6 +237,10 @@ public:
     }
     void appendGetField();
     void appendSum();
+    void appendMin();
+    void appendMax();
+    void appendFirst();
+    void appendLast();
     void appendExists();
     void appendIsNull();
     void appendIsObject();
@@ -305,10 +313,30 @@ class ByteCode {
                                                              value::TypeTags fieldTag,
                                                              value::Value fieldValue);
 
-    std::pair<value::TypeTags, value::Value> aggSum(value::TypeTags accTag,
-                                                    value::Value accValue,
-                                                    value::TypeTags fieldTag,
-                                                    value::Value fieldValue);
+    std::tuple<bool, value::TypeTags, value::Value> aggSum(value::TypeTags accTag,
+                                                           value::Value accValue,
+                                                           value::TypeTags fieldTag,
+                                                           value::Value fieldValue);
+
+    std::tuple<bool, value::TypeTags, value::Value> aggMin(value::TypeTags accTag,
+                                                           value::Value accValue,
+                                                           value::TypeTags fieldTag,
+                                                           value::Value fieldValue);
+
+    std::tuple<bool, value::TypeTags, value::Value> aggMax(value::TypeTags accTag,
+                                                           value::Value accValue,
+                                                           value::TypeTags fieldTag,
+                                                           value::Value fieldValue);
+
+    std::tuple<bool, value::TypeTags, value::Value> aggFirst(value::TypeTags accTag,
+                                                             value::Value accValue,
+                                                             value::TypeTags fieldTag,
+                                                             value::Value fieldValue);
+
+    std::tuple<bool, value::TypeTags, value::Value> aggLast(value::TypeTags accTag,
+                                                            value::Value accValue,
+                                                            value::TypeTags fieldTag,
+                                                            value::Value fieldValue);
 
     std::tuple<bool, value::TypeTags, value::Value> builtinSplit(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinDropFields(uint8_t arity);

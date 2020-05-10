@@ -72,6 +72,10 @@ int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
     -1,  // getField
 
     -1,  // sum
+    -1,  // min
+    -1,  // max
+    -1,  // first
+    -1,  // last
 
     0,  // exists
     0,  // isNull
@@ -208,7 +212,19 @@ void CodeFragment::appendGetField() {
     appendSimpleInstruction(Instruction::getField);
 }
 void CodeFragment::appendSum() {
-    appendSimpleInstruction(Instruction::sum);
+    appendSimpleInstruction(Instruction::aggSum);
+}
+void CodeFragment::appendMin() {
+    appendSimpleInstruction(Instruction::aggMin);
+}
+void CodeFragment::appendMax() {
+    appendSimpleInstruction(Instruction::aggMax);
+}
+void CodeFragment::appendFirst() {
+    appendSimpleInstruction(Instruction::aggFirst);
+}
+void CodeFragment::appendLast() {
+    appendSimpleInstruction(Instruction::aggLast);
 }
 void CodeFragment::appendExists() {
     appendSimpleInstruction(Instruction::exists);
@@ -326,19 +342,119 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTa
     return {false, value::TypeTags::Nothing, 0};
 }
 
-std::pair<value::TypeTags, value::Value> ByteCode::aggSum(value::TypeTags accTag,
-                                                          value::Value accValue,
-                                                          value::TypeTags fieldTag,
-                                                          value::Value fieldValue) {
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::aggSum(value::TypeTags accTag,
+                                                                 value::Value accValue,
+                                                                 value::TypeTags fieldTag,
+                                                                 value::Value fieldValue) {
+    // Skip aggregation step if we don't have the input.
+    if (fieldTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    }
+
+    // Initialize the accumulator.
     if (accTag == value::TypeTags::Nothing) {
         accTag = value::TypeTags::NumberInt64;
         accValue = 0;
     }
 
-    auto [owned, tag, val] = genericAdd(accTag, accValue, fieldTag, fieldValue);
-
-    return {tag, val};
+    return genericAdd(accTag, accValue, fieldTag, fieldValue);
 }
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::aggMin(value::TypeTags accTag,
+                                                                 value::Value accValue,
+                                                                 value::TypeTags fieldTag,
+                                                                 value::Value fieldValue) {
+    // Skip aggregation step if we don't have the input.
+    if (fieldTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    }
+
+    // Initialize the accumulator.
+    if (accTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+
+    auto [tag, val] = genericCompare<std::less<>>(accTag, accValue, fieldTag, fieldValue);
+    if (tag == value::TypeTags::Boolean && val) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    } else {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::aggMax(value::TypeTags accTag,
+                                                                 value::Value accValue,
+                                                                 value::TypeTags fieldTag,
+                                                                 value::Value fieldValue) {
+    // Skip aggregation step if we don't have the input.
+    if (fieldTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    }
+
+    // Initialize the accumulator.
+    if (accTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+
+    auto [tag, val] = genericCompare<std::greater<>>(accTag, accValue, fieldTag, fieldValue);
+    if (tag == value::TypeTags::Boolean && val) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    } else {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::aggFirst(value::TypeTags accTag,
+                                                                   value::Value accValue,
+                                                                   value::TypeTags fieldTag,
+                                                                   value::Value fieldValue) {
+    // Skip aggregation step if we don't have the input.
+    if (fieldTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    }
+
+    // Initialize the accumulator.
+    if (accTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+
+    // Disregard the next value, always return the first one.
+    auto [tag, val] = value::copyValue(accTag, accValue);
+    return {true, tag, val};
+}
+
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::aggLast(value::TypeTags accTag,
+                                                                  value::Value accValue,
+                                                                  value::TypeTags fieldTag,
+                                                                  value::Value fieldValue) {
+    // Skip aggregation step if we don't have the input.
+    if (fieldTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(accTag, accValue);
+        return {true, tag, val};
+    }
+
+    // Initialize the accumulator.
+    if (accTag == value::TypeTags::Nothing) {
+        auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+        return {true, tag, val};
+    }
+
+    // Disregard the accumulator, always return the next value.
+    auto [tag, val] = value::copyValue(fieldTag, fieldValue);
+    return {true, tag, val};
+}
+
 
 bool hasSeparatorAt(size_t idx, std::string_view input, std::string_view separator) {
     if (separator.size() + idx > input.size()) {
@@ -878,14 +994,82 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     }
                     break;
                 }
-                case Instruction::sum: {
+                case Instruction::aggSum: {
                     auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
                     popStack();
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
 
-                    auto [tag, val] = aggSum(lhsTag, lhsVal, rhsTag, rhsVal);
+                    auto [owned, tag, val] = aggSum(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::aggMin: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = aggMin(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::aggMax: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = aggMax(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::aggFirst: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = aggFirst(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
+
+                    if (rhsOwned) {
+                        value::releaseValue(rhsTag, rhsVal);
+                    }
+                    if (lhsOwned) {
+                        value::releaseValue(lhsTag, lhsVal);
+                    }
+                    break;
+                }
+                case Instruction::aggLast: {
+                    auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
+                    popStack();
+                    auto [lhsOwned, lhsTag, lhsVal] = getFromStack(0);
+
+                    auto [owned, tag, val] = aggLast(lhsTag, lhsVal, rhsTag, rhsVal);
+
+                    topStack(owned, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);

@@ -368,6 +368,10 @@ static stdx::unordered_map<std::string, InstrFn> kInstrFunctions = {
     {"isNumber",
      InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsNumber, false}},
     {"sum", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendSum, true}},
+    {"min", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendMin, true}},
+    {"max", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendMax, true}},
+    {"first", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendFirst, true}},
+    {"last", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendLast, true}},
 };
 }  // namespace
 
