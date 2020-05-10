@@ -348,8 +348,8 @@ bool hasSeparatorAt(size_t idx, std::string_view input, std::string_view separat
     return input.compare(idx, separator.size(), separator) == 0;
 }
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t arity) {
-    auto [ownedSeparator, tagSeparator, valSeparator] = getFromStack(0);
-    auto [ownedInput, tagInput, valInput] = getFromStack(1);
+    auto [ownedSeparator, tagSeparator, valSeparator] = getFromStack(1);
+    auto [ownedInput, tagInput, valInput] = getFromStack(0);
 
     if (!value::isString(tagSeparator) || !value::isString(tagInput)) {
         return {false, value::TypeTags::Nothing, 0};

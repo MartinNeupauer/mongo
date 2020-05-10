@@ -311,122 +311,103 @@ std::unique_ptr<EExpression> EFunction::clone() {
     }
     return std::make_unique<EFunction>(_name, std::move(args));
 }
+namespace {
+/**
+ * The arity test function. It returns true if the number of arguments is correct.
+ */
+using ArityFn = bool (*)(size_t);
+
+/**
+ * The builtin function description.
+ */
+struct BuiltinFn {
+    ArityFn arityTest;
+    vm::Builtin builtin;
+};
+
+/**
+ * The map of recognized builtin functions.
+ */
+static stdx::unordered_map<std::string, BuiltinFn> kBuiltinFunctions = {
+    {"split", BuiltinFn{[](size_t n) { return n == 2; }, vm::Builtin::split}},
+    {"dropFields", BuiltinFn{[](size_t n) { return n > 0; }, vm::Builtin::dropFields}},
+    {"newObj", BuiltinFn{[](size_t n) { return n % 2 == 0; }, vm::Builtin::newObj}},
+    {"ksToString", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::ksToString}},
+    {"ks", BuiltinFn{[](size_t n) { return n > 2; }, vm::Builtin::newKs}},
+    {"abs", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::abs}},
+};
+
+/**
+ * The code generation function.
+ */
+using CodeFn = void (vm::CodeFragment::*)();
+
+/**
+ * The function description.
+ */
+struct InstrFn {
+    ArityFn arityTest;
+    CodeFn generate;
+    bool aggregate;
+};
+/**
+ * The map of functions that resolve directly to instructions.
+ */
+static stdx::unordered_map<std::string, InstrFn> kInstrFunctions = {
+    {"getField",
+     InstrFn{[](size_t n) { return n == 2; }, &vm::CodeFragment::appendGetField, false}},
+    {"fillEmpty",
+     InstrFn{[](size_t n) { return n == 2; }, &vm::CodeFragment::appendFillEmpty, false}},
+    {"exists", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendExists, false}},
+    {"isNull", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsNull, false}},
+    {"isObject",
+     InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsObject, false}},
+    {"isArray", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsArray, false}},
+    {"isString",
+     InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsString, false}},
+    {"isNumber",
+     InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendIsNumber, false}},
+    {"sum", InstrFn{[](size_t n) { return n == 1; }, &vm::CodeFragment::appendSum, true}},
+};
+}  // namespace
+
 std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
-    if (_name == "getField" && _nodes.size() == 2) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->append(_nodes[1]->compile(ctx));
-        code->appendGetField();
-
-        return code;
-    } else if (ctx.aggExpression && _name == "sum" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->appendAccessVal(ctx.accumulator);
-        code->append(_nodes[0]->compile(ctx));
-        code->appendSum();
-
-        return code;
-    } else if (_name == "exists" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendExists();
-
-        return code;
-    } else if (_name == "fillEmpty" && _nodes.size() == 2) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->append(_nodes[1]->compile(ctx));
-        code->appendFillEmpty();
-
-        return code;
-    } else if (_name == "isNull" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendIsNull();
-
-        return code;
-    } else if (_name == "isObject" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendIsObject();
-
-        return code;
-    } else if (_name == "isArray" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendIsArray();
-
-        return code;
-    } else if (_name == "isString" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendIsString();
-
-        return code;
-    } else if (_name == "isNumber" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendIsNumber();
-
-        return code;
-    } else if (_name == "split" && _nodes.size() == 2) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->append(_nodes[1]->compile(ctx));
-        code->appendFunction(vm::Builtin::split, 2);
-
-        return code;
-    } else if (_name == "dropFields" && _nodes.size() > 0) {
+    if (auto it = kBuiltinFunctions.find(_name); it != kBuiltinFunctions.end()) {
+        if (!it->second.arityTest(_nodes.size())) {
+            uasserted(ErrorCodes::InternalError,
+                      str::stream()
+                          << "function call: " << _name << " has wrong arity: " << _nodes.size());
+        }
         auto code = std::make_unique<vm::CodeFragment>();
 
         for (size_t idx = _nodes.size(); idx-- > 0;) {
             code->append(_nodes[idx]->compile(ctx));
         }
 
-        code->appendFunction(vm::Builtin::dropFields, _nodes.size());
+        code->appendFunction(it->second.builtin, _nodes.size());
 
         return code;
-    } else if (_name == "newObj" && _nodes.size() % 2 == 0) {
+    }
+    if (auto it = kInstrFunctions.find(_name); it != kInstrFunctions.end()) {
+        if (!it->second.arityTest(_nodes.size())) {
+            uasserted(ErrorCodes::InternalError,
+                      str::stream()
+                          << "function call: " << _name << " has wrong arity: " << _nodes.size());
+        }
         auto code = std::make_unique<vm::CodeFragment>();
 
-        for (size_t idx = _nodes.size(); idx-- > 0;) {
+        if (it->second.aggregate) {
+            uassert(ErrorCodes::InternalError,
+                    str::stream() << "aggregate function call: " << _name
+                                  << " occurs in the non-aggregate context.",
+                    ctx.aggExpression);
+
+            code->appendAccessVal(ctx.accumulator);
+        }
+        for (size_t idx = 0; idx < _nodes.size(); ++idx) {
             code->append(_nodes[idx]->compile(ctx));
         }
-
-        code->appendFunction(vm::Builtin::newObj, _nodes.size());
-
-        return code;
-    } else if (_name == "ksToString" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        code->append(_nodes[0]->compile(ctx));
-        code->appendFunction(vm::Builtin::ksToString, 1);
-
-        return code;
-    } else if (_name == "ks" && _nodes.size() > 2) {
-        auto code = std::make_unique<vm::CodeFragment>();
-
-        for (size_t idx = _nodes.size(); idx-- > 0;) {
-            code->append(_nodes[idx]->compile(ctx));
-        }
-
-        code->appendFunction(vm::Builtin::newKs, _nodes.size());
-
-        return code;
-    } else if (_name == "abs" && _nodes.size() == 1) {
-        auto code = std::make_unique<vm::CodeFragment>();
-        code->append(_nodes[0]->compile(ctx));
-        code->appendFunction(vm::Builtin::abs, 1);
+        (*code.*(it->second.generate))();
 
         return code;
     }
