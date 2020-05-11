@@ -152,8 +152,7 @@ struct Instruction {
     // Make sure that values in this arrays are always in-sync with the enum.
     static int stackOffset[];
 
-    uint8_t owned : 1;
-    uint8_t tag : 7;
+    uint8_t tag;
 };
 static_assert(sizeof(Instruction) == sizeof(uint8_t));
 
@@ -198,7 +197,7 @@ public:
 
     void append(std::unique_ptr<CodeFragment> code);
     void append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<CodeFragment> rhs);
-    void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
+    void appendConstVal(value::TypeTags tag, value::Value val);
     void appendAccessVal(value::SlotAccessor* accessor);
     void appendMoveVal(value::SlotAccessor* accessor);
     void appendLocalVal(FrameId frameId, int stackOffset);

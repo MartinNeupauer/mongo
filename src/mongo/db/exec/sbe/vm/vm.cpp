@@ -142,9 +142,8 @@ void CodeFragment::append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<Cod
 
     _stackSize += lhs->_stackSize;
 }
-void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val, bool owned) {
+void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val) {
     Instruction i;
-    i.owned = owned;
     i.tag = Instruction::pushConstVal;
     adjustStackSimple(i);
 
@@ -157,7 +156,6 @@ void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val, bool ow
 
 void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
     Instruction i;
-    i.owned = false;
     i.tag = Instruction::pushAccessVal;
     adjustStackSimple(i);
 
@@ -169,7 +167,6 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
 
 void CodeFragment::appendMoveVal(value::SlotAccessor* accessor) {
     Instruction i;
-    i.owned = false;
     i.tag = Instruction::pushMoveVal;
     adjustStackSimple(i);
 
@@ -181,7 +178,6 @@ void CodeFragment::appendMoveVal(value::SlotAccessor* accessor) {
 
 void CodeFragment::appendLocalVal(FrameId frameId, int stackOffset) {
     Instruction i;
-    i.owned = false;
     i.tag = Instruction::pushLocalVal;
     adjustStackSimple(i);
 
@@ -213,7 +209,6 @@ void CodeFragment::appendNot() {
 }
 void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
-    i.owned = false;  // this is not used
     i.tag = tag;
     adjustStackSimple(i);
 
@@ -259,7 +254,6 @@ void CodeFragment::appendIsNumber() {
 }
 void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     Instruction i;
-    i.owned = false;  // this is not used
     i.tag = Instruction::function;
 
     // account for consumed arguments
@@ -275,7 +269,6 @@ void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
 }
 void CodeFragment::appendJump(int jumpOffset) {
     Instruction i;
-    i.owned = false;  // this is not used
     i.tag = Instruction::jmp;
     adjustStackSimple(i);
 
@@ -286,7 +279,6 @@ void CodeFragment::appendJump(int jumpOffset) {
 }
 void CodeFragment::appendJumpTrue(int jumpOffset) {
     Instruction i;
-    i.owned = false;  // this is not used
     i.tag = Instruction::jmpTrue;
     adjustStackSimple(i);
 
@@ -297,7 +289,6 @@ void CodeFragment::appendJumpTrue(int jumpOffset) {
 }
 void CodeFragment::appendJumpNothing(int jumpOffset) {
     Instruction i;
-    i.owned = false;  // this is not used
     i.tag = Instruction::jmpNothing;
     adjustStackSimple(i);
 
@@ -732,7 +723,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto val = value::readFromMemory<value::Value>(pcPointer);
                     pcPointer += sizeof(val);
 
-                    pushStack(i.owned, tag, val);
+                    pushStack(false, tag, val);
 
                     break;
                 }
@@ -741,7 +732,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     pcPointer += sizeof(accessor);
 
                     auto [tag, val] = accessor->getViewOfValue();
-                    pushStack(i.owned, tag, val);
+                    pushStack(false, tag, val);
 
                     break;
                 }
@@ -760,7 +751,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [owned, tag, val] = getFromStack(stackOffset);
 
-                    pushStack(i.owned, tag, val);
+                    pushStack(false, tag, val);
 
                     break;
                 }
@@ -893,7 +884,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = genericCompare<std::less<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -911,7 +902,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [tag, val] =
                         genericCompare<std::less_equal<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -929,7 +920,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [tag, val] =
                         genericCompare<std::greater<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -947,7 +938,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [tag, val] =
                         genericCompare<std::greater_equal<>>(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -964,7 +955,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = genericCompareEq(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -981,7 +972,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = genericCompareNeq(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -998,7 +989,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = compare3way(lhsTag, lhsVal, rhsTag, rhsVal);
 
-                    topStack(i.owned, tag, val);
+                    topStack(false, tag, val);
 
                     if (rhsOwned) {
                         value::releaseValue(rhsTag, rhsVal);
@@ -1131,7 +1122,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                 case Instruction::exists: {
                     auto [owned, tag, val] = getFromStack(0);
 
-                    topStack(i.owned, value::TypeTags::Boolean, tag != value::TypeTags::Nothing);
+                    topStack(false, value::TypeTags::Boolean, tag != value::TypeTags::Nothing);
 
                     if (owned) {
                         value::releaseValue(tag, val);
@@ -1142,7 +1133,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     if (tag != value::TypeTags::Nothing) {
-                        topStack(i.owned, value::TypeTags::Boolean, tag == value::TypeTags::Null);
+                        topStack(false, value::TypeTags::Boolean, tag == value::TypeTags::Null);
                     }
 
                     if (owned) {
@@ -1154,7 +1145,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     if (tag != value::TypeTags::Nothing) {
-                        topStack(i.owned, value::TypeTags::Boolean, value::isObject(tag));
+                        topStack(false, value::TypeTags::Boolean, value::isObject(tag));
                     }
 
                     if (owned) {
@@ -1166,7 +1157,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     if (tag != value::TypeTags::Nothing) {
-                        topStack(i.owned, value::TypeTags::Boolean, value::isArray(tag));
+                        topStack(false, value::TypeTags::Boolean, value::isArray(tag));
                     }
 
                     if (owned) {
@@ -1178,7 +1169,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     if (tag != value::TypeTags::Nothing) {
-                        topStack(i.owned, value::TypeTags::Boolean, value::isString(tag));
+                        topStack(false, value::TypeTags::Boolean, value::isString(tag));
                     }
 
                     if (owned) {
@@ -1190,7 +1181,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [owned, tag, val] = getFromStack(0);
 
                     if (tag != value::TypeTags::Nothing) {
-                        topStack(i.owned, value::TypeTags::Boolean, value::isNumber(tag));
+                        topStack(false, value::TypeTags::Boolean, value::isNumber(tag));
                     }
 
                     if (owned) {
