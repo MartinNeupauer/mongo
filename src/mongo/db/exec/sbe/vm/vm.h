@@ -98,6 +98,7 @@ struct Instruction {
     enum Tags {
         pushConstVal,
         pushAccessVal,
+        pushMoveVal,
         pushLocalVal,
         pop,
         swap,
@@ -163,6 +164,7 @@ enum class Builtin : uint8_t {
     ksToString,  // KeyString to string
     newKs,       // new KeyString
     abs,         // absolute value
+    addToArray,  // agg function to append to an array
 };
 
 class CodeFragment {
@@ -198,6 +200,7 @@ public:
     void append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<CodeFragment> rhs);
     void appendConstVal(value::TypeTags tag, value::Value val, bool owned = false);
     void appendAccessVal(value::SlotAccessor* accessor);
+    void appendMoveVal(value::SlotAccessor* accessor);
     void appendLocalVal(FrameId frameId, int stackOffset);
     void appendPop() {
         appendSimpleInstruction(Instruction::pop);
@@ -344,6 +347,7 @@ class ByteCode {
     std::tuple<bool, value::TypeTags, value::Value> builtinKeyStringToString(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinNewKeyString(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinAbs(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinAddToArray(uint8_t arity);
 
     std::tuple<bool, value::TypeTags, value::Value> dispatchBuiltin(Builtin f, uint8_t arity);
 

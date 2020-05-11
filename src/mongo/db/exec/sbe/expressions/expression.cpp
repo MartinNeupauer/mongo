@@ -323,18 +323,20 @@ using ArityFn = bool (*)(size_t);
 struct BuiltinFn {
     ArityFn arityTest;
     vm::Builtin builtin;
+    bool aggregate;
 };
 
 /**
  * The map of recognized builtin functions.
  */
 static stdx::unordered_map<std::string, BuiltinFn> kBuiltinFunctions = {
-    {"split", BuiltinFn{[](size_t n) { return n == 2; }, vm::Builtin::split}},
-    {"dropFields", BuiltinFn{[](size_t n) { return n > 0; }, vm::Builtin::dropFields}},
-    {"newObj", BuiltinFn{[](size_t n) { return n % 2 == 0; }, vm::Builtin::newObj}},
-    {"ksToString", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::ksToString}},
-    {"ks", BuiltinFn{[](size_t n) { return n > 2; }, vm::Builtin::newKs}},
-    {"abs", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::abs}},
+    {"split", BuiltinFn{[](size_t n) { return n == 2; }, vm::Builtin::split, false}},
+    {"dropFields", BuiltinFn{[](size_t n) { return n > 0; }, vm::Builtin::dropFields, false}},
+    {"newObj", BuiltinFn{[](size_t n) { return n % 2 == 0; }, vm::Builtin::newObj, false}},
+    {"ksToString", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::ksToString, false}},
+    {"ks", BuiltinFn{[](size_t n) { return n > 2; }, vm::Builtin::newKs, false}},
+    {"abs", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::abs, false}},
+    {"addToArray", BuiltinFn{[](size_t n) { return n == 1; }, vm::Builtin::addToArray, true}},
 };
 
 /**
@@ -377,18 +379,28 @@ static stdx::unordered_map<std::string, InstrFn> kInstrFunctions = {
 
 std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
     if (auto it = kBuiltinFunctions.find(_name); it != kBuiltinFunctions.end()) {
-        if (!it->second.arityTest(_nodes.size())) {
+        auto arity = _nodes.size();
+        if (!it->second.arityTest(arity)) {
             uasserted(ErrorCodes::InternalError,
-                      str::stream()
-                          << "function call: " << _name << " has wrong arity: " << _nodes.size());
+                      str::stream() << "function call: " << _name << " has wrong arity: " << arity);
         }
         auto code = std::make_unique<vm::CodeFragment>();
 
-        for (size_t idx = _nodes.size(); idx-- > 0;) {
+        for (size_t idx = arity; idx-- > 0;) {
             code->append(_nodes[idx]->compile(ctx));
         }
 
-        code->appendFunction(it->second.builtin, _nodes.size());
+        if (it->second.aggregate) {
+            uassert(ErrorCodes::InternalError,
+                    str::stream() << "aggregate function call: " << _name
+                                  << " occurs in the non-aggregate context.",
+                    ctx.aggExpression);
+
+            code->appendMoveVal(ctx.accumulator);
+            ++arity;
+        }
+
+        code->appendFunction(it->second.builtin, arity);
 
         return code;
     }

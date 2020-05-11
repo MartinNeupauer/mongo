@@ -47,6 +47,7 @@ namespace vm {
 int Instruction::stackOffset[Instruction::Tags::lastInstruction] = {
     1,   // pushConstVal
     1,   // pushAccessVal
+    1,   // pushMoveVal
     1,   // pushLocalVal
     -1,  // pop
     0,   // swap
@@ -158,6 +159,18 @@ void CodeFragment::appendAccessVal(value::SlotAccessor* accessor) {
     Instruction i;
     i.owned = false;
     i.tag = Instruction::pushAccessVal;
+    adjustStackSimple(i);
+
+    auto offset = allocateSpace(sizeof(Instruction) + sizeof(accessor));
+
+    offset += value::writeToMemory(offset, i);
+    offset += value::writeToMemory(offset, accessor);
+}
+
+void CodeFragment::appendMoveVal(value::SlotAccessor* accessor) {
+    Instruction i;
+    i.owned = false;
+    i.tag = Instruction::pushMoveVal;
     adjustStackSimple(i);
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(accessor));
@@ -655,6 +668,31 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAbs(uint8_t ari
     return genericAbs(tagOperand, valOperand);
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToArray(uint8_t arity) {
+    // Take ownership of the accumulator
+    auto [ownAgg, tagAgg, valAgg] = getFromStack(0);
+    topStack(false, value::TypeTags::Nothing, 0);
+
+    auto [_, tagField, valField] = getFromStack(1);
+
+    // Create a new array is it does not exist yet.
+    if (tagAgg == value::TypeTags::Nothing) {
+        auto [tagNewAgg, valNewAgg] = value::makeNewArray();
+        ownAgg = true;
+        tagAgg = tagNewAgg;
+        valAgg = valNewAgg;
+    }
+
+    invariant(tagAgg == value::TypeTags::Array);
+    auto arr = value::getArrayView(valAgg);
+
+    // And push back the value. Note that array will ignore Nothing.
+    auto [tagCopy, valCopy] = value::copyValue(tagField, valField);
+    arr->push_back(tagCopy, valCopy);
+
+    return {ownAgg, tagAgg, valAgg};
+}
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
     switch (f) {
@@ -670,6 +708,8 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
             return builtinNewKeyString(arity);
         case Builtin::abs:
             return builtinAbs(arity);
+        case Builtin::addToArray:
+            return builtinAddToArray(arity);
     }
 
     invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));
@@ -702,6 +742,15 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
                     auto [tag, val] = accessor->getViewOfValue();
                     pushStack(i.owned, tag, val);
+
+                    break;
+                }
+                case Instruction::pushMoveVal: {
+                    auto accessor = value::readFromMemory<value::SlotAccessor*>(pcPointer);
+                    pcPointer += sizeof(accessor);
+
+                    auto [tag, val] = accessor->copyOrMoveValue();
+                    pushStack(true, tag, val);
 
                     break;
                 }
