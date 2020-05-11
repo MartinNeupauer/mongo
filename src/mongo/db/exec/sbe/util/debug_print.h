@@ -68,6 +68,8 @@ public:
     };
 
 private:
+    bool _colorConsole;
+
     void addIndent(int ident, std::string& s) {
         for (int i = 0; i < ident; ++i) {
             s.append("    ");
@@ -77,6 +79,8 @@ private:
     std::string print(std::vector<Block> blocks);
 
 public:
+    DebugPrinter(bool colorConsole = false) : _colorConsole(colorConsole) {}
+
     static void addKeyword(std::vector<Block>& ret, std::string_view k) {
         ret.emplace_back(Block::cmdColorCyan);
         ret.emplace_back(Block{Block::cmdNoneNoSpace, k});

@@ -58,22 +58,34 @@ std::string DebugPrinter::print(std::vector<Block> blocks) {
                 addSpace = false;
                 break;
             case Block::cmdColorRed:
-                ret.append("\033[0;31m");
+                if (_colorConsole) {
+                    ret.append("\033[0;31m");
+                }
                 break;
             case Block::cmdColorGreen:
-                ret.append("\033[0;32m");
+                if (_colorConsole) {
+                    ret.append("\033[0;32m");
+                }
                 break;
             case Block::cmdColorBlue:
-                ret.append("\033[0;34m");
+                if (_colorConsole) {
+                    ret.append("\033[0;34m");
+                }
                 break;
             case Block::cmdColorCyan:
-                ret.append("\033[0;36m");
+                if (_colorConsole) {
+                    ret.append("\033[0;36m");
+                }
                 break;
             case Block::cmdColorYellow:
-                ret.append("\033[0;33m");
+                if (_colorConsole) {
+                    ret.append("\033[0;33m");
+                }
                 break;
             case Block::cmdColorNone:
-                ret.append("\033[0m");
+                if (_colorConsole) {
+                    ret.append("\033[0m");
+                }
                 break;
         }
 
