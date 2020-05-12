@@ -65,29 +65,33 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
     _children[1]->prepare(ctx);
 
     size_t counter = 0;
-    for (auto& p : _outerCond) {
-        auto [it, inserted] = _inOuterKeyAccessors.emplace(p, _children[0]->getAccessor(ctx, p));
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+    value::SlotSet dupCheck;
+    for (auto& slot : _outerCond) {
+        auto [it, inserted] = dupCheck.emplace(slot);
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
+        _inOuterKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outOuterKeyAccessors.emplace_back(std::make_unique<HashKeyAccessor>(_htIt, counter++));
-        _outOuterAccessors[p] = _outOuterKeyAccessors.back().get();
+        _outOuterAccessors[slot] = _outOuterKeyAccessors.back().get();
     }
 
     counter = 0;
-    for (auto& p : _innerCond) {
-        auto [it, inserted] = _inInnerKeyAccessors.emplace(p, _children[1]->getAccessor(ctx, p));
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+    for (auto& slot : _innerCond) {
+        auto [it, inserted] = dupCheck.emplace(slot);
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+
+        _inInnerKeyAccessors.emplace_back(_children[1]->getAccessor(ctx, slot));
     }
 
     counter = 0;
-    for (auto& p : _outerProjects) {
-        auto [it, inserted] =
-            _inOuterProjectAccessors.emplace(p, _children[0]->getAccessor(ctx, p));
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+    for (auto& slot : _outerProjects) {
+        auto [it, inserted] = dupCheck.emplace(slot);
+        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
+        _inOuterProjectAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outOuterProjectAccessors.emplace_back(
             std::make_unique<HashProjectAccessor>(_htIt, counter++));
-        _outOuterAccessors[p] = _outOuterProjectAccessors.back().get();
+        _outOuterAccessors[slot] = _outOuterProjectAccessors.back().get();
     }
 
     _probeKey._fields.resize(_inInnerKeyAccessors.size());
@@ -120,14 +124,14 @@ void HashJoinStage::open(bool reOpen) {
         // copy keys in order to do the lookup
         for (auto& p : _inOuterKeyAccessors) {
             key._fields.push_back(value::OwnedValueAccessor{});
-            auto [tag, val] = p.second->copyOrMoveValue();
+            auto [tag, val] = p->copyOrMoveValue();
             key._fields.back().reset(true, tag, val);
         }
 
         // copy projects
         for (auto& p : _inOuterProjectAccessors) {
             project._fields.push_back(value::OwnedValueAccessor{});
-            auto [tag, val] = p.second->copyOrMoveValue();
+            auto [tag, val] = p->copyOrMoveValue();
             project._fields.back().reset(true, tag, val);
         }
 
@@ -157,7 +161,7 @@ PlanState HashJoinStage::getNext() {
             // copy keys in order to do the lookup
             size_t idx = 0;
             for (auto& p : _inInnerKeyAccessors) {
-                auto [tag, val] = p.second->getViewOfValue();
+                auto [tag, val] = p->getViewOfValue();
                 _probeKey._fields[idx++].reset(false, tag, val);
             }
 

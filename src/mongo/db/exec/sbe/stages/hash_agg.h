@@ -49,7 +49,7 @@ class HashAggStage final : public PlanStage {
     const value::SlotMap<std::unique_ptr<EExpression>> _aggs;
 
     value::SlotAccessorMap _outAccessors;
-    value::SlotAccessorMap _inKeyAccessors;
+    std::vector<value::SlotAccessor*> _inKeyAccessors;
     std::vector<std::unique_ptr<HashKeyAccessor>> _outKeyAccessors;
 
     std::vector<std::unique_ptr<HashAggAccessor>> _outAggAccessors;

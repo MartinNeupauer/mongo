@@ -48,26 +48,29 @@ std::unique_ptr<PlanStage> HashAggStage::clone() {
 void HashAggStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
+    value::SlotSet dupCheck;
     size_t counter = 0;
     // process group by columns
     for (auto& slot : _gbs) {
-        auto [it, inserted] = _inKeyAccessors.emplace(slot, _children[0]->getAccessor(ctx, slot));
+        auto [it, inserted] = dupCheck.emplace(slot);
         uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
 
+        _inKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outKeyAccessors.emplace_back(std::make_unique<HashKeyAccessor>(_htIt, counter++));
         _outAccessors[slot] = _outKeyAccessors.back().get();
     }
 
     counter = 0;
     for (auto& [slot, expr] : _aggs) {
-        _outAggAccessors.emplace_back(std::make_unique<HashAggAccessor>(_htIt, counter++));
+        auto [it, inserted] = dupCheck.emplace(slot);
         // Some compilers do not allow to capture local bindings by lambda functions (the one
         // is used implicitly in uassert below), so we need a local variable to construct an
         // error message.
         const auto slotId = slot;
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << slotId,
-                !_outAccessors.count(slot));
+        uassert(
+            ErrorCodes::InternalError, str::stream() << "duplicate field: " << slotId, inserted);
+
+        _outAggAccessors.emplace_back(std::make_unique<HashAggAccessor>(_htIt, counter++));
         _outAccessors[slot] = _outAggAccessors.back().get();
 
         ctx.root = this;
@@ -100,7 +103,7 @@ void HashAggStage::open(bool reOpen) {
         // copy keys in order to do the lookup
         size_t idx = 0;
         for (auto& p : _inKeyAccessors) {
-            auto [tag, val] = p.second->getViewOfValue();
+            auto [tag, val] = p->getViewOfValue();
             key._fields[idx++].reset(false, tag, val);
         }
 

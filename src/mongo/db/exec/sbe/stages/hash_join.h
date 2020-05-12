@@ -52,17 +52,17 @@ class HashJoinStage final : public PlanStage {
     value::SlotAccessorMap _outOuterAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    value::SlotAccessorMap _inOuterKeyAccessors;
+    std::vector<value::SlotAccessor*> _inOuterKeyAccessors;
     // accessors of output keys
     std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
 
     // accessors of input projection values that are build inserted into the hash table
-    value::SlotAccessorMap _inOuterProjectAccessors;
+    std::vector<value::SlotAccessor*> _inOuterProjectAccessors;
     // accessors of output projections
     std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
 
     // accessors of input codition values (keys) that are being inserted into the hash table
-    value::SlotAccessorMap _inInnerKeyAccessors;
+    std::vector<value::SlotAccessor*> _inInnerKeyAccessors;
 
     // key used to probe inside the hash table
     value::MaterializedRow _probeKey;
