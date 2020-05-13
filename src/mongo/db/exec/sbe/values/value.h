@@ -77,6 +77,7 @@ enum class TypeTags : uint8_t {
     StringSmall,
     StringBig,
     Array,
+    ArraySet,
     Object,
 
     ObjectId,
@@ -110,7 +111,7 @@ inline constexpr bool isObject(TypeTags tag) noexcept {
 }
 
 inline constexpr bool isArray(TypeTags tag) noexcept {
-    return tag == TypeTags::Array || tag == TypeTags::bsonArray;
+    return tag == TypeTags::Array || tag == TypeTags::ArraySet || tag == TypeTags::bsonArray;
 }
 
 inline constexpr bool isObjectId(TypeTags tag) noexcept {
@@ -126,12 +127,22 @@ using Value = uint64_t;
  * Sort direction of ordered sequence.
  */
 enum class SortDirection : uint8_t { Descending, Ascending };
+
 /**
  * Forward declarations.
  */
 void releaseValue(TypeTags tag, Value val) noexcept;
 std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val);
 void printValue(std::ostream& os, TypeTags tag, Value val);
+std::size_t hashValue(TypeTags tag, Value val) noexcept;
+/*
+ * Three ways value comparison (aka spacehip operator).
+ */
+std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
+                                        Value lhsValue,
+                                        TypeTags rhsTag,
+                                        Value rhsValue);
+
 
 /**
  * Object class.
@@ -250,6 +261,64 @@ public:
     }
 };
 
+/**
+ * ArraySet class.
+ */
+class ArraySet {
+    struct Hash {
+        size_t operator()(const std::pair<TypeTags, Value>& p) const {
+            return hashValue(p.first, p.second);
+        }
+    };
+    struct Eq {
+        bool operator()(const std::pair<TypeTags, Value>& lhs,
+                        const std::pair<TypeTags, Value>& rhs) const {
+            auto [tag, val] = compareValue(lhs.first, lhs.second, rhs.first, rhs.second);
+
+            if (tag != TypeTags::NumberInt32 || val != 0) {
+                return false;
+            } else {
+                return true;
+            }
+        }
+    };
+    using SetType = absl::flat_hash_set<std::pair<TypeTags, Value>, Hash, Eq>;
+    SetType _values;
+
+public:
+    using iterator = SetType::iterator;
+
+    ArraySet() = default;
+    ArraySet(const ArraySet& other) {
+        // TODO this leaks like a seive
+        _values.reserve(other._values.size());
+        for (const auto& p : other._values) {
+            const auto copy = copyValue(p.first, p.second);
+            _values.insert(copy);
+        }
+    }
+    ArraySet(ArraySet&&) = default;
+    ~ArraySet() {
+        for (const auto& p : _values) {
+            releaseValue(p.first, p.second);
+        }
+    }
+
+    void push_back(TypeTags tag, Value val);
+
+    auto& values() noexcept {
+        return _values;
+    }
+
+    auto size() const noexcept {
+        return _values.size();
+    }
+    void reserve(size_t s) {
+        // normalize to at least 1
+        _values.reserve(s);
+    }
+};
+
 constexpr int SmallStringThreshold = 8;
 using ObjectIdType = std::array<uint8_t, 12>;
 static_assert(sizeof(ObjectIdType) == 12);
@@ -354,13 +423,27 @@ inline std::pair<TypeTags, Value> makeNewArray() {
     return {TypeTags::Array, reinterpret_cast<Value>(a)};
 }
 
+inline std::pair<TypeTags, Value> makeNewArraySet() {
+    auto a = new ArraySet;
+    return {TypeTags::ArraySet, reinterpret_cast<Value>(a)};
+}
+
 inline std::pair<TypeTags, Value> makeCopyArray(const Array& inA) {
     auto a = new Array(inA);
     return {TypeTags::Array, reinterpret_cast<Value>(a)};
 }
 
+inline std::pair<TypeTags, Value> makeCopyArraySet(const ArraySet& inA) {
+    auto a = new ArraySet(inA);
+    return {TypeTags::ArraySet, reinterpret_cast<Value>(a)};
+}
+
 inline Array* getArrayView(Value val) noexcept {
     return reinterpret_cast<Array*>(val);
+}
+
+inline ArraySet* getArraySetView(Value val) noexcept {
+    return reinterpret_cast<ArraySet*>(val);
 }
 
 inline std::pair<TypeTags, Value> makeNewObject() {
@@ -414,6 +497,8 @@ inline std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val) {
             return makeCopyDecimal(bitcastTo<Decimal128>(val));
         case TypeTags::Array:
             return makeCopyArray(*getArrayView(val));
+        case TypeTags::ArraySet:
+            return makeCopyArraySet(*getArraySetView(val));
         case TypeTags::Object:
             return makeCopyObject(*getObjectView(val));
         case TypeTags::StringBig: {
@@ -508,15 +593,6 @@ inline TypeTags getWidestNumericalType(TypeTags lhsTag, TypeTags rhsTag) noexcep
         MONGO_UNREACHABLE;
     }
 }
-
-std::size_t hashValue(TypeTags tag, Value val) noexcept;
-/*
- * Three ways value comparison (aka spacehip operator).
- */
-std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
-                                        Value lhsValue,
-                                        TypeTags rhsTag,
-                                        Value rhsValue);
 
 class SlotAccessor {
 public:
@@ -657,6 +733,10 @@ class ArrayEnumerator {
     Array* _array{nullptr};
     size_t _index{0};
 
+    // ArraySet
+    ArraySet* _arraySet{nullptr};
+    ArraySet::iterator _iter;
+
     // bsonArray
     const char* _arrayCurrent{nullptr};
     const char* _arrayEnd{nullptr};
@@ -670,10 +750,14 @@ public:
         _tagArray = tag;
         _valArray = val;
         _array = nullptr;
+        _arraySet = nullptr;
         _index = 0;
 
         if (tag == TypeTags::Array) {
             _array = getArrayView(val);
+        } else if (tag == TypeTags::ArraySet) {
+            _arraySet = getArraySetView(val);
+            _iter = _arraySet->values().begin();
         } else if (tag == TypeTags::bsonArray) {
             auto bson = bitcastTo<const char*>(val);
             _arrayCurrent = bson + 4;
@@ -687,6 +771,8 @@ public:
     bool atEnd() const {
         if (_array) {
             return _index == _array->size();
+        } else if (_arraySet) {
+            return _iter == _arraySet->values().end();
         } else {
             return *_arrayCurrent == 0;
         }

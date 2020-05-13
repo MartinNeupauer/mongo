@@ -224,9 +224,9 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             return {value::TypeTags::Nothing, 0};
     }
 }
-void convertToBsonObj(BSONArrayBuilder& builder, value::Array* arr) {
-    for (size_t idx = 0; idx < arr->size(); ++idx) {
-        auto [tag, val] = arr->getAt(idx);
+void convertToBsonObj(BSONArrayBuilder& builder, value::ArrayEnumerator arr) {
+    for (; !arr.atEnd(); arr.advance()) {
+        auto [tag, val] = arr.getViewOfValue();
 
         switch (tag) {
             case value::TypeTags::Nothing:
@@ -264,7 +264,13 @@ void convertToBsonObj(BSONArrayBuilder& builder, value::Array* arr) {
             }
             case value::TypeTags::Array: {
                 BSONArrayBuilder subarrBuilder(builder.subarrayStart());
-                convertToBsonObj(subarrBuilder, value::getArrayView(val));
+                convertToBsonObj(subarrBuilder, value::ArrayEnumerator{tag, val});
+                subarrBuilder.doneFast();
+                break;
+            }
+            case value::TypeTags::ArraySet: {
+                BSONArrayBuilder subarrBuilder(builder.subarrayStart());
+                convertToBsonObj(subarrBuilder, value::ArrayEnumerator{tag, val});
                 subarrBuilder.doneFast();
                 break;
             }
@@ -332,7 +338,13 @@ void convertToBsonObj(BSONObjBuilder& builder, value::Object* obj) {
             }
             case value::TypeTags::Array: {
                 BSONArrayBuilder subarrBuilder(builder.subarrayStart(name));
-                convertToBsonObj(subarrBuilder, value::getArrayView(val));
+                convertToBsonObj(subarrBuilder, value::ArrayEnumerator{tag, val});
+                subarrBuilder.doneFast();
+                break;
+            }
+            case value::TypeTags::ArraySet: {
+                BSONArrayBuilder subarrBuilder(builder.subarrayStart(name));
+                convertToBsonObj(subarrBuilder, value::ArrayEnumerator{tag, val});
                 subarrBuilder.doneFast();
                 break;
             }

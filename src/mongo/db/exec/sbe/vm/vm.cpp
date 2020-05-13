@@ -684,6 +684,31 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToArray(uint
     return {ownAgg, tagAgg, valAgg};
 }
 
+std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToSet(uint8_t arity) {
+    // Take ownership of the accumulator
+    auto [ownAgg, tagAgg, valAgg] = getFromStack(0);
+    topStack(false, value::TypeTags::Nothing, 0);
+
+    auto [_, tagField, valField] = getFromStack(1);
+
+    // Create a new array is it does not exist yet.
+    if (tagAgg == value::TypeTags::Nothing) {
+        auto [tagNewAgg, valNewAgg] = value::makeNewArraySet();
+        ownAgg = true;
+        tagAgg = tagNewAgg;
+        valAgg = valNewAgg;
+    }
+
+    invariant(tagAgg == value::TypeTags::ArraySet);
+    auto arr = value::getArraySetView(valAgg);
+
+    // And push back the value. Note that array will ignore Nothing.
+    auto [tagCopy, valCopy] = value::copyValue(tagField, valField);
+    arr->push_back(tagCopy, valCopy);
+
+    return {ownAgg, tagAgg, valAgg};
+}
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builtin f,
                                                                           uint8_t arity) {
     switch (f) {
@@ -701,6 +726,8 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
             return builtinAbs(arity);
         case Builtin::addToArray:
             return builtinAddToArray(arity);
+        case Builtin::addToSet:
+            return builtinAddToSet(arity);
     }
 
     invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));

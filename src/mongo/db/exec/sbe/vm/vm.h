@@ -164,6 +164,7 @@ enum class Builtin : uint8_t {
     newKs,       // new KeyString
     abs,         // absolute value
     addToArray,  // agg function to append to an array
+    addToSet,    // agg function to append to a set
 };
 
 class CodeFragment {
@@ -347,6 +348,7 @@ class ByteCode {
     std::tuple<bool, value::TypeTags, value::Value> builtinNewKeyString(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinAbs(uint8_t arity);
     std::tuple<bool, value::TypeTags, value::Value> builtinAddToArray(uint8_t arity);
+    std::tuple<bool, value::TypeTags, value::Value> builtinAddToSet(uint8_t arity);
 
     std::tuple<bool, value::TypeTags, value::Value> dispatchBuiltin(Builtin f, uint8_t arity);
 

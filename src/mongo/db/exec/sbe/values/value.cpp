@@ -48,6 +48,9 @@ void releaseValue(TypeTags tag, Value val) noexcept {
         case TypeTags::Array:
             delete getArrayView(val);
             break;
+        case TypeTags::ArraySet:
+            delete getArraySetView(val);
+            break;
         case TypeTags::Object:
             delete getObjectView(val);
             break;
@@ -107,6 +110,9 @@ std::ostream& operator<<(std::ostream& os, const TypeTags tag) {
             break;
         case TypeTags::Array:
             os << "Array";
+            break;
+        case TypeTags::ArraySet:
+            os << "ArraySet";
             break;
         case TypeTags::Object:
             os << "Object";
@@ -168,6 +174,20 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
                 }
                 auto [tag, val] = arr->getAt(idx);
                 printValue(os, tag, val);
+            }
+            os << ']';
+            break;
+        }
+        case value::TypeTags::ArraySet: {
+            auto arr = getArraySetView(val);
+            os << '[';
+            bool first = true;
+            for (const auto& v : arr->values()) {
+                if (!first) {
+                    os << ", ";
+                }
+                first = false;
+                printValue(os, v.first, v.second);
             }
             os << ']';
             break;
@@ -291,6 +311,8 @@ BSONType tagToType(TypeTags tag) noexcept {
         case TypeTags::StringBig:
             return BSONType::String;
         case TypeTags::Array:
+            return BSONType::Array;
+        case TypeTags::ArraySet:
             return BSONType::Array;
         case TypeTags::Object:
             return BSONType::Object;
@@ -484,9 +506,23 @@ std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
     }
 }
 
+void ArraySet::push_back(TypeTags tag, Value val) {
+    // TODO may leak when out of memory
+    if (tag != TypeTags::Nothing) {
+        auto [it, inserted] = _values.insert({tag, val});
+
+        if (!inserted) {
+            releaseValue(tag, val);
+        }
+    }
+}
+
+
 std::pair<TypeTags, Value> ArrayEnumerator::getViewOfValue() const {
     if (_array) {
         return _array->getAt(_index);
+    } else if (_arraySet) {
+        return {_iter->first, _iter->second};
     } else {
         auto sv = bson::fieldNameView(_arrayCurrent);
         return bson::convertFrom(true, _arrayCurrent, _arrayEnd, sv.size());
@@ -500,6 +536,12 @@ bool ArrayEnumerator::advance() {
         }
 
         return _index < _array->size();
+    } else if (_arraySet) {
+        if (_iter != _arraySet->values().end()) {
+            ++_iter;
+        }
+
+        return _iter != _arraySet->values().end();
     } else {
         if (*_arrayCurrent != 0) {
             auto sv = bson::fieldNameView(_arrayCurrent);
