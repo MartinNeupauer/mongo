@@ -409,20 +409,6 @@ public:
         return false;
     }
 
-    /**
-     * Generate plan stage(s) that calculate a filter predicate. It does not generate the filter
-     * stage itself. The filter stage is generated after all MatchExpression nodes are processed.
-     *
-     * predicateName is an input/output parameter. We may consider returing a new predicateName
-     * instead.
-     */
-    virtual std::unique_ptr<sbe::PlanStage> generateStage(
-        std::unique_ptr<sbe::PlanStage> inputStage,
-        std::string_view inputVarName,
-        std::string& predicateName) const {
-        return nullptr;
-    }
-
     virtual void acceptVisitor(MatchExpressionMutableVisitor* visitor) = 0;
     virtual void acceptVisitor(MatchExpressionConstVisitor* visitor) const = 0;
 

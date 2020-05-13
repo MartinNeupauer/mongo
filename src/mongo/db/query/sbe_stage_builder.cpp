@@ -163,7 +163,7 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
                 "Sorting by dotted paths not supported",
                 part.fieldPath && part.fieldPath->getPathLength() == 1);
 
-        // slot holding the sort key
+        // Slot holding the sort key.
         auto sortFieldVar{_slotIdGenerator.generate()};
         orderBy.push_back(sortFieldVar);
         direction.push_back(part.isAscending ? sbe::value::SortDirection::Ascending
@@ -219,14 +219,18 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildSort(const QuerySolu
     sbe::value::SlotVector values;
     values.push_back(*_data.resultSlot);
     if (_data.recordIdSlot) {
-        // Break ties with record id if awailable.
+        // Break ties with record id if available.
         orderBy.push_back(*_data.recordIdSlot);
         // This is arbitrary.
         direction.push_back(sbe::value::SortDirection::Ascending);
     }
+
+    // A sort stage is a binding reflector, so we need to plumb through the 'oplogTsSlot' to make
+    // it visible at the root stage.
     if (_data.oplogTsSlot) {
         values.push_back(*_data.oplogTsSlot);
     }
+
     return sbe::makeS<sbe::SortStage>(std::move(inputStage),
                                       std::move(orderBy),
                                       std::move(direction),
@@ -290,12 +294,20 @@ std::unique_ptr<sbe::PlanStage> SlotBasedStageBuilder::buildOr(const QuerySoluti
     std::vector<sbe::value::SlotVector> inputSlots;
 
     auto orn = static_cast<const OrNode*>(root);
+
+    // Translate each child of the 'Or' node. Each child will produce a new ''recordIdSlot' stored
+    // in the _data member. We need to add these slots into the 'inputSlots' vector which is used
+    // as input to the union statge below.
     for (auto&& child : orn->children) {
         inputStages.push_back(build(child));
         invariant(_data.recordIdSlot);
         inputSlots.push_back({*_data.recordIdSlot});
     }
 
+    // Construct a union stage whose branches are translated children of the 'Or' node. Each branch
+    // is an IXSCAN sub-tree producing recordId's which we put into 'inputSlots' vector. The union
+    // stage will merge them all and output as a single stream whose values are accessible via a
+    // 'recordIdSlot' stored in the _data member.
     _data.recordIdSlot = _slotIdGenerator.generate();
     auto stage = sbe::makeS<sbe::UnionStage>(
         std::move(inputStages), std::move(inputSlots), sbe::makeSV(*_data.recordIdSlot));

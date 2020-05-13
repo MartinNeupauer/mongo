@@ -34,6 +34,10 @@
 #include "mongo/db/query/stage_builder.h"
 
 namespace mongo::stage_builder {
+/**
+ * Some auxiliary data returned by a 'SlotBasedStageBuilder' along with a PlanStage tree root, which
+ * is needed to execute the PlanStage tree.
+ */
 struct PlanStageData {
     boost::optional<sbe::value::SlotId> resultSlot;
     boost::optional<sbe::value::SlotId> recordIdSlot;
@@ -97,10 +101,15 @@ private:
     sbe::value::FrameIdGenerator _frameIdGenerator;
     sbe::value::SpoolIdGenerator _spoolIdGenerator;
 
+    // If we have both limit and skip stages and the skip stage is beneath the limit, then we can
+    // combine these two stages into one. So, while processing the LIMIT stage we will save the
+    // limit value in this member and will handle it while processing the SKIP stage.
     boost::optional<long long> _limit;
 
     PlanYieldPolicySBE* const _yieldPolicy;
 
+    // Apart from generating just an execution tree, this builder will also produce some auxiliary
+    // data which is needed to execute the tree, such as a result slot, or a recordId slot.
     PlanStageData _data;
 };
 }  // namespace mongo::stage_builder

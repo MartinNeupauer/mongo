@@ -55,9 +55,6 @@ class WorkingSet;
 
 namespace sbe {
 class PlanStage;
-namespace value {
-class SlotAccessor;
-}
 }  // namespace sbe
 
 /**

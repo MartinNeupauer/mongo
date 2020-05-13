@@ -56,27 +56,46 @@ struct overload : Ts... {
 };
 template <class... Ts>
 overload(Ts...)->overload<Ts...>;
-
+/**
+ * Stores context across calls to visit() in the projection traversal visitors.
+ */
 struct ProjectionTraversalVisitorContext {
+    projection_ast::ProjectType projectType;
+    sbe::value::SlotIdGenerator* slotIdGenerator;
+    sbe::value::FrameIdGenerator* frameIdGenerator;
+
+    // The input stage to this projection and the slot to read a root document from.
+    PlanStageType inputStage;
+    sbe::value::SlotId inputSlot;
+
+    // Stores the field names to visit at each nested projection level, and the base path to this
+    // level. Top of the stack is the most recently visited level.
     struct NestedLevel {
+        // The input slot for the current level. This is the parent sub-document for each of the
+        // projected fields at the current level.
         sbe::value::SlotId inputSlot;
+        // The fields names at the current projection level.
         std::list<std::string> fields;
+        // All but the last path component of the current path being visited. None if at the
+        // top-level and there is no "parent" path.
         std::stack<std::string> basePath;
+        // A traversal sub-tree which combines traversals for each of the fields at the current
+        // level.
         PlanStageType fieldPathExpressionsTraverseStage{
             sbe::makeS<sbe::LimitSkipStage>(sbe::makeS<sbe::CoScanStage>(), 1, boost::none)};
     };
+    std::stack<NestedLevel> levels;
+
+    // Stores evaluation expressions for each of the projection at the current nested level. It can
+    // evaluate either to an expression, if we're at the leaf node of the projection, or a sub-tree,
+    // if we're evaluating a field projection in the middle of the path. The stack elements are
+    // optional because for an exclusion projection we don't need to evaluate anything, but we need
+    // to have an element on the stack which corresponds to a projected field.
     struct ProjectEval {
         sbe::value::SlotId inputSlot;
         sbe::value::SlotId outputSlot;
         std::variant<PlanStageType, ExpressionType> expr;
     };
-
-    projection_ast::ProjectType projectType;
-    sbe::value::SlotIdGenerator* slotIdGenerator;
-    sbe::value::FrameIdGenerator* frameIdGenerator;
-    PlanStageType inputStage;
-    sbe::value::SlotId inputSlot;
-    std::stack<NestedLevel> levels;
     std::stack<boost::optional<ProjectEval>> evals;
 
     // See the comment above the generateExpression() declaration for an explanation of the
@@ -127,6 +146,10 @@ struct ProjectionTraversalVisitorContext {
     }
 };
 
+/**
+ * A projection traversal pre-visitor used for maintaining nested levels while traversing a
+ * projection AST.
+ */
 class ProjectionTraversalPreVisitor final : public projection_ast::ProjectionASTConstVisitor {
 public:
     ProjectionTraversalPreVisitor(ProjectionTraversalVisitorContext* context) : _context{context} {
@@ -169,6 +192,10 @@ private:
     ProjectionTraversalVisitorContext* _context;
 };
 
+/**
+ * A projection traversal post-visitor used for maintaining nested levels while traversing a
+ * projection AST and producing an SBE traversal sub-tree for each nested level.
+ */
 class ProjectionTraversalPostVisitor final : public projection_ast::ProjectionASTConstVisitor {
 public:
     ProjectionTraversalPostVisitor(ProjectionTraversalVisitorContext* context) : _context{context} {
@@ -178,6 +205,8 @@ public:
     void visit(const projection_ast::BooleanConstantASTNode* node) final {
         using namespace std::literals;
 
+        // If this is an inclusion projection, extract the field and push a getField expression on
+        // top of the 'evals' stack. For an exclusion projection just push an empty optional.
         if (node->value()) {
             _context->evals.push(
                 {{_context->topLevel().inputSlot,
@@ -193,6 +222,9 @@ public:
     }
 
     void visit(const projection_ast::ExpressionASTNode* node) final {
+        // Generate an expression to evaluate a projection expression and push it on top of the
+        // 'evals' stack. If the expression is translated into a sub-tree, stack it with the
+        // existing 'fieldPathExpressionsTraverseStage' sub-tree.
         auto [outputSlot, expr, stage] =
             generateExpression(node->expressionRaw(),
                                std::move(_context->topLevel().fieldPathExpressionsTraverseStage),
@@ -216,10 +248,21 @@ public:
         auto inputStage{std::move(_context->topLevel().fieldPathExpressionsTraverseStage)};
 
         invariant(_context->evals.size() >= node->fieldNames().size());
+        // Walk through all the fields at the current nested level in reverse order (to match field
+        //  names with the elements on the 'evals' stack) and,
+        //    * For exclusion projections populate the 'restrictFields' array to be passed to the
+        //      mkobj stage below, which constructs an output document for the current nested level.
+        //    * For inclusion projections,
+        //         - Populates 'projectFields' and 'projectSlots' vectors holding field names to
+        //           project, and slots to access evaluated projection values.
+        //         - Populates 'projects' map to actually project out the values.
+        //         - For nested paths injects a traversal sub-tree.
         for (auto it = node->fieldNames().rbegin(); it != node->fieldNames().rend(); ++it) {
             auto eval = std::move(_context->evals.top());
             _context->evals.pop();
 
+            // If the projection eval element is empty, then this is an exclusion projection and we
+            // can put the field name to the vector of restricted fields.
             if (!eval) {
                 restrictFields.push_back(*it);
                 continue;
@@ -258,13 +301,19 @@ public:
                        eval->expr);
         }
 
+        // We walked through the field names in reverse order, so need to reverse the following two
+        // vectors.
         std::reverse(projectFields.begin(), projectFields.end());
         std::reverse(projectSlots.begin(), projectSlots.end());
 
+        // If we have something to actually project, then inject a projection stage.
         if (!projects.empty()) {
             inputStage = sbe::makeS<sbe::ProjectStage>(std::move(inputStage), std::move(projects));
         }
 
+        // Finally, inject an mkobj stage to generate a document for the current nested level. For
+        // inclusion projection also add constant filter stage on top to filter out input values for
+        // nested traversal if they're not documents.
         auto outputSlot = _context->slotIdGenerator->generate();
         _context->relevantSlots.push_back(outputSlot);
         _context->evals.push(
@@ -290,6 +339,7 @@ public:
                                                           std::move(projectSlots),
                                                           false,
                                                           true)}});
+        // We've done with the current nested level.
         _context->popLevel();
     }
 
