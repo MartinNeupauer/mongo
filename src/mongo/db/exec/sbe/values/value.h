@@ -145,6 +145,31 @@ std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
 
 
 /**
+ * RAII guard.
+ */
+class ValueGuard {
+    TypeTags _tag;
+    Value _value;
+
+public:
+    ValueGuard(TypeTags tag, Value val) : _tag(tag), _value(val) {}
+    ValueGuard() = delete;
+    ValueGuard(const ValueGuard&) = delete;
+    ValueGuard(ValueGuard&&) = delete;
+    ~ValueGuard() {
+        releaseValue(_tag, _value);
+    }
+
+    ValueGuard& operator=(const ValueGuard&) = delete;
+    ValueGuard& operator=(ValueGuard&&) = delete;
+
+    void reset() {
+        _tag = TypeTags::Nothing;
+        _value = 0;
+    }
+};
+
+/**
  * Object class.
  */
 class Object {
@@ -155,8 +180,9 @@ class Object {
 public:
     Object() = default;
     Object(const Object& other) {
-        _values.reserve(other._values.size());
-        _typeTags.reserve(other._typeTags.size());
+        // Reserve space in all vectors, they are the same size. We arbitrarily picked _typeTags
+        // to determine the size.
+        reserve(other._typeTags.size());
         _names = other._names;
         for (size_t idx = 0; idx < other._values.size(); ++idx) {
             const auto [tag, val] = copyValue(other._typeTags[idx], other._values[idx]);
@@ -166,17 +192,22 @@ public:
     }
     Object(Object&&) = default;
     ~Object() {
-        // TODO in a pathological case sizes are not the same
         for (size_t idx = 0; idx < _typeTags.size(); ++idx) {
             releaseValue(_typeTags[idx], _values[idx]);
         }
     }
     void push_back(std::string_view name, TypeTags tag, Value val) {
-        // TODO may leak when out of memory
         if (tag != TypeTags::Nothing) {
+            ValueGuard guard{tag, val};
+            // Reserve space in all vectors, they are the same size. We arbitrarily picked _typeTags
+            // to determine the size.
+            reserve(_typeTags.size() + 1);
+            _names.emplace_back(std::string(name));
+
             _typeTags.push_back(tag);
             _values.push_back(val);
-            _names.emplace_back(std::string(name));
+
+            guard.reset();
         }
     }
 
@@ -220,9 +251,9 @@ class Array {
 public:
     Array() = default;
     Array(const Array& other) {
-        // TODO this leaks like a seive
-        _values.reserve(other._values.size());
-        _typeTags.reserve(other._typeTags.size());
+        // Reserve space in all vectors, they are the same size. We arbitrarily picked _typeTags
+        // to determine the size.
+        reserve(other._typeTags.size());
         for (size_t idx = 0; idx < other._values.size(); ++idx) {
             const auto [tag, val] = copyValue(other._typeTags[idx], other._values[idx]);
             _values.push_back(val);
@@ -231,16 +262,21 @@ public:
     }
     Array(Array&&) = default;
     ~Array() {
-        // TODO in a pathological case sizes are not the same
         for (size_t idx = 0; idx < _typeTags.size(); ++idx) {
             releaseValue(_typeTags[idx], _values[idx]);
         }
     }
     void push_back(TypeTags tag, Value val) {
-        // TODO may leak when out of memory
         if (tag != TypeTags::Nothing) {
+            ValueGuard guard{tag, val};
+            // Reserve space in all vectors, they are the same size. We arbitrarily picked _typeTags
+            // to determine the size.
+            reserve(_typeTags.size() + 1);
+
             _typeTags.push_back(tag);
             _values.push_back(val);
+
+            guard.reset();
         }
     }
 
@@ -256,6 +292,7 @@ public:
     }
     void reserve(size_t s) {
         // normalize to at least 1
+        s = s ? s : 1;
         _typeTags.reserve(s);
         _values.reserve(s);
     }
@@ -290,11 +327,12 @@ public:
 
     ArraySet() = default;
     ArraySet(const ArraySet& other) {
-        // TODO this leaks like a seive
-        _values.reserve(other._values.size());
+        reserve(other._values.size());
         for (const auto& p : other._values) {
             const auto copy = copyValue(p.first, p.second);
+            ValueGuard guard{copy.first, copy.second};
             _values.insert(copy);
+            guard.reset();
         }
     }
     ArraySet(ArraySet&&) = default;
@@ -315,6 +353,7 @@ public:
     }
     void reserve(size_t s) {
         // normalize to at least 1
+        s = s ? s : 1;
         _values.reserve(s);
     }
 };

@@ -480,6 +480,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t a
 
     auto [tag, val] = value::makeNewArray();
     auto arr = value::getArrayView(val);
+    value::ValueGuard guard{tag, val};
 
     size_t splitStart = 0;
     size_t splitPos;
@@ -497,6 +498,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t a
         arr->push_back(tag, val);
     }
 
+    guard.reset();
     return {true, tag, val};
 }
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint8_t arity) {
@@ -521,6 +523,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint
 
     auto [tag, val] = value::makeNewObject();
     auto obj = value::getObjectView(val);
+    value::ValueGuard guard{tag, val};
 
     if (tagInObj == value::TypeTags::bsonObject) {
         auto be = value::bitcastTo<const char*>(valInObj);
@@ -552,6 +555,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint
         }
     }
 
+    guard.reset();
     return {true, tag, val};
 }
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t arity) {
@@ -578,12 +582,14 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t 
 
     auto [tag, val] = value::makeNewObject();
     auto obj = value::getObjectView(val);
+    value::ValueGuard guard{tag, val};
 
     for (size_t idx = 0; idx < typeTags.size(); ++idx) {
         auto [tagCopy, valCopy] = value::copyValue(typeTags[idx], values[idx]);
         obj->push_back(names[idx], tagCopy, valCopy);
     }
 
+    guard.reset();
     return {true, tag, val};
 }
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinKeyStringToString(uint8_t arity) {
@@ -660,10 +666,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAbs(uint8_t ari
 }
 
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToArray(uint8_t arity) {
-    // Take ownership of the accumulator
     auto [ownAgg, tagAgg, valAgg] = getFromStack(0);
-    topStack(false, value::TypeTags::Nothing, 0);
-
     auto [_, tagField, valField] = getFromStack(1);
 
     // Create a new array is it does not exist yet.
@@ -672,23 +675,25 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToArray(uint
         ownAgg = true;
         tagAgg = tagNewAgg;
         valAgg = valNewAgg;
+    } else {
+        // Take ownership of the accumulator
+        topStack(false, value::TypeTags::Nothing, 0);
     }
+    value::ValueGuard guard{tagAgg, valAgg};
 
-    invariant(tagAgg == value::TypeTags::Array);
+    invariant(ownAgg && tagAgg == value::TypeTags::Array);
     auto arr = value::getArrayView(valAgg);
 
     // And push back the value. Note that array will ignore Nothing.
     auto [tagCopy, valCopy] = value::copyValue(tagField, valField);
     arr->push_back(tagCopy, valCopy);
 
+    guard.reset();
     return {ownAgg, tagAgg, valAgg};
 }
 
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToSet(uint8_t arity) {
-    // Take ownership of the accumulator
     auto [ownAgg, tagAgg, valAgg] = getFromStack(0);
-    topStack(false, value::TypeTags::Nothing, 0);
-
     auto [_, tagField, valField] = getFromStack(1);
 
     // Create a new array is it does not exist yet.
@@ -697,15 +702,20 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToSet(uint8_
         ownAgg = true;
         tagAgg = tagNewAgg;
         valAgg = valNewAgg;
+    } else {
+        // Take ownership of the accumulator
+        topStack(false, value::TypeTags::Nothing, 0);
     }
+    value::ValueGuard guard{tagAgg, valAgg};
 
-    invariant(tagAgg == value::TypeTags::ArraySet);
+    invariant(ownAgg && tagAgg == value::TypeTags::ArraySet);
     auto arr = value::getArraySetView(valAgg);
 
     // And push back the value. Note that array will ignore Nothing.
     auto [tagCopy, valCopy] = value::copyValue(tagField, valField);
     arr->push_back(tagCopy, valCopy);
 
+    guard.reset();
     return {ownAgg, tagAgg, valAgg};
 }
 

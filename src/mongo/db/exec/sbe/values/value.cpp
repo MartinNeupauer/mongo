@@ -507,12 +507,12 @@ std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
 }
 
 void ArraySet::push_back(TypeTags tag, Value val) {
-    // TODO may leak when out of memory
     if (tag != TypeTags::Nothing) {
+        ValueGuard guard{tag, val};
         auto [it, inserted] = _values.insert({tag, val});
 
-        if (!inserted) {
-            releaseValue(tag, val);
+        if (inserted) {
+            guard.reset();
         }
     }
 }
