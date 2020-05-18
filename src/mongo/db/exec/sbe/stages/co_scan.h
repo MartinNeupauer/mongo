@@ -32,6 +32,13 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 
 namespace mongo::sbe {
+/**
+ * This is a CoScan PlanStage. It delivers an infinite stream of getNext() calls. Also, it does not
+ * define any slots; i.e. it does not produce any results.
+ * On its face value this does not seem to be very useful but it is handy when we have to construct
+ * a data stream when there is not any physical source (i.e. no collection to read from).
+ * Typical use cases are: inner side of Traverse, inner side of Nested Loops, constants, etc.
+ */
 class CoScanStage final : public PlanStage {
 public:
     CoScanStage();

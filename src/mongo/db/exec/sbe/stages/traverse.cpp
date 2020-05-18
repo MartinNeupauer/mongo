@@ -27,8 +27,9 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/traverse.h"
-#include "mongo/db/exec/sbe/expressions/expression.h"
 
 namespace mongo::sbe {
 TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,

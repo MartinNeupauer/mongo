@@ -28,7 +28,10 @@
  */
 #define MONGO_LOGV2_DEFAULT_COMPONENT ::mongo::logv2::LogComponent::kQuery
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/parser/parser.h"
+
 #include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/stages/exchange.h"
 #include "mongo/db/exec/sbe/stages/filter.h"

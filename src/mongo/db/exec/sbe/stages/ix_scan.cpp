@@ -27,7 +27,10 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/ix_scan.h"
+
 #include "mongo/db/catalog/index_catalog.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/index/index_access_method.h"

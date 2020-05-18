@@ -33,20 +33,6 @@
 
 namespace mongo::sbe {
 class UnwindStage final : public PlanStage {
-    const value::SlotId _inField;
-    const value::SlotId _outField;
-    const value::SlotId _outIndex;
-    const bool _preserveNullAndEmptyArrays;
-
-    value::SlotAccessor* _inFieldAccessor{nullptr};
-    std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
-    std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
-
-    value::ArrayAccessor _inArrayAccessor;
-
-    size_t _index{0};
-    bool _inArray{false};
-
 public:
     UnwindStage(std::unique_ptr<PlanStage> input,
                 value::SlotId inField,
@@ -65,5 +51,20 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const value::SlotId _inField;
+    const value::SlotId _outField;
+    const value::SlotId _outIndex;
+    const bool _preserveNullAndEmptyArrays;
+
+    value::SlotAccessor* _inFieldAccessor{nullptr};
+    std::unique_ptr<value::ViewOfValueAccessor> _outFieldOutputAccessor;
+    std::unique_ptr<value::ViewOfValueAccessor> _outIndexOutputAccessor;
+
+    value::ArrayAccessor _inArrayAccessor;
+
+    size_t _index{0};
+    bool _inArray{false};
 };
 }  // namespace mongo::sbe

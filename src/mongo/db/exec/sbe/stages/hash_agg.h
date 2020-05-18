@@ -29,16 +29,34 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/stdx/unordered_map.h"
 
-#include <unordered_map>
-
 namespace mongo {
 namespace sbe {
 class HashAggStage final : public PlanStage {
+public:
+    HashAggStage(std::unique_ptr<PlanStage> input,
+                 value::SlotVector gbs,
+                 value::SlotMap<std::unique_ptr<EExpression>> aggs);
+
+    std::unique_ptr<PlanStage> clone() final;
+
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
+
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
+    std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
     using TableType = stdx::
         unordered_map<value::MaterializedRow, value::MaterializedRow, value::MaterializedRowHasher>;
 
@@ -61,23 +79,6 @@ class HashAggStage final : public PlanStage {
     vm::ByteCode _bytecode;
 
     bool _compiled{false};
-
-public:
-    HashAggStage(std::unique_ptr<PlanStage> input,
-                 value::SlotVector gbs,
-                 value::SlotMap<std::unique_ptr<EExpression>> aggs);
-
-    std::unique_ptr<PlanStage> clone() final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
 };
 }  // namespace sbe
 }  // namespace mongo

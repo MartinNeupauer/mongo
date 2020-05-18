@@ -27,7 +27,10 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/makeobj.h"
+
 #include "mongo/db/exec/sbe/values/bson.h"
 #include "mongo/util/str.h"
 

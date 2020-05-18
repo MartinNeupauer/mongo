@@ -29,14 +29,14 @@
 
 #pragma once
 
+#include <memory>
+#include <string>
+#include <vector>
+
 #include "mongo/db/exec/sbe/util/debug_print.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/stdx/unordered_map.h"
-
-#include <memory>
-#include <string>
-#include <vector>
 
 namespace mongo {
 namespace sbe {
@@ -44,32 +44,50 @@ using SpoolBuffer = std::vector<value::MaterializedRow>;
 
 class PlanStage;
 struct CompileCtx {
-    PlanStage* root{nullptr};
-    value::SlotAccessor* accumulator{nullptr};
-    std::vector<std::pair<value::SlotId, value::SlotAccessor*>> correlated;
-    stdx::unordered_map<SpoolId, std::shared_ptr<SpoolBuffer>> spoolBuffers;
-    bool aggExpression{false};
-
     value::SlotAccessor* getAccessor(value::SlotId slot);
     std::shared_ptr<SpoolBuffer> getSpoolBuffer(SpoolId spool);
 
     void pushCorrelated(value::SlotId slot, value::SlotAccessor* accessor);
     void popCorrelated();
+
+    PlanStage* root{nullptr};
+    value::SlotAccessor* accumulator{nullptr};
+    std::vector<std::pair<value::SlotId, value::SlotAccessor*>> correlated;
+    stdx::unordered_map<SpoolId, std::shared_ptr<SpoolBuffer>> spoolBuffers;
+    bool aggExpression{false};
 };
 
+/**
+ * This is an abstract base class of all expression types in SBE. The expression types derived form
+ * this base must implement two fundamental operations:
+ *   - compile method that generates bytecode that is executed by the VM during runtime
+ *   - clone method that creates a complete copy of the expression
+ *
+ * The debugPrint method generates textual represenation of the expression for internal debugging
+ * purposes.
+ */
 class EExpression {
-protected:
-    std::vector<std::unique_ptr<EExpression>> _nodes;
-
 public:
-    virtual ~EExpression() {}
+    virtual ~EExpression() = default;
 
-    // This is unspeakably ugly
+    // The idiomatic C++ pattern of object cloning. Expressions must be fully copyable as every
+    // thread in parallel execution needs its own private copy.
     virtual std::unique_ptr<EExpression> clone() = 0;
 
+    // Returns bytecode directly executable by VM.
     virtual std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) = 0;
 
     virtual std::vector<DebugPrinter::Block> debugPrint() = 0;
+
+protected:
+    std::vector<std::unique_ptr<EExpression>> _nodes;
+
+    // Expressions can never be constructed with nullptr children.
+    void validateNodes() {
+        for (auto& node : _nodes) {
+            invariant(node);
+        }
+    }
 };
 
 template <typename T, typename... Args>
@@ -123,25 +141,22 @@ auto makeSV(Args&&... args) {
     return v;
 }
 
+/**
+ * This is a constant expression. It assumes the ownership of the input constant.
+ */
 class EConstant final : public EExpression {
-    value::TypeTags _tag;
-    value::Value _val;
-    std::string _s;
-
-    bool _owned{true};
-
 public:
     EConstant(value::TypeTags tag, value::Value val) : _tag(tag), _val(val) {}
-    EConstant(std::string_view s) : _s(s) {
-        _owned = false;
+    EConstant(std::string_view str) {
+        // Views are non-owning so we have to make a copy.
+        auto [tag, val] = value::makeNewString(str);
 
-        _tag = value::TypeTags::StringBig;
-        _val = value::bitcastFrom(_s.c_str());
+        _tag = tag;
+        _val = val;
     }
 
-    ~EConstant() {
-        if (_owned)
-            value::releaseValue(_tag, _val);
+    ~EConstant() override {
+        value::releaseValue(_tag, _val);
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -149,12 +164,18 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    value::TypeTags _tag;
+    value::Value _val;
 };
 
+/**
+ * This is an expression representing a variable. The variable can point to a slot as defined SBE
+ * plan stages or to a slot defined by a local bind (a.k.a. let) expression. The local binds are
+ * identified by the frame id.
+ */
 class EVariable final : public EExpression {
-    value::SlotId _var;
-    boost::optional<FrameId> _frameId;
-
 public:
     EVariable(value::SlotId var) : _var(var), _frameId(boost::none) {}
     EVariable(FrameId frameId, value::SlotId var) : _var(var), _frameId(frameId) {}
@@ -164,8 +185,16 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    value::SlotId _var;
+    boost::optional<FrameId> _frameId;
 };
 
+/**
+ * This is a binary primitive (builtin) operation. The operations are fairly standard and logical
+ * operations are short-circuiting.
+ */
 class EPrimBinary final : public EExpression {
 public:
     enum Op {
@@ -189,14 +218,11 @@ public:
         logicOr,
     };
 
-private:
-    Op _op;
-
-public:
     EPrimBinary(Op op, std::unique_ptr<EExpression> lhs, std::unique_ptr<EExpression> rhs)
         : _op(op) {
         _nodes.emplace_back(std::move(lhs));
         _nodes.emplace_back(std::move(rhs));
+        validateNodes();
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -204,8 +230,14 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    Op _op;
 };
 
+/**
+ * This is a unary primitive (builtin) operation.
+ */
 class EPrimUnary final : public EExpression {
 public:
     enum Op {
@@ -213,12 +245,9 @@ public:
         negate,
     };
 
-private:
-    Op _op;
-
-public:
     EPrimUnary(Op op, std::unique_ptr<EExpression> operand) : _op(op) {
         _nodes.emplace_back(std::move(operand));
+        validateNodes();
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -226,17 +255,21 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    Op _op;
 };
 
+/**
+ * This is a function call expression. Functions can have arbitrary arity and arguments are
+ * evaluated right to left. They are identified simply by a name and we have a dictionary of all
+ * supported (builtin) functions.
+ */
 class EFunction final : public EExpression {
-    std::string _name;
-
 public:
     EFunction(std::string_view name, std::vector<std::unique_ptr<EExpression>> args) : _name(name) {
         _nodes = std::move(args);
-        for (auto& n : _nodes) {
-            invariant(n);
-        }
+        validateNodes();
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -244,8 +277,14 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    std::string _name;
 };
 
+/**
+ * This is a conditional (a.k.a. ite) expression.
+ */
 class EIf final : public EExpression {
 public:
     EIf(std::unique_ptr<EExpression> cond,
@@ -254,6 +293,7 @@ public:
         _nodes.emplace_back(std::move(cond));
         _nodes.emplace_back(std::move(thenBranch));
         _nodes.emplace_back(std::move(elseBranch));
+        validateNodes();
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -263,9 +303,10 @@ public:
     std::vector<DebugPrinter::Block> debugPrint() override;
 };
 
+/**
+ * This is a let expression that can be used to define local variables.
+ */
 class ELocalBind final : public EExpression {
-    FrameId _frameId;
-
 public:
     ELocalBind(FrameId frameId,
                std::vector<std::unique_ptr<EExpression>> binds,
@@ -273,6 +314,7 @@ public:
         : _frameId(frameId) {
         _nodes = std::move(binds);
         _nodes.emplace_back(std::move(in));
+        validateNodes();
     }
 
     std::unique_ptr<EExpression> clone() override;
@@ -280,12 +322,15 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    FrameId _frameId;
 };
 
+/**
+ * Evaluating this expression will throw an exception with given error code and message.
+ */
 class EFail final : public EExpression {
-    ErrorCodes::Error _code;
-    std::string _message;
-
 public:
     EFail(ErrorCodes::Error code, std::string message) : _code(code), _message(message) {}
 
@@ -294,6 +339,10 @@ public:
     std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
 
     std::vector<DebugPrinter::Block> debugPrint() override;
+
+private:
+    ErrorCodes::Error _code;
+    std::string _message;
 };
 }  // namespace sbe
 }  // namespace mongo

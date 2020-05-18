@@ -27,7 +27,10 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/exchange.h"
+
 #include "mongo/base/init.h"
 #include "mongo/db/client.h"
 
@@ -350,8 +353,6 @@ void ExchangeConsumer::close() {
             _state->producerResults()[idx].get();
         }
     }
-
-    // std::cout << "rows processed = " << _rowProcessed << "\n";
 }
 
 std::unique_ptr<PlanStageStats> ExchangeConsumer::getStats() const {
@@ -567,9 +568,10 @@ bool ExchangeBuffer::appendData(std::vector<value::SlotAccessor*>& data) {
     ++_count;
     for (auto accesor : data) {
         auto [tag, val] = accesor->copyOrMoveValue();
-        // TODO leaks!!!
+        value::ValueGuard guard{tag, val};
         _typeTags.push_back(tag);
         _values.push_back(val);
+        guard.reset();
     }
 
     // a simply heuristic for now

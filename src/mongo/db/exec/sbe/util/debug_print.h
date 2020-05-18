@@ -67,18 +67,6 @@ public:
         Block(Command c) : cmd(c) {}
     };
 
-private:
-    bool _colorConsole;
-
-    void addIndent(int ident, std::string& s) {
-        for (int i = 0; i < ident; ++i) {
-            s.append("    ");
-        }
-    }
-
-    std::string print(std::vector<Block> blocks);
-
-public:
     DebugPrinter(bool colorConsole = false) : _colorConsole(colorConsole) {}
 
     static void addKeyword(std::vector<Block>& ret, std::string_view k) {
@@ -129,6 +117,17 @@ public:
                    std::make_move_iterator(blocks.end()));
     }
     std::string print(PlanStage* s);
+
+private:
+    bool _colorConsole;
+
+    void addIndent(int ident, std::string& s) {
+        for (int i = 0; i < ident; ++i) {
+            s.append("    ");
+        }
+    }
+
+    std::string print(std::vector<Block> blocks);
 };
 }  // namespace sbe
 }  // namespace mongo

@@ -27,14 +27,14 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/platform/basic.h"
 
+#include "mongo/db/exec/sbe/vm/vm.h"
+
 #include <pcrecpp.h>
-#include <set>
 
 #include "mongo/db/exec/sbe/values/bson.h"
-#include "mongo/db/exec/sbe/vm/vm.h"
+#include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/storage/key_string.h"
 #include "mongo/util/fail_point.h"
 

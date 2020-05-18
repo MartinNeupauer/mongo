@@ -34,12 +34,6 @@
 
 namespace mongo::sbe {
 class LimitSkipStage final : public PlanStage {
-    const boost::optional<long long> _limit;
-    const boost::optional<long long> _skip;
-    long long _current;
-    bool _isEOF;
-    LimitSkipStats _specificStats;
-
 public:
     LimitSkipStage(std::unique_ptr<PlanStage> input,
                    boost::optional<long long> limit,
@@ -56,5 +50,12 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const boost::optional<long long> _limit;
+    const boost::optional<long long> _skip;
+    long long _current;
+    bool _isEOF;
+    LimitSkipStats _specificStats;
 };
 }  // namespace mongo::sbe

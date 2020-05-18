@@ -32,7 +32,6 @@
 #include "mongo/db/db_raii.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/bson.h"
-#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/storage/record_store.h"
 
 namespace mongo {
@@ -40,12 +39,6 @@ namespace sbe {
 using ScanOpenCallback = std::function<void(OperationContext*, const Collection*, bool)>;
 
 class ScanStage final : public PlanStage {
-protected:
-    void doSaveState() override;
-    void doRestoreState() override;
-    void doDetachFromOperationContext() override;
-    void doAttachFromOperationContext(OperationContext* opCtx) override;
-
 public:
     ScanStage(const NamespaceStringOrUUID& name,
               boost::optional<value::SlotId> recordSlot,
@@ -68,6 +61,12 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+protected:
+    void doSaveState() override;
+    void doRestoreState() override;
+    void doDetachFromOperationContext() override;
+    void doAttachFromOperationContext(OperationContext* opCtx) override;
 
 private:
     const NamespaceStringOrUUID _name;
@@ -107,20 +106,6 @@ class ParallelScanStage final : public PlanStage {
         std::atomic<size_t> currentRange{0};
     };
 
-    boost::optional<Record> nextRange();
-    bool needsRange() const {
-        return _currentRange == std::numeric_limits<std::size_t>::max();
-    }
-    void setNeedsRange() {
-        _currentRange = std::numeric_limits<std::size_t>::max();
-    }
-
-protected:
-    void doSaveState() final;
-    void doRestoreState() final;
-    void doDetachFromOperationContext() final;
-    void doAttachFromOperationContext(OperationContext* opCtx) final;
-
 public:
     ParallelScanStage(const NamespaceStringOrUUID& name,
                       boost::optional<value::SlotId> recordSlot,
@@ -149,7 +134,21 @@ public:
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
 
+protected:
+    void doSaveState() final;
+    void doRestoreState() final;
+    void doDetachFromOperationContext() final;
+    void doAttachFromOperationContext(OperationContext* opCtx) final;
+
 private:
+    boost::optional<Record> nextRange();
+    bool needsRange() const {
+        return _currentRange == std::numeric_limits<std::size_t>::max();
+    }
+    void setNeedsRange() {
+        _currentRange = std::numeric_limits<std::size_t>::max();
+    }
+
     const NamespaceStringOrUUID _name;
     const boost::optional<value::SlotId> _recordSlot;
     const boost::optional<value::SlotId> _recordIdSlot;

@@ -33,25 +33,6 @@
 
 namespace mongo::sbe {
 class SortStage final : public PlanStage {
-    using TableType = std::
-        multimap<value::MaterializedRow, value::MaterializedRow, value::MaterializedRowComparator>;
-
-    using SortKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
-    using SortValueAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
-
-    const value::SlotVector _obs;
-    const std::vector<value::SortDirection> _dirs;
-    const value::SlotVector _vals;
-    const size_t _limit;
-
-    std::vector<value::SlotAccessor*> _inKeyAccessors;
-    std::vector<value::SlotAccessor*> _inValueAccessors;
-
-    value::SlotMap<std::unique_ptr<value::SlotAccessor>> _outAccessors;
-
-    TableType _st;
-    TableType::iterator _stIt;
-
 public:
     SortStage(std::unique_ptr<PlanStage> input,
               value::SlotVector obs,
@@ -70,5 +51,25 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    using TableType = std::
+        multimap<value::MaterializedRow, value::MaterializedRow, value::MaterializedRowComparator>;
+
+    using SortKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
+    using SortValueAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
+
+    const value::SlotVector _obs;
+    const std::vector<value::SortDirection> _dirs;
+    const value::SlotVector _vals;
+    const size_t _limit;
+
+    std::vector<value::SlotAccessor*> _inKeyAccessors;
+    std::vector<value::SlotAccessor*> _inValueAccessors;
+
+    value::SlotMap<std::unique_ptr<value::SlotAccessor>> _outAccessors;
+
+    TableType _st;
+    TableType::iterator _stIt;
 };
 }  // namespace mongo::sbe

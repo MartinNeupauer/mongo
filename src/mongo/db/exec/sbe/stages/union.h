@@ -35,6 +35,24 @@
 
 namespace mongo::sbe {
 class UnionStage final : public PlanStage {
+public:
+    UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
+               std::vector<value::SlotVector> inputVals,
+               value::SlotVector outputVals);
+
+    std::unique_ptr<PlanStage> clone() final;
+
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
+
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
+    std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
     struct UnionBranch {
         PlanStage* stage{nullptr};
         const bool reOpen{false};
@@ -61,22 +79,5 @@ class UnionStage final : public PlanStage {
     std::vector<value::ViewOfValueAccessor> _outValueAccessors;
     std::queue<UnionBranch> _remainingBranchesToDrain;
     PlanStage* _currentStage{nullptr};
-
-public:
-    UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
-               std::vector<value::SlotVector> inputVals,
-               value::SlotVector outputVals);
-
-    std::unique_ptr<PlanStage> clone() final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
 };
 }  // namespace mongo::sbe

@@ -29,12 +29,13 @@
 
 #pragma once
 
+#include <third_party/peglib/peglib.h>
+
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/stages/spool.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/slot_id_generator.h"
 #include "mongo/db/query/sbe_stage_builder.h"
-#include "third_party/peglib/peglib.h"
 
 namespace mongo {
 namespace sbe {

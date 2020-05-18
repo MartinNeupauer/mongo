@@ -27,11 +27,12 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/sort.h"
+
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/util/str.h"
-
-#include <set>
 
 namespace mongo {
 namespace sbe {

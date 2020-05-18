@@ -27,7 +27,10 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/hash_agg.h"
+
 #include "mongo/util/str.h"
 
 namespace mongo {

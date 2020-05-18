@@ -29,11 +29,11 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/values/value.h"
-
 #include <cstdint>
 #include <memory>
 #include <vector>
+
+#include "mongo/db/exec/sbe/values/value.h"
 
 namespace mongo {
 namespace sbe {
@@ -169,25 +169,6 @@ enum class Builtin : uint8_t {
 };
 
 class CodeFragment {
-    std::vector<uint8_t> _instrs;
-    struct FixUp {
-        FrameId frameId;
-        size_t offset;
-    };
-    std::vector<FixUp> _fixUps;
-
-    int _stackSize{0};
-
-    auto allocateSpace(size_t size) {
-        auto oldSize = _instrs.size();
-        _instrs.resize(oldSize + size);
-        return _instrs.data() + oldSize;
-    }
-
-    void adjustStackSimple(const Instruction& i);
-    void fixup(int offset);
-    void copyCodeAndFixup(const CodeFragment& from);
-
 public:
     auto& instrs() {
         return _instrs;
@@ -261,9 +242,42 @@ public:
 
 private:
     void appendSimpleInstruction(Instruction::Tags tag);
+    auto allocateSpace(size_t size) {
+        auto oldSize = _instrs.size();
+        _instrs.resize(oldSize + size);
+        return _instrs.data() + oldSize;
+    }
+
+    void adjustStackSimple(const Instruction& i);
+    void fixup(int offset);
+    void copyCodeAndFixup(const CodeFragment& from);
+
+    std::vector<uint8_t> _instrs;
+
+    /**
+     * Local variables bound by the let expressions live on the stack and are accessed by knowing an
+     * offset from the top of the stack. As CodeFragments are appened together the offsets must be
+     * fixed up to account for movement of the top of the stack.
+     * The FixUp structure holds a "pointer" to the bytecode where we have to adjust the stack
+     * offset.
+     */
+    struct FixUp {
+        FrameId frameId;
+        size_t offset;
+    };
+    std::vector<FixUp> _fixUps;
+
+    int _stackSize{0};
 };
 
 class ByteCode {
+public:
+    ~ByteCode();
+
+    std::tuple<uint8_t, value::TypeTags, value::Value> run(CodeFragment* code);
+    bool runPredicate(CodeFragment* code);
+
+private:
     std::vector<uint8_t> _argStackOwned;
     std::vector<value::TypeTags> _argStackTags;
     std::vector<value::Value> _argStackVals;
@@ -387,12 +401,6 @@ class ByteCode {
         _argStackTags.pop_back();
         _argStackVals.pop_back();
     }
-
-public:
-    ~ByteCode();
-
-    std::tuple<uint8_t, value::TypeTags, value::Value> run(CodeFragment* code);
-    bool runPredicate(CodeFragment* code);
 };
 }  // namespace vm
 }  // namespace sbe

@@ -27,6 +27,8 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/stages/check_bounds.h"
 
 namespace mongo::sbe {

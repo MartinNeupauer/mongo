@@ -272,7 +272,6 @@ std::pair<value::TypeTags, value::Value> ByteCode::compare3way(value::TypeTags l
     return value::compareValue(lhsTag, lhsValue, rhsTag, rhsValue);
 }
 
-
 }  // namespace vm
 }  // namespace sbe
 }  // namespace mongo

@@ -33,18 +33,8 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
-#include <unordered_map>
-#include <vector>
-
 namespace mongo::sbe {
 class ProjectStage final : public PlanStage {
-    const value::SlotMap<std::unique_ptr<EExpression>> _projects;
-    value::SlotMap<std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>> _fields;
-
-    vm::ByteCode _bytecode;
-
-    bool _compiled{false};
-
 public:
     ProjectStage(std::unique_ptr<PlanStage> input,
                  value::SlotMap<std::unique_ptr<EExpression>> projects);
@@ -60,6 +50,14 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const value::SlotMap<std::unique_ptr<EExpression>> _projects;
+    value::SlotMap<std::pair<std::unique_ptr<vm::CodeFragment>, value::OwnedValueAccessor>> _fields;
+
+    vm::ByteCode _bytecode;
+
+    bool _compiled{false};
 };
 
 template <typename... Ts>

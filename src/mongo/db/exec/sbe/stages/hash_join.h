@@ -29,13 +29,34 @@
 
 #pragma once
 
+#include <vector>
+
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
-#include <vector>
-
 namespace mongo::sbe {
 class HashJoinStage final : public PlanStage {
+public:
+    HashJoinStage(std::unique_ptr<PlanStage> outer,
+                  std::unique_ptr<PlanStage> inner,
+                  value::SlotVector outerCond,
+                  value::SlotVector outerProjects,
+                  value::SlotVector innerCond,
+                  value::SlotVector innerProjects);
+
+    std::unique_ptr<PlanStage> clone() final;
+
+    void prepare(CompileCtx& ctx) final;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
+    void open(bool reOpen) final;
+    PlanState getNext() final;
+    void close() final;
+
+    std::unique_ptr<PlanStageStats> getStats() const final;
+    const SpecificStats* getSpecificStats() const final;
+    std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
     using TableType = std::unordered_multimap<value::MaterializedRow,
                                               value::MaterializedRow,
                                               value::MaterializedRowHasher>;
@@ -74,25 +95,5 @@ class HashJoinStage final : public PlanStage {
     vm::ByteCode _bytecode;
 
     bool _compiled{false};
-
-public:
-    HashJoinStage(std::unique_ptr<PlanStage> outer,
-                  std::unique_ptr<PlanStage> inner,
-                  value::SlotVector outerCond,
-                  value::SlotVector outerProjects,
-                  value::SlotVector innerCond,
-                  value::SlotVector innerProjects);
-
-    std::unique_ptr<PlanStage> clone() final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
 };
 }  // namespace mongo::sbe

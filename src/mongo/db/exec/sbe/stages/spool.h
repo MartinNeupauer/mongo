@@ -47,14 +47,6 @@ namespace mongo::sbe {
  * buffer once its populated, each using its own read pointer.
  */
 class SpoolEagerProducerStage final : public PlanStage {
-    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
-    size_t _bufferIt;
-    const SpoolId _spoolId;
-
-    const value::SlotVector _vals;
-    std::vector<value::SlotAccessor*> _inAccessors;
-    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
-
 public:
     SpoolEagerProducerStage(std::unique_ptr<PlanStage> input,
                             SpoolId spoolId,
@@ -71,6 +63,15 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
+    size_t _bufferIt;
+    const SpoolId _spoolId;
+
+    const value::SlotVector _vals;
+    std::vector<value::SlotAccessor*> _inAccessors;
+    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 };
 
 /**
@@ -92,18 +93,6 @@ public:
  * without being stored into the buffer.
  */
 class SpoolLazyProducerStage final : public PlanStage {
-    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
-    const SpoolId _spoolId;
-
-    const value::SlotVector _vals;
-    std::vector<value::SlotAccessor*> _inAccessors;
-    value::SlotMap<value::ViewOfValueAccessor> _outAccessors;
-
-    std::unique_ptr<EExpression> _predicate;
-    std::unique_ptr<vm::CodeFragment> _predicateCode;
-    vm::ByteCode _bytecode;
-    bool _compiled{false};
-
 public:
     SpoolLazyProducerStage(std::unique_ptr<PlanStage> input,
                            SpoolId spoolId,
@@ -121,6 +110,19 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
+    const SpoolId _spoolId;
+
+    const value::SlotVector _vals;
+    std::vector<value::SlotAccessor*> _inAccessors;
+    value::SlotMap<value::ViewOfValueAccessor> _outAccessors;
+
+    std::unique_ptr<EExpression> _predicate;
+    std::unique_ptr<vm::CodeFragment> _predicateCode;
+    vm::ByteCode _bytecode;
+    bool _compiled{false};
 };
 
 /**
@@ -141,13 +143,6 @@ public:
  */
 template <bool IsStack>
 class SpoolConsumerStage final : public PlanStage {
-    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
-    size_t _bufferIt;
-    const SpoolId _spoolId;
-
-    const value::SlotVector _vals;
-    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
-
 public:
     SpoolConsumerStage(SpoolId spoolId, value::SlotVector vals)
         : PlanStage{IsStack ? "sspool"_sd : "cspool"_sd},
@@ -246,5 +241,13 @@ public:
 
         return ret;
     }
+
+private:
+    std::shared_ptr<SpoolBuffer> _buffer{nullptr};
+    size_t _bufferIt;
+    const SpoolId _spoolId;
+
+    const value::SlotVector _vals;
+    value::SlotMap<value::MaterializedRowAccessor<SpoolBuffer>> _outAccessors;
 };
 }  // namespace mongo::sbe

@@ -64,19 +64,6 @@ struct CheckBoundsParams {
  * in case #3 back to the index scan,
  */
 class CheckBoundsStage final : public PlanStage {
-    const CheckBoundsParams _params;
-    IndexBoundsChecker _checker;
-
-    const value::SlotId _inKeySlot;
-    const value::SlotId _inRecordIdSlot;
-    const value::SlotId _outSlot;
-
-    value::SlotAccessor* _inKeyAccessor{nullptr};
-    value::SlotAccessor* _inRecordIdAccessor{nullptr};
-    value::OwnedValueAccessor _outAccessor;
-
-    bool _isEOF{false};
-
 public:
     CheckBoundsStage(std::unique_ptr<PlanStage> input,
                      const CheckBoundsParams& params,
@@ -95,5 +82,19 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const CheckBoundsParams _params;
+    IndexBoundsChecker _checker;
+
+    const value::SlotId _inKeySlot;
+    const value::SlotId _inRecordIdSlot;
+    const value::SlotId _outSlot;
+
+    value::SlotAccessor* _inKeyAccessor{nullptr};
+    value::SlotAccessor* _inRecordIdAccessor{nullptr};
+    value::OwnedValueAccessor _outAccessor;
+
+    bool _isEOF{false};
 };
 }  // namespace mongo::sbe

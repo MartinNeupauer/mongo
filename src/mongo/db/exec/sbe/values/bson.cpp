@@ -27,6 +27,8 @@
  *    it in the license file.
  */
 
+#include "mongo/platform/basic.h"
+
 #include "mongo/db/exec/sbe/values/bson.h"
 
 namespace mongo {
@@ -58,30 +60,6 @@ static uint8_t advanceTable[] = {
 };
 // clang-format on
 
-enum class bsonType : uint8_t {
-    Double = 1,
-    String,
-    Object,
-    Array,
-    Binary,
-    Undefined,
-    ObjectId,
-    Boolean,
-    Date,
-    Null,
-    RegExp,
-    DBPointer,
-    JavaScript,
-    Symbol,
-    JavaScriptWS,
-    Integer32,
-    Timestamp,
-    Integer64,
-    Decimal128
-};
-
-static_assert((int)bsonType::Decimal128 == 19);
-
 const char* advance(const char* be, size_t fieldNameSize) {
     auto type = static_cast<unsigned char>(*be);
 
@@ -91,12 +69,12 @@ const char* advance(const char* be, size_t fieldNameSize) {
         if (advOffset < 128) {
             be += advOffset;
         } else {
-            be += value::readFromMemory<uint32_t>(be);
+            be += ConstDataView(be).read<LittleEndian<uint32_t>>();
             if (advOffset == 0xff) {
                 be += 4;
             } else if (advOffset == 0xfe) {
             } else {
-                if (static_cast<bsonType>(type) == bsonType::Binary) {
+                if (static_cast<BSONType>(type) == BSONType::BinData) {
                     be += 5;
                 } else {
                     invariant(Status(ErrorCodes::InternalError, "unsupported bson element"));
@@ -114,30 +92,34 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
                                                      const char* be,
                                                      const char* end,
                                                      size_t fieldNameSize) {
-    bsonType type = static_cast<bsonType>(*be);
+    auto type = static_cast<BSONType>(*be);
     // advance be
     be += 1 + fieldNameSize + 1;
 
     switch (type) {
-        case bsonType::Double: {
-            auto dbl = value::readFromMemory<double>(be);
+        case BSONType::NumberDouble: {
+            auto dbl = ConstDataView(be).read<LittleEndian<double>>();
             return {value::TypeTags::NumberDouble, value::bitcastFrom(dbl)};
         }
-        case bsonType::Decimal128: {
+        case BSONType::NumberDecimal: {
             if (view) {
                 return {value::TypeTags::NumberDecimal, value::bitcastFrom(be)};
             }
-            auto dec = value::readFromMemory<Decimal128>(be);
+
+            uint64_t low = ConstDataView(be).read<LittleEndian<uint64_t>>();
+            uint64_t high = ConstDataView(be + sizeof(uint64_t)).read<LittleEndian<uint64_t>>();
+            auto dec = Decimal128{Decimal128::Value({low, high})};
+
             return value::makeCopyDecimal(dec);
         }
-        case bsonType::String: {
+        case BSONType::String: {
             if (view) {
                 return {value::TypeTags::bsonString, value::bitcastFrom(be)};
             }
             // len includes trailing zero
-            int32_t len = value::readFromMemory<int32_t>(be);
+            auto len = ConstDataView(be).read<LittleEndian<uint32_t>>();
             be += sizeof(len);
-            if (len < value::SmallStringThreshold) {
+            if (len < value::kSmallStringThreshold) {
                 value::Value smallString;
                 // copy fast 8 bytes if we have space
                 if (be + 8 < end) {
@@ -152,7 +134,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
                 return {value::TypeTags::StringBig, value::bitcastFrom(str)};
             }
         }
-        case bsonType::Object: {
+        case BSONType::Object: {
             if (view) {
                 return {value::TypeTags::bsonObject, value::bitcastFrom(be)};
             }
@@ -172,7 +154,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             }
             return {tag, val};
         }
-        case bsonType::Array: {
+        case BSONType::Array: {
             if (view) {
                 return {value::TypeTags::bsonArray, value::bitcastFrom(be)};
             }
@@ -192,7 +174,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             }
             return {tag, val};
         }
-        case bsonType::ObjectId: {
+        case BSONType::jstOID: {
             if (view) {
                 return {value::TypeTags::bsonObjectId, value::bitcastFrom(be)};
             }
@@ -200,24 +182,24 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             memcpy(value::getObjectIdView(val), be, sizeof(value::ObjectIdType));
             return {tag, val};
         }
-        case bsonType::Boolean:
+        case BSONType::Bool:
             return {value::TypeTags::Boolean, *(be)};
-        case bsonType::Date: {
-            auto integer = value::readFromMemory<int64_t>(be);
+        case BSONType::Date: {
+            auto integer = ConstDataView(be).read<LittleEndian<int64_t>>();
             return {value::TypeTags::Date, value::bitcastFrom(integer)};
         }
-        case bsonType::Null:
+        case BSONType::jstNULL:
             return {value::TypeTags::Null, 0};
-        case bsonType::Integer32: {
-            auto integer = value::readFromMemory<int32_t>(be);
+        case BSONType::NumberInt: {
+            auto integer = ConstDataView(be).read<LittleEndian<int32_t>>();
             return {value::TypeTags::NumberInt32, value::bitcastFrom(integer)};
         }
-        case bsonType::Timestamp: {
-            auto val = value::readFromMemory<uint64_t>(be);
+        case BSONType::bsonTimestamp: {
+            auto val = ConstDataView(be).read<LittleEndian<uint64_t>>();
             return {value::TypeTags::Timestamp, value::bitcastFrom(val)};
         }
-        case bsonType::Integer64: {
-            auto val = value::readFromMemory<int64_t>(be);
+        case BSONType::NumberLong: {
+            auto val = ConstDataView(be).read<LittleEndian<int64_t>>();
             return {value::TypeTags::NumberInt64, value::bitcastFrom(val)};
         }
         default:

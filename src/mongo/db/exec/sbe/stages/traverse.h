@@ -35,32 +35,6 @@
 
 namespace mongo::sbe {
 class TraverseStage final : public PlanStage {
-    const value::SlotId _inField;
-    const value::SlotId _outField;
-    const value::SlotId _outFieldInner;
-    const value::SlotVector _correlatedSlots;
-    const std::unique_ptr<EExpression> _fold;
-    const std::unique_ptr<EExpression> _final;
-    const boost::optional<size_t> _nestedArraysDepth;
-
-    value::SlotAccessor* _inFieldAccessor{nullptr};
-    value::ViewOfValueAccessor _correlatedAccessor;
-    value::OwnedValueAccessor _outFieldOutputAccessor;
-    value::SlotAccessor* _outFieldInputAccessor{nullptr};
-
-    std::unique_ptr<vm::CodeFragment> _foldCode;
-    std::unique_ptr<vm::CodeFragment> _finalCode;
-
-    vm::ByteCode _bytecode;
-
-    bool _compiled{false};
-    bool _reOpenInner{false};
-
-    void openInner(value::TypeTags tag, value::Value val);
-    bool traverse(value::SlotAccessor* inFieldAccessor,
-                  value::OwnedValueAccessor* outFieldOutputAccessor,
-                  size_t level);
-
 public:
     TraverseStage(std::unique_ptr<PlanStage> outer,
                   std::unique_ptr<PlanStage> inner,
@@ -83,5 +57,32 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    void openInner(value::TypeTags tag, value::Value val);
+    bool traverse(value::SlotAccessor* inFieldAccessor,
+                  value::OwnedValueAccessor* outFieldOutputAccessor,
+                  size_t level);
+
+    const value::SlotId _inField;
+    const value::SlotId _outField;
+    const value::SlotId _outFieldInner;
+    const value::SlotVector _correlatedSlots;
+    const std::unique_ptr<EExpression> _fold;
+    const std::unique_ptr<EExpression> _final;
+    const boost::optional<size_t> _nestedArraysDepth;
+
+    value::SlotAccessor* _inFieldAccessor{nullptr};
+    value::ViewOfValueAccessor _correlatedAccessor;
+    value::OwnedValueAccessor _outFieldOutputAccessor;
+    value::SlotAccessor* _outFieldInputAccessor{nullptr};
+
+    std::unique_ptr<vm::CodeFragment> _foldCode;
+    std::unique_ptr<vm::CodeFragment> _finalCode;
+
+    vm::ByteCode _bytecode;
+
+    bool _compiled{false};
+    bool _reOpenInner{false};
 };
 }  // namespace mongo::sbe

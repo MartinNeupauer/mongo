@@ -35,22 +35,6 @@
 namespace mongo {
 namespace sbe {
 class BSONScanStage final : public PlanStage {
-    const char* const _bsonBegin;
-    const char* const _bsonEnd;
-
-    const boost::optional<value::SlotId> _recordSlot;
-    const std::vector<std::string> _fields;
-    const value::SlotVector _vars;
-
-    std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
-
-    value::FieldAccessorMap _fieldAccessors;
-    value::SlotAccessorMap _varAccessors;
-
-    const char* _bsonCurrent;
-
-    ScanStats _specificStats;
-
 public:
     BSONScanStage(const char* bsonBegin,
                   const char* bsonEnd,
@@ -70,6 +54,23 @@ public:
     const SpecificStats* getSpecificStats() const final;
 
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const char* const _bsonBegin;
+    const char* const _bsonEnd;
+
+    const boost::optional<value::SlotId> _recordSlot;
+    const std::vector<std::string> _fields;
+    const value::SlotVector _vars;
+
+    std::unique_ptr<value::ViewOfValueAccessor> _recordAccessor;
+
+    value::FieldAccessorMap _fieldAccessors;
+    value::SlotAccessorMap _varAccessors;
+
+    const char* _bsonCurrent;
+
+    ScanStats _specificStats;
 };
 }  // namespace sbe
 }  // namespace mongo

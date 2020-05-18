@@ -31,24 +31,17 @@
 
 #include "mongo/db/db_raii.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
-#include "mongo/db/query/plan_yield_policy.h"
 #include "mongo/db/storage/record_store.h"
 #include "mongo/db/storage/sorted_data_interface.h"
 
 namespace mongo::sbe {
 class IndexScanStage final : public PlanStage {
-protected:
-    void doSaveState() override;
-    void doRestoreState() override;
-    void doDetachFromOperationContext() override;
-    void doAttachFromOperationContext(OperationContext* opCtx) override;
-
 public:
     IndexScanStage(const NamespaceStringOrUUID& name,
                    std::string_view indexName,
                    bool forward,
                    boost::optional<value::SlotId> recordSlot,
-                   boost::optional<value::SlotId> recordISlot,
+                   boost::optional<value::SlotId> recordIdSlot,
                    std::vector<std::string> fields,
                    value::SlotVector vars,
                    boost::optional<value::SlotId> seekKeySlotLow,
@@ -66,6 +59,12 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+protected:
+    void doSaveState() override;
+    void doRestoreState() override;
+    void doDetachFromOperationContext() override;
+    void doAttachFromOperationContext(OperationContext* opCtx) override;
 
 private:
     const NamespaceStringOrUUID _name;

@@ -27,9 +27,9 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/stages/union.h"
+#include "mongo/platform/basic.h"
 
-#include <set>
+#include "mongo/db/exec/sbe/stages/union.h"
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
 

@@ -38,6 +38,8 @@
 #include <utility>
 #include <vector>
 
+#include "mongo/base/data_type_endian.h"
+#include "mongo/base/data_view.h"
 #include "mongo/platform/decimal128.h"
 #include "mongo/util/assert_util.h"
 
@@ -142,22 +144,19 @@ void releaseValue(TypeTags tag, Value val) noexcept;
 std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val);
 void printValue(std::ostream& os, TypeTags tag, Value val);
 std::size_t hashValue(TypeTags tag, Value val) noexcept;
-/*
- * Three ways value comparison (aka spacehip operator).
+
+/**
+ * Three ways value comparison (aka spaceship operator).
  */
 std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
                                         Value lhsValue,
                                         TypeTags rhsTag,
                                         Value rhsValue);
 
-
 /**
  * RAII guard.
  */
 class ValueGuard {
-    TypeTags _tag;
-    Value _value;
-
 public:
     ValueGuard(TypeTags tag, Value val) : _tag(tag), _value(val) {}
     ValueGuard() = delete;
@@ -174,16 +173,17 @@ public:
         _tag = TypeTags::Nothing;
         _value = 0;
     }
+
+private:
+    TypeTags _tag;
+    Value _value;
 };
 
 /**
- * Object class.
+ * This is the SBE representation of objects/documents. It is a relatively simple structure of
+ * vectors of field names, type tags, and values.
  */
 class Object {
-    std::vector<TypeTags> _typeTags;
-    std::vector<Value> _values;
-    std::vector<std::string> _names;
-
 public:
     Object() = default;
     Object(const Object& other) {
@@ -203,6 +203,7 @@ public:
             releaseValue(_typeTags[idx], _values[idx]);
         }
     }
+
     void push_back(std::string_view name, TypeTags tag, Value val) {
         if (tag != TypeTags::Nothing) {
             ValueGuard guard{tag, val};
@@ -226,12 +227,15 @@ public:
         }
         return {TypeTags::Nothing, 0};
     }
+
     auto size() const noexcept {
         return _values.size();
     }
+
     auto& field(size_t idx) const {
         return _names[idx];
     }
+
     std::pair<TypeTags, Value> getAt(std::size_t idx) const {
         if (idx >= _values.size()) {
             return {TypeTags::Nothing, 0};
@@ -239,22 +243,25 @@ public:
 
         return {_typeTags[idx], _values[idx]};
     }
+
     void reserve(size_t s) {
-        // normalize to at least 1
+        // Normalize to at least 1.
         s = s ? s : 1;
         _typeTags.reserve(s);
         _values.reserve(s);
         _names.reserve(s);
     }
+
+private:
+    std::vector<TypeTags> _typeTags;
+    std::vector<Value> _values;
+    std::vector<std::string> _names;
 };
 
 /**
- * Array class.
+ * This is the SBE representation of arrays. It is similar to Object sans the field names.
  */
 class Array {
-    std::vector<TypeTags> _typeTags;
-    std::vector<Value> _values;
-
 public:
     Array() = default;
     Array(const Array& other) {
@@ -273,6 +280,7 @@ public:
             releaseValue(_typeTags[idx], _values[idx]);
         }
     }
+
     void push_back(TypeTags tag, Value val) {
         if (tag != TypeTags::Nothing) {
             ValueGuard guard{tag, val};
@@ -290,6 +298,7 @@ public:
     auto size() const noexcept {
         return _values.size();
     }
+
     std::pair<TypeTags, Value> getAt(std::size_t idx) const {
         if (idx >= _values.size()) {
             return {TypeTags::Nothing, 0};
@@ -297,16 +306,21 @@ public:
 
         return {_typeTags[idx], _values[idx]};
     }
+
     void reserve(size_t s) {
-        // normalize to at least 1
+        // Normalize to at least 1.
         s = s ? s : 1;
         _typeTags.reserve(s);
         _values.reserve(s);
     }
+
+private:
+    std::vector<TypeTags> _typeTags;
+    std::vector<Value> _values;
 };
 
 /**
- * ArraySet class.
+ * This is a set of unique values with the same interface as Array.
  */
 class ArraySet {
     struct Hash {
@@ -327,7 +341,6 @@ class ArraySet {
         }
     };
     using SetType = absl::flat_hash_set<std::pair<TypeTags, Value>, Hash, Eq>;
-    SetType _values;
 
 public:
     using iterator = SetType::iterator;
@@ -359,13 +372,16 @@ public:
         return _values.size();
     }
     void reserve(size_t s) {
-        // normalize to at least 1
+        // Normalize to at least 1.
         s = s ? s : 1;
         _values.reserve(s);
     }
+
+private:
+    SetType _values;
 };
 
-constexpr int SmallStringThreshold = 8;
+constexpr size_t kSmallStringThreshold = 8;
 using ObjectIdType = std::array<uint8_t, 12>;
 static_assert(sizeof(ObjectIdType) == 12);
 
@@ -406,7 +422,7 @@ template <typename T>
 Value bitcastFrom(const T in) noexcept {
     static_assert(sizeof(Value) >= sizeof(T));
 
-    // casting from pointer to integer value is OK
+    // Casting from pointer to integer value is OK.
     if constexpr (std::is_pointer_v<T>) {
         return reinterpret_cast<Value>(in);
     }
@@ -414,9 +430,10 @@ Value bitcastFrom(const T in) noexcept {
     memcpy(&val, &in, sizeof(T));
     return val;
 }
+
 template <typename T>
 T bitcastTo(const Value in) noexcept {
-    // casting from integer value to pointer is OK
+    // Casting from integer value to pointer is OK.
     if constexpr (std::is_pointer_v<T>) {
         static_assert(sizeof(Value) == sizeof(T));
         return reinterpret_cast<T>(in);
@@ -440,19 +457,18 @@ inline std::string_view getStringView(TypeTags tag, Value& val) noexcept {
         return std::string_view(getBigStringView(val));
     } else if (tag == TypeTags::bsonString) {
         auto bsonstr = getRawPointerView(val);
-        return std::string_view(bsonstr + 4, readFromMemory<uint32_t>(bsonstr) - 1);
+        return std::string_view(bsonstr + 4,
+                                ConstDataView(bsonstr).read<LittleEndian<uint32_t>>() - 1);
     }
-
-    invariant(Status(ErrorCodes::InternalError, "getStringView called with non string tag."));
     MONGO_UNREACHABLE;
 }
 
 inline std::pair<TypeTags, Value> makeNewString(std::string_view input) {
     size_t len = input.size();
-    if (len < SmallStringThreshold - 1) {
+    if (len < kSmallStringThreshold - 1) {
         Value smallString;
-        auto stringAlias =
-            getSmallStringView(smallString);  // THIS IS OK - aliasing to char* !!! :)
+        // This is OK - we are aliasing to char*.
+        auto stringAlias = getSmallStringView(smallString);
         memcpy(stringAlias, input.data(), len);
         stringAlias[len] = 0;
         return {TypeTags::StringSmall, smallString};
@@ -564,29 +580,29 @@ inline std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val) {
         case TypeTags::bsonString: {
             auto bsonstr = getRawPointerView(val);
             auto src = bsonstr + 4;
-            auto size = readFromMemory<uint32_t>(bsonstr);
+            auto size = ConstDataView(bsonstr).read<LittleEndian<uint32_t>>();
             return makeNewString(std::string_view(src, size - 1));
         }
         case TypeTags::ObjectId: {
             return makeCopyObjectId(*getObjectIdView(val));
         }
         case TypeTags::bsonObject: {
-            auto bson = bitcastTo<uint8_t*>(val);
-            auto size = readFromMemory<uint32_t>(bson);
+            auto bson = getRawPointerView(val);
+            auto size = ConstDataView(bson).read<LittleEndian<uint32_t>>();
             auto dst = new uint8_t[size];
             memcpy(dst, bson, size);
             return {TypeTags::bsonObject, bitcastFrom(dst)};
         }
         case TypeTags::bsonObjectId: {
-            auto bson = bitcastTo<uint8_t*>(val);
+            auto bson = getRawPointerView(val);
             auto size = sizeof(ObjectIdType);
             auto dst = new uint8_t[size];
             memcpy(dst, bson, size);
             return {TypeTags::bsonObjectId, bitcastFrom(dst)};
         }
         case TypeTags::bsonArray: {
-            auto bson = bitcastTo<uint8_t*>(val);
-            auto size = readFromMemory<uint32_t>(bson);
+            auto bson = getRawPointerView(val);
+            auto size = ConstDataView(bson).read<LittleEndian<uint32_t>>();
             auto dst = new uint8_t[size];
             memcpy(dst, bson, size);
             return {TypeTags::bsonArray, bitcastFrom(dst)};
@@ -602,7 +618,9 @@ inline std::pair<TypeTags, Value> copyValue(TypeTags tag, Value val) {
     return {tag, val};
 }
 
-// implicit conversions of numerical types
+/**
+ * Implicit conversions of numerical types.
+ */
 template <typename T>
 inline T numericCast(TypeTags tag, Value val) noexcept {
     switch (tag) {
@@ -651,15 +669,23 @@ inline TypeTags getWidestNumericalType(TypeTags lhsTag, TypeTags rhsTag) noexcep
 class SlotAccessor {
 public:
     virtual ~SlotAccessor() = 0;
+    /**
+     * Returns a non-owning view of value currently stored in the slot. The returned value is valid
+     * until the content of this slot changes (usually as a result of calling getNext()). If the
+     * called needs to hold onto the value longer then it must make a copy of the value.
+     */
     virtual std::pair<TypeTags, Value> getViewOfValue() const = 0;
+
+    /**
+     * Sometimes it may be determined that a caller is the last one to access this slot. If that is
+     * the case then the caller can use this optimized method to move out the value out of the slot
+     * saving the extra copy operation.
+     */
     virtual std::pair<TypeTags, Value> copyOrMoveValue() = 0;
 };
 inline SlotAccessor::~SlotAccessor() {}
 
 class ViewOfValueAccessor final : public SlotAccessor {
-    TypeTags _tag{TypeTags::Nothing};
-    Value _val{0};
-
 public:
     // Return non-owning view of the value.
     std::pair<TypeTags, Value> getViewOfValue() const override {
@@ -679,29 +705,48 @@ public:
         _tag = tag;
         _val = val;
     }
+
+private:
+    TypeTags _tag{TypeTags::Nothing};
+    Value _val{0};
 };
 
 class OwnedValueAccessor final : public SlotAccessor {
-    TypeTags _tag{TypeTags::Nothing};
-    Value _val;
-    bool _owned{false};
-
-    void release() {
-        if (_owned) {
-            releaseValue(_tag, _val);
+public:
+    OwnedValueAccessor() = default;
+    OwnedValueAccessor(const OwnedValueAccessor& other) {
+        if (other._owned) {
+            auto [tag, val] = copyValue(other._tag, other._val);
+            _tag = tag;
+            _val = val;
+            _owned = true;
+        } else {
+            _tag = other._tag;
+            _val = other._val;
             _owned = false;
         }
     }
+    OwnedValueAccessor(OwnedValueAccessor&& other) noexcept {
+        _tag = other._tag;
+        _val = other._val;
+        _owned = other._owned;
 
-public:
-    // TODO - either disallow copying/moving or provide proper constructors.
+        other._owned = false;
+    }
 
     ~OwnedValueAccessor() {
-        // release any value here
         release();
     }
 
-    // Return non-owning view of the value
+    // Copy and swap idiom for a single copy/move assignment operator.
+    OwnedValueAccessor& operator=(OwnedValueAccessor other) noexcept {
+        std::swap(_tag, other._tag);
+        std::swap(_val, other._val);
+        std::swap(_owned, other._owned);
+        return *this;
+    }
+
+    // Return non-owning view of the value.
     std::pair<TypeTags, Value> getViewOfValue() const override {
         return {_tag, _val};
     }
@@ -724,27 +769,27 @@ public:
     }
 
     void reset(bool owned, TypeTags tag, Value val) {
-        // release any value here
         release();
 
         _tag = tag;
         _val = val;
         _owned = owned;
     }
+
+private:
+    void release() {
+        if (_owned) {
+            releaseValue(_tag, _val);
+            _owned = false;
+        }
+    }
+
+    TypeTags _tag{TypeTags::Nothing};
+    Value _val;
+    bool _owned{false};
 };
 
 class ObjectEnumerator {
-    TypeTags _tagObject{TypeTags::Nothing};
-    Value _valObject{0};
-
-    // Object
-    Object* _object{nullptr};
-    size_t _index{0};
-
-    // bsonObject
-    const char* _objectCurrent{nullptr};
-    const char* _objectEnd{nullptr};
-
 public:
     ObjectEnumerator() = default;
     ObjectEnumerator(TypeTags tag, Value val) {
@@ -759,9 +804,9 @@ public:
         if (tag == TypeTags::Object) {
             _object = getObjectView(val);
         } else if (tag == TypeTags::bsonObject) {
-            auto bson = bitcastTo<const char*>(val);
+            auto bson = getRawPointerView(val);
             _objectCurrent = bson + 4;
-            _objectEnd = bson + value::readFromMemory<uint32_t>(bson);
+            _objectEnd = bson + ConstDataView(bson).read<LittleEndian<uint32_t>>();
         } else {
             MONGO_UNREACHABLE;
         }
@@ -778,23 +823,21 @@ public:
     }
 
     bool advance();
-};
-class ArrayEnumerator {
-    TypeTags _tagArray{TypeTags::Nothing};
-    Value _valArray{0};
 
-    // Array
-    Array* _array{nullptr};
+private:
+    TypeTags _tagObject{TypeTags::Nothing};
+    Value _valObject{0};
+
+    // Object
+    Object* _object{nullptr};
     size_t _index{0};
 
-    // ArraySet
-    ArraySet* _arraySet{nullptr};
-    ArraySet::iterator _iter;
+    // bsonObject
+    const char* _objectCurrent{nullptr};
+    const char* _objectEnd{nullptr};
+};
 
-    // bsonArray
-    const char* _arrayCurrent{nullptr};
-    const char* _arrayEnd{nullptr};
-
+class ArrayEnumerator {
 public:
     ArrayEnumerator() = default;
     ArrayEnumerator(TypeTags tag, Value val) {
@@ -813,9 +856,9 @@ public:
             _arraySet = getArraySetView(val);
             _iter = _arraySet->values().begin();
         } else if (tag == TypeTags::bsonArray) {
-            auto bson = bitcastTo<const char*>(val);
+            auto bson = getRawPointerView(val);
             _arrayCurrent = bson + 4;
-            _arrayEnd = bson + value::readFromMemory<uint32_t>(bson);
+            _arrayEnd = bson + ConstDataView(bson).read<LittleEndian<uint32_t>>();
         } else {
             MONGO_UNREACHABLE;
         }
@@ -833,22 +876,36 @@ public:
     }
 
     bool advance();
+
+private:
+    TypeTags _tagArray{TypeTags::Nothing};
+    Value _valArray{0};
+
+    // Array
+    Array* _array{nullptr};
+    size_t _index{0};
+
+    // ArraySet
+    ArraySet* _arraySet{nullptr};
+    ArraySet::iterator _iter;
+
+    // bsonArray
+    const char* _arrayCurrent{nullptr};
+    const char* _arrayEnd{nullptr};
 };
 
 class ArrayAccessor final : public SlotAccessor {
-    ArrayEnumerator _enumerator;
-
 public:
     void reset(TypeTags tag, Value val) {
         _enumerator.reset(tag, val);
     }
 
-    // Return non-owning view of the value
+    // Return non-owning view of the value.
     std::pair<TypeTags, Value> getViewOfValue() const override {
         return _enumerator.getViewOfValue();
     }
     std::pair<TypeTags, Value> copyOrMoveValue() override {
-        // we can never move out values from array
+        // We can never move out values from array.
         auto [tag, val] = getViewOfValue();
         return copyValue(tag, val);
     }
@@ -860,6 +917,9 @@ public:
     bool advance() {
         return _enumerator.advance();
     }
+
+private:
+    ArrayEnumerator _enumerator;
 };
 
 struct MaterializedRow {
@@ -929,9 +989,6 @@ struct MaterializedRowHasher {
 
 template <typename T>
 class MaterializedRowKeyAccessor final : public SlotAccessor {
-    T& _it;
-    size_t _slot;
-
 public:
     MaterializedRowKeyAccessor(T& it, size_t slot) : _it(it), _slot(slot) {}
 
@@ -939,17 +996,18 @@ public:
         return _it->first._fields[_slot].getViewOfValue();
     }
     std::pair<TypeTags, Value> copyOrMoveValue() override {
-        // we can never move out values from keys
+        // We can never move out values from keys.
         auto [tag, val] = getViewOfValue();
         return copyValue(tag, val);
     }
+
+private:
+    T& _it;
+    size_t _slot;
 };
 
 template <typename T>
 class MaterializedRowValueAccessor final : public SlotAccessor {
-    T& _it;
-    size_t _slot;
-
 public:
     MaterializedRowValueAccessor(T& it, size_t slot) : _it(it), _slot(slot) {}
 
@@ -963,14 +1021,14 @@ public:
     void reset(bool owned, TypeTags tag, Value val) {
         _it->second._fields[_slot].reset(owned, tag, val);
     }
+
+private:
+    T& _it;
+    size_t _slot;
 };
 
 template <typename T>
 class MaterializedRowAccessor final : public SlotAccessor {
-    T& _container;
-    const size_t& _it;
-    const size_t _slot;
-
 public:
     MaterializedRowAccessor(T& container, const size_t& it, size_t slot)
         : _container(container), _it(it), _slot(slot) {}
@@ -985,6 +1043,11 @@ public:
     void reset(bool owned, TypeTags tag, Value val) {
         _container[_it]._fields[_slot].reset(owned, tag, val);
     }
+
+private:
+    T& _container;
+    const size_t& _it;
+    const size_t _slot;
 };
 
 /**

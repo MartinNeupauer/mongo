@@ -32,38 +32,8 @@
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/values/value.h"
 
-#include <absl/container/flat_hash_map.h>
-#include <absl/container/flat_hash_set.h>
-#include <string>
-#include <vector>
-
 namespace mongo::sbe {
 class MakeObjStage final : public PlanStage {
-    const value::SlotId _objSlot;
-    const boost::optional<value::SlotId> _rootSlot;
-    const std::vector<std::string> _restrictFields;
-    const std::vector<std::string> _projectFields;
-    const value::SlotVector _projectVars;
-    const bool _forceNewObject;
-    const bool _returnOldObject;
-
-    absl::flat_hash_set<std::string> _restrictFieldsSet;
-    absl::flat_hash_map<std::string, size_t> _projectFieldsMap;
-
-    std::vector<std::pair<std::string, value::SlotAccessor*>> _projects;
-
-    value::OwnedValueAccessor _obj;
-
-    value::SlotAccessor* _root{nullptr};
-
-    bool _compiled{false};
-    bool _restrictAllFields{false};
-    void projectField(value::Object* obj, size_t idx);
-
-    bool isFieldRestricted(const std::string_view& sv) const {
-        return _restrictAllFields || _restrictFieldsSet.count(sv) != 0;
-    }
-
 public:
     MakeObjStage(std::unique_ptr<PlanStage> input,
                  value::SlotId objSlot,
@@ -85,5 +55,32 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    void projectField(value::Object* obj, size_t idx);
+
+    bool isFieldRestricted(const std::string_view& sv) const {
+        return _restrictAllFields || _restrictFieldsSet.count(sv) != 0;
+    }
+
+    const value::SlotId _objSlot;
+    const boost::optional<value::SlotId> _rootSlot;
+    const std::vector<std::string> _restrictFields;
+    const std::vector<std::string> _projectFields;
+    const value::SlotVector _projectVars;
+    const bool _forceNewObject;
+    const bool _returnOldObject;
+
+    absl::flat_hash_set<std::string> _restrictFieldsSet;
+    absl::flat_hash_map<std::string, size_t> _projectFieldsMap;
+
+    std::vector<std::pair<std::string, value::SlotAccessor*>> _projects;
+
+    value::OwnedValueAccessor _obj;
+
+    value::SlotAccessor* _root{nullptr};
+
+    bool _compiled{false};
+    bool _restrictAllFields{false};
 };
 }  // namespace mongo::sbe

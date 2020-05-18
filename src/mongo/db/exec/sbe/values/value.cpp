@@ -229,8 +229,8 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             os << "---===*** NOTHING ***===---";
             break;
         case value::TypeTags::bsonArray: {
-            auto be = value::bitcastTo<const char*>(val);
-            auto end = be + value::readFromMemory<uint32_t>(be);
+            const char* be = getRawPointerView(val);
+            const char* end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
             bool first = true;
             // skip document length
             be += 4;
@@ -253,8 +253,8 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             break;
         }
         case value::TypeTags::bsonObject: {
-            auto be = value::bitcastTo<const char*>(val);
-            auto end = be + value::readFromMemory<uint32_t>(be);
+            const char* be = getRawPointerView(val);
+            const char* end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
             bool first = true;
             // skip document length
             be += 4;
@@ -408,6 +408,7 @@ template <typename T>
 int32_t compareHelper(const T lhs, const T rhs) noexcept {
     return lhs < rhs ? -1 : (lhs == rhs ? 0 : 1);
 }
+
 /*
  * Three ways value comparison (aka spacehip operator).
  */

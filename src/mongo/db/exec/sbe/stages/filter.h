@@ -36,14 +36,6 @@
 namespace mongo::sbe {
 template <bool IsConst, bool IsEof = false>
 class FilterStage final : public PlanStage {
-    const std::unique_ptr<EExpression> _filter;
-    std::unique_ptr<vm::CodeFragment> _filterCode;
-
-    vm::ByteCode _bytecode;
-
-    bool _childOpened{false};
-    FilterStats _specificStats;
-
 public:
     FilterStage(std::unique_ptr<PlanStage> input, std::unique_ptr<EExpression> filter)
         : PlanStage(IsConst ? "cfilter"_sd : (IsEof ? "efilter" : "filter"_sd)),
@@ -158,26 +150,18 @@ public:
 
         return ret;
     }
+
+private:
+    const std::unique_ptr<EExpression> _filter;
+    std::unique_ptr<vm::CodeFragment> _filterCode;
+
+    vm::ByteCode _bytecode;
+
+    bool _childOpened{false};
+    FilterStats _specificStats;
 };
 
 class BranchStage final : public PlanStage {
-    const std::unique_ptr<EExpression> _filter;
-    const value::SlotVector _inputThenVals;
-    const value::SlotVector _inputElseVals;
-    const value::SlotVector _outputVals;
-    std::unique_ptr<vm::CodeFragment> _filterCode;
-
-    std::vector<value::SlotAccessor*> _inputThenAccessors;
-    std::vector<value::SlotAccessor*> _inputElseAccessors;
-    std::vector<value::ViewOfValueAccessor> _outValueAccessors;
-
-    boost::optional<int> _activeBranch;
-    bool _thenOpened{false};
-    bool _elseOpened{false};
-
-    vm::ByteCode _bytecode;
-    FilterStats _specificStats;
-
 public:
     BranchStage(std::unique_ptr<PlanStage> inputThen,
                 std::unique_ptr<PlanStage> inputElse,
@@ -197,5 +181,23 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
     std::vector<DebugPrinter::Block> debugPrint() final;
+
+private:
+    const std::unique_ptr<EExpression> _filter;
+    const value::SlotVector _inputThenVals;
+    const value::SlotVector _inputElseVals;
+    const value::SlotVector _outputVals;
+    std::unique_ptr<vm::CodeFragment> _filterCode;
+
+    std::vector<value::SlotAccessor*> _inputThenAccessors;
+    std::vector<value::SlotAccessor*> _inputElseAccessors;
+    std::vector<value::ViewOfValueAccessor> _outValueAccessors;
+
+    boost::optional<int> _activeBranch;
+    bool _thenOpened{false};
+    bool _elseOpened{false};
+
+    vm::ByteCode _bytecode;
+    FilterStats _specificStats;
 };
 }  // namespace mongo::sbe
