@@ -15,25 +15,6 @@ env.Library(
 env.Library(
     target='query_sbe',
     source=[
-        'abt/base.cpp',
-        'abt/binder.cpp',
-        'abt/constant.cpp',
-        'abt/exchange.cpp',
-        'abt/exe_generator.cpp',
-        'abt/facet.cpp',
-        'abt/filter.cpp',
-        'abt/free_vars.cpp',
-        'abt/functional.cpp',
-        'abt/group.cpp',
-        'abt/join.cpp',
-        'abt/optimize.cpp',
-        'abt/path.cpp',
-        'abt/scan.cpp',
-        'abt/sort.cpp',
-        'abt/type.cpp',
-        'abt/type_checker.cpp',
-        'abt/unwind.cpp',
-        'abt/variable.cpp',
         'expressions/expression.cpp',
         'stages/bson_scan.cpp',
         'stages/check_bounds.cpp',
@@ -75,7 +56,6 @@ env.Library(
 env.Library(
     target='query_sbe_storage',
     source=[
-        'abt/scan_storage.cpp',
         'stages/ix_scan.cpp',
         'stages/scan.cpp',
         ],

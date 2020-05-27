@@ -29,42 +29,10 @@
 
 #pragma once
 
-#include "mongo/db/exec/sbe/abt/abt.h"
 #include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/pipeline/document_source.h"
 
 namespace mongo::stage_builder {
-struct DSABT {
-    // Result of the DocumentSource -> ABT translation
-    sbe::abt::ABT op;
-    // Variable holding the rowset
-    sbe::abt::VarId rowset;
-    // Variable holding the root document
-    sbe::abt::VarId doc;
-};
-
-class ABTBuilder {
-    using BuilderFnType = std::function<DSABT(ABTBuilder&, const DocumentSource* root)>;
-    static std::unordered_map<std::type_index, ABTBuilder::BuilderFnType> kStageBuilders;
-
-    sbe::value::IdGenerator<sbe::abt::RowsetId> _rowsetIdGen;
-    sbe::value::IdGenerator<sbe::abt::VarId> _varIdGen;
-
-public:
-    DSABT build(const DocumentSource* root);
-    DSABT build(const Pipeline* pipeline);
-
-    DSABT buildUnwind(const DocumentSource* root);
-    DSABT buildGroup(const DocumentSource* root);
-
-    DSABT buildBSONScan(const DocumentSource* root);
-
-    template <typename T>
-    static void registerBuilder(BuilderFnType f) {
-        kStageBuilders[typeid(T)] = f;
-    }
-};
-
 class DocumentSourceSlotBasedStageBuilder {
     using BuilderFnType = std::function<std::unique_ptr<sbe::PlanStage>(
         DocumentSourceSlotBasedStageBuilder&, const DocumentSource* root)>;

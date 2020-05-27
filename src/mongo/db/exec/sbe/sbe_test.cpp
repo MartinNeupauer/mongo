@@ -27,17 +27,15 @@
  *    it in the license file.
  */
 
-#include "mongo/db/exec/sbe/abt/abt.h"
-#include "mongo/db/exec/sbe/abt/free_vars.h"
 #include "mongo/db/exec/sbe/parser/parser.h"
 #include "mongo/db/exec/sbe/values/value.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 #include "mongo/unittest/unittest.h"
 
-using namespace mongo::sbe;
+namespace mongo::sbe {
 using namespace std::literals;
 
-TEST(SBE_Values, Basic) {
+TEST(SBEValues, Basic) {
     {
         const auto [tag, val] = value::makeNewString("small"sv);
         ASSERT_EQUALS(tag, value::TypeTags::StringSmall);
@@ -83,7 +81,7 @@ TEST(SBE_Values, Basic) {
     }
 }
 
-TEST(SBE_Values, Hash) {
+TEST(SBEValues, Hash) {
     auto tagInt32 = value::TypeTags::NumberInt32;
     auto valInt32 = value::bitcastFrom<int32_t>(-5);
 
@@ -102,7 +100,7 @@ TEST(SBE_Values, Hash) {
     value::releaseValue(tagDecimal, valDecimal);
 }
 
-TEST(SBE_VM, Add) {
+TEST(SBEVM, Add) {
     {
         auto tagInt32 = value::TypeTags::NumberInt32;
         auto valInt32 = value::bitcastFrom<int32_t>(-7);
@@ -162,79 +160,10 @@ TEST(SBE_VM, Add) {
     }
 }
 
-TEST(SBE_Parser, Basic) {
+TEST(SBEParser, Basic) {
     Parser p;
     auto q = p.parse(nullptr, "nodb"sv, "mkobj $$RESULT [] limit 1 coscan"sv);
 
     q->open(false);
 }
-
-TEST(SBE_abt, Basic) {
-    auto a = abt::makeT<abt::NoType>();
-    ASSERT_TRUE(a.is<abt::NoType>());
-}
-
-TEST(SBE_abt, PathIdentity) {
-    auto a = abt::make<abt::PathIdentity>();
-    ASSERT_TRUE(a.is<abt::PathIdentity>());
-    ASSERT_TRUE(a.is<abt::PathSyntaxSort>());
-}
-
-TEST(SBE_free_vars, Basic) {
-    using namespace mongo;
-    NamespaceStringOrUUID name{NamespaceString{"db.c"_sd}};
-    auto a = abt::make<abt::Scan>(
-        name,
-        0,
-        1,
-        abt::make<abt::ValueBinder>(
-            std::vector<abt::VarId>{0, 1, 2},
-            abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10),
-                         abt::var(0),
-                         abt::make<abt::ConstantMagic>(abt::rowsetType(100)))));
-
-    {
-        abt::FreeVariables fv;
-        fv.compute(a);
-        ASSERT_FALSE(fv.hasFreeVars());
-    }
-    // make sure that the algo is idempotent
-    {
-        abt::FreeVariables fv;
-        fv.compute(a);
-        ASSERT_FALSE(fv.hasFreeVars());
-    }
-}
-
-TEST(SBE_free_vars, Circular) {
-    auto a = abt::make<abt::ValueBinder>(std::vector<abt::VarId>{0, 1},
-                                         abt::makeSeq(abt::var(1), abt::var(0)));
-
-    abt::FreeVariables fv;
-    ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);
-}
-
-TEST(SBE_free_vars, GoodOrder) {
-    auto a = abt::make<abt::ValueBinder>(
-        std::vector<abt::VarId>{0, 1},
-        abt::makeSeq(abt::makeConst(value::TypeTags::NumberInt64, 10), abt::var(0)));
-
-    abt::FreeVariables fv;
-    fv.compute(a);
-    ASSERT_FALSE(fv.hasFreeVars());
-}
-
-TEST(SBE_free_vars, WrongOrder) {
-    auto a = abt::make<abt::ValueBinder>(
-        std::vector<abt::VarId>{0, 1},
-        abt::makeSeq(abt::var(1), abt::makeConst(value::TypeTags::NumberInt64, 10)));
-
-    abt::FreeVariables fv;
-    ASSERT_THROWS_CODE(fv.compute(a), mongo::DBException, mongo::ErrorCodes::InternalError);
-}
-
-TEST(SBE_free_vars, FDep) {
-    auto r1 = abt::makeRowset(100);
-    auto r2 = abt::makeRowset(200);
-    auto dep = abt::fdep(abt::rowsetType(300), r1, r2);
-}
+}  // namespace mongo::sbe
