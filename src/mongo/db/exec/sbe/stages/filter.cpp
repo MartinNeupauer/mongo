@@ -52,7 +52,7 @@ BranchStage::BranchStage(std::unique_ptr<PlanStage> inputThen,
     _children.emplace_back(std::move(inputElse));
 }
 
-std::unique_ptr<PlanStage> BranchStage::clone() {
+std::unique_ptr<PlanStage> BranchStage::clone() const {
     return std::make_unique<BranchStage>(_children[0]->clone(),
                                          _children[1]->clone(),
                                          _filter->clone(),
@@ -69,21 +69,21 @@ void BranchStage::prepare(CompileCtx& ctx) {
 
     for (auto slot : _inputThenVals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822829, str::stream() << "duplicate field: " << slot, inserted);
 
         _inputThenAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
     }
 
     for (auto slot : _inputElseVals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822830, str::stream() << "duplicate field: " << slot, inserted);
 
         _inputElseAccessors.emplace_back(_children[1]->getAccessor(ctx, slot));
     }
 
     for (auto slot : _outputVals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822831, str::stream() << "duplicate field: " << slot, inserted);
 
         _outValueAccessors.emplace_back(value::ViewOfValueAccessor{});
     }
@@ -177,7 +177,7 @@ const SpecificStats* BranchStage::getSpecificStats() const {
     return &_specificStats;
 }
 
-std::vector<DebugPrinter::Block> BranchStage::debugPrint() {
+std::vector<DebugPrinter::Block> BranchStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "branch");
 

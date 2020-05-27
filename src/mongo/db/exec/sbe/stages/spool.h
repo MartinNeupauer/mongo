@@ -52,7 +52,7 @@ public:
                             SpoolId spoolId,
                             value::SlotVector vals);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -62,7 +62,7 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
     std::shared_ptr<SpoolBuffer> _buffer{nullptr};
@@ -99,7 +99,7 @@ public:
                            value::SlotVector vals,
                            std::unique_ptr<EExpression> predicate);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -109,7 +109,7 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
     std::shared_ptr<SpoolBuffer> _buffer{nullptr};
@@ -149,7 +149,7 @@ public:
           _spoolId{spoolId},
           _vals{std::move(vals)} {}
 
-    std::unique_ptr<PlanStage> clone() {
+    std::unique_ptr<PlanStage> clone() const {
         return std::make_unique<SpoolConsumerStage<IsStack>>(_spoolId, _vals);
     }
 
@@ -163,8 +163,7 @@ public:
 
         for (auto slot : _vals) {
             auto [it, inserted] = dupCheck.insert(slot);
-            uassert(
-                ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+            uassert(4822809, str::stream() << "duplicate field: " << slot, inserted);
 
             _outAccessors.emplace(
                 slot, value::MaterializedRowAccessor<SpoolBuffer>{*_buffer, _bufferIt, counter++});
@@ -223,7 +222,7 @@ public:
         return nullptr;
     }
 
-    std::vector<DebugPrinter::Block> debugPrint() {
+    std::vector<DebugPrinter::Block> debugPrint() const {
         std::vector<DebugPrinter::Block> ret;
         DebugPrinter::addKeyword(ret, IsStack ? "sspool" : "cspool");
 

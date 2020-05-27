@@ -35,6 +35,7 @@ namespace mongo::sbe {
 /**
  * This is a CoScan PlanStage. It delivers an infinite stream of getNext() calls. Also, it does not
  * define any slots; i.e. it does not produce any results.
+ *
  * On its face value this does not seem to be very useful but it is handy when we have to construct
  * a data stream when there is not any physical source (i.e. no collection to read from).
  * Typical use cases are: inner side of Traverse, inner side of Nested Loops, constants, etc.
@@ -43,7 +44,7 @@ class CoScanStage final : public PlanStage {
 public:
     CoScanStage();
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -53,6 +54,6 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 };
 }  // namespace mongo::sbe

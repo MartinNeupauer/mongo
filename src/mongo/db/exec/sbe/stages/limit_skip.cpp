@@ -46,7 +46,7 @@ LimitSkipStage::LimitSkipStage(std::unique_ptr<PlanStage> input,
     _specificStats.skip = skip;
 }
 
-std::unique_ptr<PlanStage> LimitSkipStage::clone() {
+std::unique_ptr<PlanStage> LimitSkipStage::clone() const {
     return std::make_unique<LimitSkipStage>(_children[0]->clone(), _limit, _skip);
 }
 
@@ -92,7 +92,7 @@ const SpecificStats* LimitSkipStage::getSpecificStats() const {
     return &_specificStats;
 }
 
-std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() {
+std::vector<DebugPrinter::Block> LimitSkipStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     if (!_skip) {

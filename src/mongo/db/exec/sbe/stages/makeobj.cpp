@@ -54,7 +54,7 @@ MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
     invariant(_projectVars.size() == _projectFields.size());
 }
-std::unique_ptr<PlanStage> MakeObjStage::clone() {
+std::unique_ptr<PlanStage> MakeObjStage::clone() const {
     return std::make_unique<MakeObjStage>(_children[0]->clone(),
                                           _objSlot,
                                           _rootSlot,
@@ -75,14 +75,14 @@ void MakeObjStage::prepare(CompileCtx& ctx) {
             _restrictAllFields = true;
         } else {
             auto [it, inserted] = _restrictFieldsSet.emplace(p);
-            uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+            uassert(4822818, str::stream() << "duplicate field: " << p, inserted);
         }
     }
     for (size_t idx = 0; idx < _projectFields.size(); ++idx) {
         auto& p = _projectFields[idx];
 
         auto [it, inserted] = _projectFieldsMap.emplace(p, idx);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << p, inserted);
+        uassert(4822819, str::stream() << "duplicate field: " << p, inserted);
         _projects.emplace_back(p, _children[0]->getAccessor(ctx, _projectVars[idx]));
     }
     _compiled = true;
@@ -204,7 +204,7 @@ const SpecificStats* MakeObjStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() {
+std::vector<DebugPrinter::Block> MakeObjStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "mkobj");
 

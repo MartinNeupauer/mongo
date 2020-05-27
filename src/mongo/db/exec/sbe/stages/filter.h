@@ -44,7 +44,7 @@ public:
         _children.emplace_back(std::move(input));
     }
 
-    std::unique_ptr<PlanStage> clone() final {
+    std::unique_ptr<PlanStage> clone() const final {
         return std::make_unique<FilterStage>(_children[0]->clone(), _filter->clone());
     }
 
@@ -130,7 +130,7 @@ public:
         return &_specificStats;
     }
 
-    std::vector<DebugPrinter::Block> debugPrint() final {
+    std::vector<DebugPrinter::Block> debugPrint() const final {
         std::vector<DebugPrinter::Block> ret;
         if constexpr (IsConst) {
             DebugPrinter::addKeyword(ret, "cfilter");
@@ -170,7 +170,7 @@ public:
                 value::SlotVector inputElseVals,
                 value::SlotVector outputVals);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -180,7 +180,7 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
     const std::unique_ptr<EExpression> _filter;

@@ -63,26 +63,32 @@ struct CompileCtx {
  *   - compile method that generates bytecode that is executed by the VM during runtime
  *   - clone method that creates a complete copy of the expression
  *
- * The debugPrint method generates textual represenation of the expression for internal debugging
+ * The debugPrint method generates textual representation of the expression for internal debugging
  * purposes.
  */
 class EExpression {
 public:
     virtual ~EExpression() = default;
 
-    // The idiomatic C++ pattern of object cloning. Expressions must be fully copyable as every
-    // thread in parallel execution needs its own private copy.
-    virtual std::unique_ptr<EExpression> clone() = 0;
+    /**
+     * The idiomatic C++ pattern of object cloning. Expressions must be fully copyable as every
+     * thread in parallel execution needs its own private copy.
+     */
+    virtual std::unique_ptr<EExpression> clone() const = 0;
 
-    // Returns bytecode directly executable by VM.
-    virtual std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) = 0;
+    /**
+     * Returns bytecode directly executable by VM.
+     */
+    virtual std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const = 0;
 
-    virtual std::vector<DebugPrinter::Block> debugPrint() = 0;
+    virtual std::vector<DebugPrinter::Block> debugPrint() const = 0;
 
 protected:
     std::vector<std::unique_ptr<EExpression>> _nodes;
 
-    // Expressions can never be constructed with nullptr children.
+    /**
+     * Expressions can never be constructed with nullptr children.
+     */
     void validateNodes() {
         for (auto& node : _nodes) {
             invariant(node);
@@ -159,11 +165,11 @@ public:
         value::releaseValue(_tag, _val);
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     value::TypeTags _tag;
@@ -171,8 +177,8 @@ private:
 };
 
 /**
- * This is an expression representing a variable. The variable can point to a slot as defined SBE
- * plan stages or to a slot defined by a local bind (a.k.a. let) expression. The local binds are
+ * This is an expression representing a variable. The variable can point to a slot as defined by a
+ * SBE plan stages or to a slot defined by a local bind (a.k.a. let) expression. The local binds are
  * identified by the frame id.
  */
 class EVariable final : public EExpression {
@@ -180,11 +186,11 @@ public:
     EVariable(value::SlotId var) : _var(var), _frameId(boost::none) {}
     EVariable(FrameId frameId, value::SlotId var) : _var(var), _frameId(frameId) {}
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     value::SlotId _var;
@@ -192,8 +198,7 @@ private:
 };
 
 /**
- * This is a binary primitive (builtin) operation. The operations are fairly standard and logical
- * operations are short-circuiting.
+ * This is a binary primitive (builtin) operation.
  */
 class EPrimBinary final : public EExpression {
 public:
@@ -214,6 +219,7 @@ public:
 
         cmp3w,
 
+        // Logical operations are short - circuiting.
         logicAnd,
         logicOr,
     };
@@ -225,11 +231,11 @@ public:
         validateNodes();
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     Op _op;
@@ -250,11 +256,11 @@ public:
         validateNodes();
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     Op _op;
@@ -272,11 +278,11 @@ public:
         validateNodes();
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     std::string _name;
@@ -296,11 +302,11 @@ public:
         validateNodes();
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 };
 
 /**
@@ -317,11 +323,11 @@ public:
         validateNodes();
     }
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     FrameId _frameId;
@@ -332,13 +338,14 @@ private:
  */
 class EFail final : public EExpression {
 public:
-    EFail(ErrorCodes::Error code, std::string message) : _code(code), _message(message) {}
+    EFail(ErrorCodes::Error code, std::string message)
+        : _code(code), _message(std::move(message)) {}
 
-    std::unique_ptr<EExpression> clone() override;
+    std::unique_ptr<EExpression> clone() const override;
 
-    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) override;
+    std::unique_ptr<vm::CodeFragment> compile(CompileCtx& ctx) const override;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const override;
 
 private:
     ErrorCodes::Error _code;

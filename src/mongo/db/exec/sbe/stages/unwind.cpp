@@ -47,11 +47,10 @@ UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
 
     if (_outField == _outIndex) {
-        uasserted(ErrorCodes::InternalError,
-                  str::stream() << "duplicate field name: " << _outField);
+        uasserted(4822805, str::stream() << "duplicate field name: " << _outField);
     }
 }
-std::unique_ptr<PlanStage> UnwindStage::clone() {
+std::unique_ptr<PlanStage> UnwindStage::clone() const {
     return std::make_unique<UnwindStage>(
         _children[0]->clone(), _inField, _outField, _outIndex, _preserveNullAndEmptyArrays);
 }
@@ -153,7 +152,7 @@ const SpecificStats* UnwindStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> UnwindStage::debugPrint() {
+std::vector<DebugPrinter::Block> UnwindStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "unwind");
 

@@ -643,7 +643,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewKeyString(ui
             auto str = value::getStringView(tag, val);
             kb.appendString(StringData{str.data(), str.length()});
         } else {
-            uasserted(ErrorCodes::InternalError, "unsuppored key string type");
+            uasserted(4822802, "unsuppored key string type");
         }
     }
 
@@ -765,7 +765,6 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::dispatchBuiltin(Builti
             return builtinAddToSet(arity);
     }
 
-    invariant(Status(ErrorCodes::InternalError, "builtin function not yet implemented"));
     MONGO_UNREACHABLE;
 }
 
@@ -1321,17 +1320,12 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     break;
                 }
                 default:
-                    invariant(
-                        Status(ErrorCodes::InternalError, "vm instruction not yet implemented"));
                     MONGO_UNREACHABLE;
             }
         }
     }
-
-    if (_argStackOwned.size() != 1) {
-        invariant(Status(ErrorCodes::InternalError, "error evaluating bytecode"));
-        MONGO_UNREACHABLE;
-    }
+    uassert(
+        4822801, "The evaluation stack must hold only a single value", _argStackOwned.size() == 1);
 
     auto owned = _argStackOwned[0];
     auto tag = _argStackTags[0];

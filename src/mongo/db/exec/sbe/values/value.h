@@ -259,7 +259,7 @@ private:
 };
 
 /**
- * This is the SBE representation of arrays. It is similar to Object sans the field names.
+ * This is the SBE representation of arrays. It is similar to Object without the field names.
  */
 class Array {
 public:
@@ -672,14 +672,15 @@ public:
     /**
      * Returns a non-owning view of value currently stored in the slot. The returned value is valid
      * until the content of this slot changes (usually as a result of calling getNext()). If the
-     * called needs to hold onto the value longer then it must make a copy of the value.
+     * caller needs to hold onto the value longer then it must make a copy of the value.
      */
     virtual std::pair<TypeTags, Value> getViewOfValue() const = 0;
 
     /**
      * Sometimes it may be determined that a caller is the last one to access this slot. If that is
      * the case then the caller can use this optimized method to move out the value out of the slot
-     * saving the extra copy operation.
+     * saving the extra copy operation. Not all slots own the values stored in them so they must
+     * make a deep copy. The returned value is owned by the caller.
      */
     virtual std::pair<TypeTags, Value> copyOrMoveValue() = 0;
 };

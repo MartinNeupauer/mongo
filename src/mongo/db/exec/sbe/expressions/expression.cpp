@@ -60,19 +60,19 @@ std::unique_ptr<vm::CodeFragment> wrapNothingTest(std::unique_ptr<vm::CodeFragme
     return code;
 }
 
-std::unique_ptr<EExpression> EConstant::clone() {
+std::unique_ptr<EExpression> EConstant::clone() const {
     auto [tag, val] = value::copyValue(_tag, _val);
     return std::make_unique<EConstant>(tag, val);
 }
 
-std::unique_ptr<vm::CodeFragment> EConstant::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EConstant::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     code->appendConstVal(_tag, _val);
 
     return code;
 }
-std::vector<DebugPrinter::Block> EConstant::debugPrint() {
+std::vector<DebugPrinter::Block> EConstant::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     std::stringstream ss;
     value::printValue(ss, _tag, _val);
@@ -82,12 +82,12 @@ std::vector<DebugPrinter::Block> EConstant::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EVariable::clone() {
+std::unique_ptr<EExpression> EVariable::clone() const {
     return _frameId ? std::make_unique<EVariable>(*_frameId, _var)
                     : std::make_unique<EVariable>(_var);
 }
 
-std::unique_ptr<vm::CodeFragment> EVariable::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EVariable::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     if (_frameId) {
@@ -101,7 +101,7 @@ std::unique_ptr<vm::CodeFragment> EVariable::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> EVariable::debugPrint() {
+std::vector<DebugPrinter::Block> EVariable::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     if (_frameId) {
@@ -113,11 +113,11 @@ std::vector<DebugPrinter::Block> EVariable::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EPrimBinary::clone() {
+std::unique_ptr<EExpression> EPrimBinary::clone() const {
     return std::make_unique<EPrimBinary>(_op, _nodes[0]->clone(), _nodes[1]->clone());
 }
 
-std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     auto lhs = _nodes[0]->compile(ctx);
@@ -217,7 +217,7 @@ std::unique_ptr<vm::CodeFragment> EPrimBinary::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
+std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     DebugPrinter::addBlocks(ret, _nodes[0]->debugPrint());
@@ -271,11 +271,11 @@ std::vector<DebugPrinter::Block> EPrimBinary::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EPrimUnary::clone() {
+std::unique_ptr<EExpression> EPrimUnary::clone() const {
     return std::make_unique<EPrimUnary>(_op, _nodes[0]->clone());
 }
 
-std::unique_ptr<vm::CodeFragment> EPrimUnary::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EPrimUnary::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     auto operand = _nodes[0]->compile(ctx);
@@ -296,7 +296,7 @@ std::unique_ptr<vm::CodeFragment> EPrimUnary::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> EPrimUnary::debugPrint() {
+std::vector<DebugPrinter::Block> EPrimUnary::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     switch (_op) {
@@ -316,8 +316,9 @@ std::vector<DebugPrinter::Block> EPrimUnary::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EFunction::clone() {
+std::unique_ptr<EExpression> EFunction::clone() const {
     std::vector<std::unique_ptr<EExpression>> args;
+    args.reserve(_nodes.size());
     for (auto& a : _nodes) {
         args.emplace_back(a->clone());
     }
@@ -393,11 +394,11 @@ static stdx::unordered_map<std::string, InstrFn> kInstrFunctions = {
 };
 }  // namespace
 
-std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) const {
     if (auto it = kBuiltinFunctions.find(_name); it != kBuiltinFunctions.end()) {
         auto arity = _nodes.size();
         if (!it->second.arityTest(arity)) {
-            uasserted(ErrorCodes::InternalError,
+            uasserted(4822843,
                       str::stream() << "function call: " << _name << " has wrong arity: " << arity);
         }
         auto code = std::make_unique<vm::CodeFragment>();
@@ -407,7 +408,7 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         }
 
         if (it->second.aggregate) {
-            uassert(ErrorCodes::InternalError,
+            uassert(4822844,
                     str::stream() << "aggregate function call: " << _name
                                   << " occurs in the non-aggregate context.",
                     ctx.aggExpression);
@@ -422,14 +423,14 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
     }
     if (auto it = kInstrFunctions.find(_name); it != kInstrFunctions.end()) {
         if (!it->second.arityTest(_nodes.size())) {
-            uasserted(ErrorCodes::InternalError,
+            uasserted(4822845,
                       str::stream()
                           << "function call: " << _name << " has wrong arity: " << _nodes.size());
         }
         auto code = std::make_unique<vm::CodeFragment>();
 
         if (it->second.aggregate) {
-            uassert(ErrorCodes::InternalError,
+            uassert(4822846,
                     str::stream() << "aggregate function call: " << _name
                                   << " occurs in the non-aggregate context.",
                     ctx.aggExpression);
@@ -447,10 +448,10 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) {
         return code;
     }
 
-    uasserted(ErrorCodes::InternalError, str::stream() << "unknown function call: " << _name);
+    uasserted(4822847, str::stream() << "unknown function call: " << _name);
 }
 
-std::vector<DebugPrinter::Block> EFunction::debugPrint() {
+std::vector<DebugPrinter::Block> EFunction::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, _name);
 
@@ -467,11 +468,11 @@ std::vector<DebugPrinter::Block> EFunction::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EIf::clone() {
+std::unique_ptr<EExpression> EIf::clone() const {
     return std::make_unique<EIf>(_nodes[0]->clone(), _nodes[1]->clone(), _nodes[2]->clone());
 }
 
-std::unique_ptr<vm::CodeFragment> EIf::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EIf::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     auto thenBranch = _nodes[1]->compile(ctx);
@@ -497,7 +498,7 @@ std::unique_ptr<vm::CodeFragment> EIf::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> EIf::debugPrint() {
+std::vector<DebugPrinter::Block> EIf::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "if");
 
@@ -517,15 +518,16 @@ std::vector<DebugPrinter::Block> EIf::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> ELocalBind::clone() {
+std::unique_ptr<EExpression> ELocalBind::clone() const {
     std::vector<std::unique_ptr<EExpression>> binds;
+    binds.reserve(_nodes.size() - 1);
     for (size_t idx = 0; idx < _nodes.size() - 1; ++idx) {
         binds.emplace_back(_nodes[idx]->clone());
     }
     return std::make_unique<ELocalBind>(_frameId, std::move(binds), _nodes.back()->clone());
 }
 
-std::unique_ptr<vm::CodeFragment> ELocalBind::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> ELocalBind::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     // Generate bytecode for local variables and the 'in' expression. The 'in' expression is in the
@@ -548,7 +550,7 @@ std::unique_ptr<vm::CodeFragment> ELocalBind::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> ELocalBind::debugPrint() {
+std::vector<DebugPrinter::Block> ELocalBind::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     DebugPrinter::addKeyword(ret, "let");
@@ -570,11 +572,11 @@ std::vector<DebugPrinter::Block> ELocalBind::debugPrint() {
     return ret;
 }
 
-std::unique_ptr<EExpression> EFail::clone() {
+std::unique_ptr<EExpression> EFail::clone() const {
     return std::make_unique<EFail>(_code, _message);
 }
 
-std::unique_ptr<vm::CodeFragment> EFail::compile(CompileCtx& ctx) {
+std::unique_ptr<vm::CodeFragment> EFail::compile(CompileCtx& ctx) const {
     auto code = std::make_unique<vm::CodeFragment>();
 
     code->appendConstVal(value::TypeTags::NumberInt64,
@@ -587,7 +589,7 @@ std::unique_ptr<vm::CodeFragment> EFail::compile(CompileCtx& ctx) {
     return code;
 }
 
-std::vector<DebugPrinter::Block> EFail::debugPrint() {
+std::vector<DebugPrinter::Block> EFail::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "fail");
 
@@ -609,7 +611,7 @@ value::SlotAccessor* CompileCtx::getAccessor(value::SlotId slot) {
         }
     }
 
-    uasserted(ErrorCodes::InternalError, str::stream() << "undefined slot accessor:" << slot);
+    uasserted(4822848, str::stream() << "undefined slot accessor:" << slot);
 }
 
 std::shared_ptr<SpoolBuffer> CompileCtx::getSpoolBuffer(SpoolId spool) {

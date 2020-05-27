@@ -77,12 +77,12 @@ const char* advance(const char* be, size_t fieldNameSize) {
                 if (static_cast<BSONType>(type) == BSONType::BinData) {
                     be += 5;
                 } else {
-                    invariant(Status(ErrorCodes::InternalError, "unsupported bson element"));
+                    uasserted(4822803, "unsupported bson element");
                 }
             }
         }
     } else {
-        invariant(Status(ErrorCodes::InternalError, "unsupported bson element"));
+        uasserted(4822804, "unsupported bson element");
     }
 
     return be;

@@ -46,16 +46,16 @@ HashJoinStage::HashJoinStage(std::unique_ptr<PlanStage> outer,
       _outerCond(std::move(outerCond)),
       _outerProjects(std::move(outerProjects)),
       _innerCond(std::move(innerCond)),
-      _innerProjects(std::move(innerProjects))  // DEAD CODE !!!!
-{
+      _innerProjects(std::move(innerProjects)) {
     if (_outerCond.size() != _innerCond.size()) {
-        uasserted(ErrorCodes::InternalError, "left and right size do not match");
+        uasserted(4822823, "left and right size do not match");
     }
 
     _children.emplace_back(std::move(outer));
     _children.emplace_back(std::move(inner));
 }
-std::unique_ptr<PlanStage> HashJoinStage::clone() {
+
+std::unique_ptr<PlanStage> HashJoinStage::clone() const {
     return std::make_unique<HashJoinStage>(_children[0]->clone(),
                                            _children[1]->clone(),
                                            _outerCond,
@@ -63,6 +63,7 @@ std::unique_ptr<PlanStage> HashJoinStage::clone() {
                                            _innerCond,
                                            _innerProjects);
 }
+
 void HashJoinStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
     _children[1]->prepare(ctx);
@@ -71,7 +72,7 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
     value::SlotSet dupCheck;
     for (auto& slot : _outerCond) {
         auto [it, inserted] = dupCheck.emplace(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822824, str::stream() << "duplicate field: " << slot, inserted);
 
         _inOuterKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outOuterKeyAccessors.emplace_back(std::make_unique<HashKeyAccessor>(_htIt, counter++));
@@ -81,7 +82,7 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
     counter = 0;
     for (auto& slot : _innerCond) {
         auto [it, inserted] = dupCheck.emplace(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822825, str::stream() << "duplicate field: " << slot, inserted);
 
         _inInnerKeyAccessors.emplace_back(_children[1]->getAccessor(ctx, slot));
     }
@@ -89,7 +90,7 @@ void HashJoinStage::prepare(CompileCtx& ctx) {
     counter = 0;
     for (auto& slot : _outerProjects) {
         auto [it, inserted] = dupCheck.emplace(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822826, str::stream() << "duplicate field: " << slot, inserted);
 
         _inOuterProjectAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outOuterProjectAccessors.emplace_back(
@@ -113,6 +114,7 @@ value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
 
     return ctx.getAccessor(slot);
 }
+
 void HashJoinStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -148,6 +150,7 @@ void HashJoinStage::open(bool reOpen) {
     _htIt = _ht.end();
     _htItEnd = _ht.end();
 }
+
 PlanState HashJoinStage::getNext() {
     if (_htIt != _htItEnd) {
         ++_htIt;
@@ -178,6 +181,7 @@ PlanState HashJoinStage::getNext() {
 
     return trackPlanState(PlanState::ADVANCED);
 }
+
 void HashJoinStage::close() {
     _commonStats.closes++;
     _children[1]->close();
@@ -194,7 +198,7 @@ const SpecificStats* HashJoinStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> HashJoinStage::debugPrint() {
+std::vector<DebugPrinter::Block> HashJoinStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "hj");
 

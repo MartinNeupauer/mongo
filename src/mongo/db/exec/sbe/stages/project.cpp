@@ -39,7 +39,7 @@ ProjectStage::ProjectStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
 }
 
-std::unique_ptr<PlanStage> ProjectStage::clone() {
+std::unique_ptr<PlanStage> ProjectStage::clone() const {
     value::SlotMap<std::unique_ptr<EExpression>> projects;
     for (auto& [k, v] : _projects) {
         projects.emplace(k, v->clone());
@@ -100,7 +100,7 @@ const SpecificStats* ProjectStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> ProjectStage::debugPrint() {
+std::vector<DebugPrinter::Block> ProjectStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "project");
 

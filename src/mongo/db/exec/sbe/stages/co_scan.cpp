@@ -35,7 +35,7 @@
 
 namespace mongo::sbe {
 CoScanStage::CoScanStage() : PlanStage("coscan"_sd) {}
-std::unique_ptr<PlanStage> CoScanStage::clone() {
+std::unique_ptr<PlanStage> CoScanStage::clone() const {
     return std::make_unique<CoScanStage>();
 }
 void CoScanStage::prepare(CompileCtx& ctx) {}
@@ -68,7 +68,7 @@ void CoScanStage::close() {
     _commonStats.closes++;
 }
 
-std::vector<DebugPrinter::Block> CoScanStage::debugPrint() {
+std::vector<DebugPrinter::Block> CoScanStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "coscan");
     return ret;

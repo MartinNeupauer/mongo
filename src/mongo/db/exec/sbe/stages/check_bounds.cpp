@@ -46,7 +46,7 @@ CheckBoundsStage::CheckBoundsStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
 }
 
-std::unique_ptr<PlanStage> CheckBoundsStage::clone() {
+std::unique_ptr<PlanStage> CheckBoundsStage::clone() const {
     return std::make_unique<CheckBoundsStage>(
         _children[0]->clone(), _params, _inKeySlot, _inRecordIdSlot, _outSlot);
 }
@@ -131,7 +131,7 @@ const SpecificStats* CheckBoundsStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> CheckBoundsStage::debugPrint() {
+std::vector<DebugPrinter::Block> CheckBoundsStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "chkbounds");
 

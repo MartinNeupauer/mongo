@@ -47,7 +47,7 @@ UnionStage::UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
             return slots.size() == size;
         }));
 }
-std::unique_ptr<PlanStage> UnionStage::clone() {
+std::unique_ptr<PlanStage> UnionStage::clone() const {
     std::vector<std::unique_ptr<PlanStage>> inputStages;
     for (auto& child : _children) {
         inputStages.emplace_back(child->clone());
@@ -62,8 +62,7 @@ void UnionStage::prepare(CompileCtx& ctx) {
 
         for (auto slot : _inputVals[childNum]) {
             auto [it, inserted] = dupCheck.insert(slot);
-            uassert(
-                ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+            uassert(4822806, str::stream() << "duplicate field: " << slot, inserted);
 
             _inValueAccessors[_children[childNum].get()].emplace_back(
                 _children[childNum]->getAccessor(ctx, slot));
@@ -72,7 +71,7 @@ void UnionStage::prepare(CompileCtx& ctx) {
 
     for (auto slot : _outputVals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822807, str::stream() << "duplicate field: " << slot, inserted);
 
         _outValueAccessors.emplace_back(value::ViewOfValueAccessor{});
     }
@@ -148,7 +147,7 @@ const SpecificStats* UnionStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> UnionStage::debugPrint() {
+std::vector<DebugPrinter::Block> UnionStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "union");
 

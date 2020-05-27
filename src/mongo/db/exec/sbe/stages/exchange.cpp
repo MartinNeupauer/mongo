@@ -146,7 +146,7 @@ ExchangeBuffer* ExchangeConsumer::getBuffer(size_t producerId) {
 
 void ExchangeConsumer::putBuffer(size_t producerId) {
     if (!_fullBuffers[producerId]) {
-        uasserted(ErrorCodes::InternalError, "get not called before put");
+        uasserted(4822832, "get not called before put");
     }
 
     // clear the buffer before putting it back on the empty (free) list
@@ -174,7 +174,7 @@ ExchangeConsumer::ExchangeConsumer(std::shared_ptr<ExchangeState> state)
     _tid = _state->addConsumer(this);
     _orderPreserving = _state->isOrderPreserving();
 }
-std::unique_ptr<PlanStage> ExchangeConsumer::clone() {
+std::unique_ptr<PlanStage> ExchangeConsumer::clone() const {
     return std::make_unique<ExchangeConsumer>(_state);
 }
 void ExchangeConsumer::prepare(CompileCtx& ctx) {
@@ -198,7 +198,7 @@ void ExchangeConsumer::open(bool reOpen) {
     _commonStats.opens++;
 
     if (reOpen) {
-        uasserted(ErrorCodes::InternalError, "exchange consumer cannot be reopened");
+        uasserted(4822833, "exchange consumer cannot be reopened");
     }
 
     {
@@ -287,7 +287,7 @@ void ExchangeConsumer::open(bool reOpen) {
 PlanState ExchangeConsumer::getNext() {
     if (_orderPreserving) {
         // build a heap and return min element
-        uasserted(ErrorCodes::InternalErrorNotSupported, "ordere exchange not yet implemented");
+        uasserted(4822834, "ordere exchange not yet implemented");
     } else {
         while (_eofs < _state->numOfProducers()) {
             auto buffer = getBuffer(0);
@@ -365,7 +365,7 @@ const SpecificStats* ExchangeConsumer::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> ExchangeConsumer::debugPrint() {
+std::vector<DebugPrinter::Block> ExchangeConsumer::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "exchange");
     ret.emplace_back(DebugPrinter::Block("[`"));
@@ -388,7 +388,7 @@ std::vector<DebugPrinter::Block> ExchangeConsumer::debugPrint() {
             DebugPrinter::addKeyword(ret, "round");
             break;
         default:
-            uasserted(ErrorCodes::InternalErrorNotSupported, "policy not yet implemented");
+            uasserted(4822835, "policy not yet implemented");
     }
 
     DebugPrinter::addNewLine(ret);
@@ -421,7 +421,7 @@ ExchangeBuffer* ExchangeProducer::getBuffer(size_t consumerId) {
 
 void ExchangeProducer::putBuffer(size_t consumerId) {
     if (!_emptyBuffers[consumerId]) {
-        uasserted(ErrorCodes::InternalError, "get not called before put");
+        uasserted(4822836, "get not called before put");
     }
 
     _pipes[consumerId]->putFullBuffer(std::move(_emptyBuffers[consumerId]));
@@ -459,7 +459,7 @@ void ExchangeProducer::start(OperationContext* opCtx, std::unique_ptr<PlanStage>
 
         auto status = p->getNext();
         if (status != PlanState::IS_EOF) {
-            uasserted(ErrorCodes::InternalError, "producer returned invalid state");
+            uasserted(4822837, "producer returned invalid state");
         }
 
         p->close();
@@ -470,8 +470,8 @@ void ExchangeProducer::start(OperationContext* opCtx, std::unique_ptr<PlanStage>
     }
 }
 
-std::unique_ptr<PlanStage> ExchangeProducer::clone() {
-    uasserted(ErrorCodes::InternalError, "ExchangeProducer is not cloneable");
+std::unique_ptr<PlanStage> ExchangeProducer::clone() const {
+    uasserted(4822838, "ExchangeProducer is not cloneable");
 }
 
 void ExchangeProducer::prepare(CompileCtx& ctx) {
@@ -486,7 +486,7 @@ value::SlotAccessor* ExchangeProducer::getAccessor(CompileCtx& ctx, value::SlotI
 void ExchangeProducer::open(bool reOpen) {
     _commonStats.opens++;
     if (reOpen) {
-        uasserted(ErrorCodes::InternalError, "exchange producer cannot be reopened");
+        uasserted(4822839, "exchange producer cannot be reopened");
     }
     _children[0]->open(reOpen);
 }
@@ -525,7 +525,7 @@ PlanState ExchangeProducer::getNext() {
                 _roundRobinCounter = (_roundRobinCounter + 1) % _pipes.size();
             } break;
             case ExchangePolicy::partition: {
-                uasserted(ErrorCodes::InternalErrorNotSupported, "policy not yet implemented");
+                uasserted(4822840, "policy not yet implemented");
             } break;
             default:
                 MONGO_UNREACHABLE;
@@ -561,7 +561,7 @@ const SpecificStats* ExchangeProducer::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> ExchangeProducer::debugPrint() {
+std::vector<DebugPrinter::Block> ExchangeProducer::debugPrint() const {
     return std::vector<DebugPrinter::Block>();
 }
 bool ExchangeBuffer::appendData(std::vector<value::SlotAccessor*>& data) {

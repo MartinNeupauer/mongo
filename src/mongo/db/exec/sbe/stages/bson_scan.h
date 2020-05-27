@@ -42,7 +42,7 @@ public:
                   std::vector<std::string> fields,
                   value::SlotVector vars);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -53,7 +53,7 @@ public:
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
 
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
     const char* const _bsonBegin;

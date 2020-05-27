@@ -39,7 +39,7 @@ SpoolEagerProducerStage::SpoolEagerProducerStage(std::unique_ptr<PlanStage> inpu
     _children.emplace_back(std::move(input));
 }
 
-std::unique_ptr<PlanStage> SpoolEagerProducerStage::clone() {
+std::unique_ptr<PlanStage> SpoolEagerProducerStage::clone() const {
     return std::make_unique<SpoolEagerProducerStage>(_children[0]->clone(), _spoolId, _vals);
 }
 
@@ -55,7 +55,7 @@ void SpoolEagerProducerStage::prepare(CompileCtx& ctx) {
 
     for (auto slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822810, str::stream() << "duplicate field: " << slot, inserted);
 
         _inAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outAccessors.emplace(
@@ -125,7 +125,7 @@ const SpecificStats* SpoolEagerProducerStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> SpoolEagerProducerStage::debugPrint() {
+std::vector<DebugPrinter::Block> SpoolEagerProducerStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "espool");
 
@@ -157,7 +157,7 @@ SpoolLazyProducerStage::SpoolLazyProducerStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
 }
 
-std::unique_ptr<PlanStage> SpoolLazyProducerStage::clone() {
+std::unique_ptr<PlanStage> SpoolLazyProducerStage::clone() const {
     return std::make_unique<SpoolLazyProducerStage>(
         _children[0]->clone(), _spoolId, _vals, _predicate->clone());
 }
@@ -178,7 +178,7 @@ void SpoolLazyProducerStage::prepare(CompileCtx& ctx) {
 
     for (auto slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822811, str::stream() << "duplicate field: " << slot, inserted);
 
         _inAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outAccessors.emplace(slot, value::ViewOfValueAccessor{});
@@ -260,7 +260,7 @@ const SpecificStats* SpoolLazyProducerStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> SpoolLazyProducerStage::debugPrint() {
+std::vector<DebugPrinter::Block> SpoolLazyProducerStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "lspool");
 

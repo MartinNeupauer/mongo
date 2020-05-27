@@ -247,7 +247,7 @@ public:
 
     ExchangeConsumer(std::shared_ptr<ExchangeState> state);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -257,7 +257,7 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
     ExchangePipe* pipe(size_t producerTid);
 
@@ -291,7 +291,7 @@ public:
 
     static void start(OperationContext* opCtx, std::unique_ptr<PlanStage> producer);
 
-    std::unique_ptr<PlanStage> clone() final;
+    std::unique_ptr<PlanStage> clone() const final;
 
     void prepare(CompileCtx& ctx) final;
     value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
@@ -301,7 +301,7 @@ public:
 
     std::unique_ptr<PlanStageStats> getStats() const final;
     const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() final;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
     ExchangeBuffer* getBuffer(size_t consumerId);

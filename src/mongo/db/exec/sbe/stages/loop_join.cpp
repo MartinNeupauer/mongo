@@ -46,7 +46,7 @@ LoopJoinStage::LoopJoinStage(std::unique_ptr<PlanStage> outer,
     _children.emplace_back(std::move(outer));
     _children.emplace_back(std::move(inner));
 }
-std::unique_ptr<PlanStage> LoopJoinStage::clone() {
+std::unique_ptr<PlanStage> LoopJoinStage::clone() const {
     return std::make_unique<LoopJoinStage>(_children[0]->clone(),
                                            _children[1]->clone(),
                                            _outerProjects,
@@ -56,7 +56,7 @@ std::unique_ptr<PlanStage> LoopJoinStage::clone() {
 void LoopJoinStage::prepare(CompileCtx& ctx) {
     for (auto& f : _outerProjects) {
         auto [it, inserted] = _outerRefs.emplace(f);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << f, inserted);
+        uassert(4822820, str::stream() << "duplicate field: " << f, inserted);
     }
     _children[0]->prepare(ctx);
 
@@ -156,7 +156,7 @@ const SpecificStats* LoopJoinStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> LoopJoinStage::debugPrint() {
+std::vector<DebugPrinter::Block> LoopJoinStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "nlj");
 

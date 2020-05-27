@@ -36,7 +36,7 @@
 
 namespace mongo::sbe {
 
-std::unique_ptr<PlanStage> TextMatchStage::clone() {
+std::unique_ptr<PlanStage> TextMatchStage::clone() const {
     return makeS<TextMatchStage>(
         _children[0]->clone(), _ftsMatcher.query(), _ftsMatcher.spec(), _inputSlot, _outputSlot);
 }
@@ -87,7 +87,7 @@ void TextMatchStage::close() {
     _children[0]->close();
 }
 
-std::vector<DebugPrinter::Block> TextMatchStage::debugPrint() {
+std::vector<DebugPrinter::Block> TextMatchStage::debugPrint() const {
     // TODO: Add 'textmatch' to the parser so that the debug output can be parsed back to an
     // execution plan.
     std::vector<DebugPrinter::Block> ret;

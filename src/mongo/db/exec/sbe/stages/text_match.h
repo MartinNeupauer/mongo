@@ -56,23 +56,23 @@ public:
         _children.emplace_back(std::move(inputStage));
     }
 
-    std::unique_ptr<PlanStage> clone() override;
+    std::unique_ptr<PlanStage> clone() const final;
 
-    void prepare(CompileCtx& ctx) override;
+    void prepare(CompileCtx& ctx) final;
 
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) override;
+    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
 
-    void open(bool reOpen) override;
+    void open(bool reOpen) final;
 
-    PlanState getNext() override;
+    PlanState getNext() final;
 
-    void close() override;
+    void close() final;
 
-    std::vector<DebugPrinter::Block> debugPrint() override;
+    std::vector<DebugPrinter::Block> debugPrint() const final;
 
-    std::unique_ptr<PlanStageStats> getStats() const override;
+    std::unique_ptr<PlanStageStats> getStats() const final;
 
-    const SpecificStats* getSpecificStats() const override {
+    const SpecificStats* getSpecificStats() const final {
         return nullptr;
     }
 

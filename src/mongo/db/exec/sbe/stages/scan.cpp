@@ -58,7 +58,7 @@ ScanStage::ScanStage(const NamespaceStringOrUUID& name,
     invariant(!_seekKeySlot || _forward);
 }
 
-std::unique_ptr<PlanStage> ScanStage::clone() {
+std::unique_ptr<PlanStage> ScanStage::clone() const {
     return std::make_unique<ScanStage>(_name,
                                        _recordSlot,
                                        _recordIdSlot,
@@ -82,13 +82,9 @@ void ScanStage::prepare(CompileCtx& ctx) {
     for (size_t idx = 0; idx < _fields.size(); ++idx) {
         auto [it, inserted] =
             _fieldAccessors.emplace(_fields[idx], std::make_unique<value::ViewOfValueAccessor>());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _fields[idx],
-                inserted);
+        uassert(4822814, str::stream() << "duplicate field: " << _fields[idx], inserted);
         auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _vars[idx],
-                insertedRename);
+        uassert(4822815, str::stream() << "duplicate field: " << _vars[idx], insertedRename);
     }
 
     if (_seekKeySlot) {
@@ -265,7 +261,7 @@ const SpecificStats* ScanStage::getSpecificStats() const {
     return &_specificStats;
 }
 
-std::vector<DebugPrinter::Block> ScanStage::debugPrint() {
+std::vector<DebugPrinter::Block> ScanStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     if (_seekKeySlot) {
@@ -337,7 +333,7 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
       _state(state) {
     invariant(_fields.size() == _vars.size());
 }
-std::unique_ptr<PlanStage> ParallelScanStage::clone() {
+std::unique_ptr<PlanStage> ParallelScanStage::clone() const {
     return std::make_unique<ParallelScanStage>(
         _state, _name, _recordSlot, _recordIdSlot, _fields, _vars, _yieldPolicy);
 }
@@ -354,13 +350,9 @@ void ParallelScanStage::prepare(CompileCtx& ctx) {
     for (size_t idx = 0; idx < _fields.size(); ++idx) {
         auto [it, inserted] =
             _fieldAccessors.emplace(_fields[idx], std::make_unique<value::ViewOfValueAccessor>());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _fields[idx],
-                inserted);
+        uassert(4822816, str::stream() << "duplicate field: " << _fields[idx], inserted);
         auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _vars[idx],
-                insertedRename);
+        uassert(4822817, str::stream() << "duplicate field: " << _vars[idx], insertedRename);
     }
 }
 
@@ -554,7 +546,7 @@ const SpecificStats* ParallelScanStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> ParallelScanStage::debugPrint() {
+std::vector<DebugPrinter::Block> ParallelScanStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "pscan");
 

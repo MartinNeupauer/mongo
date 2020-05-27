@@ -51,7 +51,7 @@ SortStage::SortStage(std::unique_ptr<PlanStage> input,
 
     invariant(_obs.size() == _dirs.size());
 }
-std::unique_ptr<PlanStage> SortStage::clone() {
+std::unique_ptr<PlanStage> SortStage::clone() const {
     return std::make_unique<SortStage>(_children[0]->clone(), _obs, _dirs, _vals, _limit);
 }
 void SortStage::prepare(CompileCtx& ctx) {
@@ -63,7 +63,7 @@ void SortStage::prepare(CompileCtx& ctx) {
     // process order by fields
     for (auto& slot : _obs) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822812, str::stream() << "duplicate field: " << slot, inserted);
 
         _inKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outAccessors.emplace(slot, std::make_unique<SortKeyAccessor>(_stIt, counter++));
@@ -73,7 +73,7 @@ void SortStage::prepare(CompileCtx& ctx) {
     // process value fields
     for (auto& slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822813, str::stream() << "duplicate field: " << slot, inserted);
 
         _inValueAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outAccessors.emplace(slot, std::make_unique<SortValueAccessor>(_stIt, counter++));
@@ -160,7 +160,7 @@ const SpecificStats* SortStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> SortStage::debugPrint() {
+std::vector<DebugPrinter::Block> SortStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "sort");
 

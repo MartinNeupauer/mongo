@@ -236,7 +236,7 @@ public:
      * The idiomatic C++ pattern of object cloning. Plan stages must be fully copyable as every
      * thread in parallel execution needs its own private copy.
      */
-    virtual std::unique_ptr<PlanStage> clone() = 0;
+    virtual std::unique_ptr<PlanStage> clone() const = 0;
 
     /**
      * Prepare this SBE PlanStage tree for execution. Must be called once, and must be called
@@ -254,24 +254,25 @@ public:
      * Opens the plan tree and makes it ready for subsequent open(), getNext(), and close() calls.
      * The expectation is that a plan stage acquires resources (e.g. memory buffers) during the open
      * call and avoids resource acquisition in getNext().
+     *
      * When reOpen flag is true then the plan stage should reinitizalize already acquired resources
      * (e.g. re-hash, re-sort, re-seek, etc).
      */
     virtual void open(bool reOpen) = 0;
 
     /**
-     * Moves to the next position. If the end is reached then return EOS otherwise ADVANCED. Callers
-     * are not required to call getNext until EOS. They can stop consuming results at any time. Once
-     * EOS is reached it will stay at EOS unless reopened.
+     * Moves to the next position. If the end is reached then return EOF otherwise ADVANCED. Callers
+     * are not required to call getNext until EOF. They can stop consuming results at any time. Once
+     * EOF is reached it will stay at EOF unless reopened.
      */
     virtual PlanState getNext() = 0;
 
     /**
-     * The mirror method to open(). It releases any aquired resources.
+     * The mirror method to open(). It releases any acquired resources.
      */
     virtual void close() = 0;
 
-    virtual std::vector<DebugPrinter::Block> debugPrint() = 0;
+    virtual std::vector<DebugPrinter::Block> debugPrint() const = 0;
 
     friend class CanSwitchOperationContext;
     friend class CanChangeState;

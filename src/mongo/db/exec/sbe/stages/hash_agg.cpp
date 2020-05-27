@@ -41,13 +41,15 @@ HashAggStage::HashAggStage(std::unique_ptr<PlanStage> input,
     : PlanStage("group"_sd), _gbs(std::move(gbs)), _aggs(std::move(aggs)) {
     _children.emplace_back(std::move(input));
 }
-std::unique_ptr<PlanStage> HashAggStage::clone() {
+
+std::unique_ptr<PlanStage> HashAggStage::clone() const {
     value::SlotMap<std::unique_ptr<EExpression>> aggs;
     for (auto& [k, v] : _aggs) {
         aggs.emplace(k, v->clone());
     }
     return std::make_unique<HashAggStage>(_children[0]->clone(), _gbs, std::move(aggs));
 }
+
 void HashAggStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
@@ -56,7 +58,7 @@ void HashAggStage::prepare(CompileCtx& ctx) {
     // process group by columns
     for (auto& slot : _gbs) {
         auto [it, inserted] = dupCheck.emplace(slot);
-        uassert(ErrorCodes::InternalError, str::stream() << "duplicate field: " << slot, inserted);
+        uassert(4822827, str::stream() << "duplicate field: " << slot, inserted);
 
         _inKeyAccessors.emplace_back(_children[0]->getAccessor(ctx, slot));
         _outKeyAccessors.emplace_back(std::make_unique<HashKeyAccessor>(_htIt, counter++));
@@ -70,8 +72,7 @@ void HashAggStage::prepare(CompileCtx& ctx) {
         // is used implicitly in uassert below), so we need a local variable to construct an
         // error message.
         const auto slotId = slot;
-        uassert(
-            ErrorCodes::InternalError, str::stream() << "duplicate field: " << slotId, inserted);
+        uassert(4822828, str::stream() << "duplicate field: " << slotId, inserted);
 
         _outAggAccessors.emplace_back(std::make_unique<HashAggAccessor>(_htIt, counter++));
         _outAccessors[slot] = _outAggAccessors.back().get();
@@ -85,6 +86,7 @@ void HashAggStage::prepare(CompileCtx& ctx) {
     }
     _compiled = true;
 }
+
 value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_compiled) {
         if (auto it = _outAccessors.find(slot); it != _outAccessors.end()) {
@@ -96,6 +98,7 @@ value::SlotAccessor* HashAggStage::getAccessor(CompileCtx& ctx, value::SlotId sl
 
     return ctx.getAccessor(slot);
 }
+
 void HashAggStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -129,6 +132,7 @@ void HashAggStage::open(bool reOpen) {
 
     _htIt = _ht.end();
 }
+
 PlanState HashAggStage::getNext() {
     if (_htIt == _ht.end()) {
         _htIt = _ht.begin();
@@ -157,7 +161,7 @@ void HashAggStage::close() {
     _commonStats.closes++;
 }
 
-std::vector<DebugPrinter::Block> HashAggStage::debugPrint() {
+std::vector<DebugPrinter::Block> HashAggStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "group");
 

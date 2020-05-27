@@ -49,7 +49,7 @@ BSONScanStage::BSONScanStage(const char* bsonBegin,
       _vars(std::move(vars)),
       _bsonCurrent(bsonBegin) {}
 
-std::unique_ptr<PlanStage> BSONScanStage::clone() {
+std::unique_ptr<PlanStage> BSONScanStage::clone() const {
     return std::make_unique<BSONScanStage>(_bsonBegin, _bsonEnd, _recordSlot, _fields, _vars);
 }
 
@@ -61,13 +61,9 @@ void BSONScanStage::prepare(CompileCtx& ctx) {
     for (size_t idx = 0; idx < _fields.size(); ++idx) {
         auto [it, inserted] =
             _fieldAccessors.emplace(_fields[idx], std::make_unique<value::ViewOfValueAccessor>());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _fields[idx],
-                inserted);
+        uassert(4822841, str::stream() << "duplicate field: " << _fields[idx], inserted);
         auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _vars[idx],
-                insertedRename);
+        uassert(4822842, str::stream() << "duplicate field: " << _vars[idx], insertedRename);
     }
 }
 
@@ -145,7 +141,7 @@ const SpecificStats* BSONScanStage::getSpecificStats() const {
     return &_specificStats;
 }
 
-std::vector<DebugPrinter::Block> BSONScanStage::debugPrint() {
+std::vector<DebugPrinter::Block> BSONScanStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     DebugPrinter::addKeyword(ret, "bsonscan");

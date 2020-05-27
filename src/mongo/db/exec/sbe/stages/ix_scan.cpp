@@ -62,7 +62,7 @@ IndexScanStage::IndexScanStage(const NamespaceStringOrUUID& name,
               (_seekKeySlotLow && !_seekKeySlotHi));
 }
 
-std::unique_ptr<PlanStage> IndexScanStage::clone() {
+std::unique_ptr<PlanStage> IndexScanStage::clone() const {
     return std::make_unique<IndexScanStage>(_name,
                                             _indexName,
                                             _forward,
@@ -87,13 +87,9 @@ void IndexScanStage::prepare(CompileCtx& ctx) {
     for (size_t idx = 0; idx < _fields.size(); ++idx) {
         auto [it, inserted] =
             _fieldAccessors.emplace(_fields[idx], std::make_unique<value::ViewOfValueAccessor>());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _fields[idx],
-                inserted);
+        uassert(4822821, str::stream() << "duplicate field: " << _fields[idx], inserted);
         auto [itRename, insertedRename] = _varAccessors.emplace(_vars[idx], it->second.get());
-        uassert(ErrorCodes::InternalError,
-                str::stream() << "duplicate field: " << _vars[idx],
-                insertedRename);
+        uassert(4822822, str::stream() << "duplicate field: " << _vars[idx], insertedRename);
     }
 
     if (_seekKeySlotLow) {
@@ -288,7 +284,7 @@ const SpecificStats* IndexScanStage::getSpecificStats() const {
     return &_specificStats;
 }
 
-std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() {
+std::vector<DebugPrinter::Block> IndexScanStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
 
     if (_seekKeySlotLow) {

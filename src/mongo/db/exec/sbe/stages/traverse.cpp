@@ -53,10 +53,10 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
     _children.emplace_back(std::move(inner));
 
     if (_inField == _outField && (_fold || _final)) {
-        uasserted(ErrorCodes::InternalError, "in and out field must not match when folding");
+        uasserted(4822808, "in and out field must not match when folding");
     }
 }
-std::unique_ptr<PlanStage> TraverseStage::clone() {
+std::unique_ptr<PlanStage> TraverseStage::clone() const {
     return std::make_unique<TraverseStage>(_children[0]->clone(),
                                            _children[1]->clone(),
                                            _inField,
@@ -268,7 +268,7 @@ const SpecificStats* TraverseStage::getSpecificStats() const {
     return nullptr;
 }
 
-std::vector<DebugPrinter::Block> TraverseStage::debugPrint() {
+std::vector<DebugPrinter::Block> TraverseStage::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     DebugPrinter::addKeyword(ret, "traverse");
 
