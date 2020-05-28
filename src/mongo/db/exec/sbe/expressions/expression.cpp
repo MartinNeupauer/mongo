@@ -72,6 +72,7 @@ std::unique_ptr<vm::CodeFragment> EConstant::compile(CompileCtx& ctx) const {
 
     return code;
 }
+
 std::vector<DebugPrinter::Block> EConstant::debugPrint() const {
     std::vector<DebugPrinter::Block> ret;
     std::stringstream ss;
@@ -421,6 +422,7 @@ std::unique_ptr<vm::CodeFragment> EFunction::compile(CompileCtx& ctx) const {
 
         return code;
     }
+
     if (auto it = kInstrFunctions.find(_name); it != kInstrFunctions.end()) {
         if (!it->second.arityTest(_nodes.size())) {
             uasserted(4822845,

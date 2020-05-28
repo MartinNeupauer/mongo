@@ -50,10 +50,12 @@ UnwindStage::UnwindStage(std::unique_ptr<PlanStage> input,
         uasserted(4822805, str::stream() << "duplicate field name: " << _outField);
     }
 }
+
 std::unique_ptr<PlanStage> UnwindStage::clone() const {
     return std::make_unique<UnwindStage>(
         _children[0]->clone(), _inField, _outField, _outIndex, _preserveNullAndEmptyArrays);
 }
+
 void UnwindStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
@@ -66,6 +68,7 @@ void UnwindStage::prepare(CompileCtx& ctx) {
     // prepare the outIndex output accessor
     _outIndexOutputAccessor = std::make_unique<value::ViewOfValueAccessor>();
 }
+
 value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_outField == slot) {
         return _outFieldOutputAccessor.get();
@@ -77,6 +80,7 @@ value::SlotAccessor* UnwindStage::getAccessor(CompileCtx& ctx, value::SlotId slo
 
     return _children[0]->getAccessor(ctx, slot);
 }
+
 void UnwindStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -84,6 +88,7 @@ void UnwindStage::open(bool reOpen) {
     _index = 0;
     _inArray = false;
 }
+
 PlanState UnwindStage::getNext() {
     if (!_inArray) {
         do {
@@ -137,6 +142,7 @@ PlanState UnwindStage::getNext() {
 
     return trackPlanState(PlanState::ADVANCED);
 }
+
 void UnwindStage::close() {
     _commonStats.closes++;
     _children[0]->close();

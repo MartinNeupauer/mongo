@@ -54,6 +54,18 @@ struct ParsedQueryTree {
 using AstQuery = peg::AstBase<ParsedQueryTree>;
 
 class Parser {
+public:
+    Parser();
+    std::unique_ptr<PlanStage> parse(OperationContext* opCtx,
+                                     std::string_view defaultDb,
+                                     std::string_view line);
+
+    std::pair<boost::optional<value::SlotId>, boost::optional<value::SlotId>> getTopLevelSlots()
+        const {
+        return {_resultSlot, _recordIdSlot};
+    }
+
+private:
     using SymbolTable = std::unordered_map<std::string, value::SlotId>;
     using SpoolBufferLookupTable = std::unordered_map<std::string, SpoolId>;
     peg::parser _parser;
@@ -107,8 +119,6 @@ class Parser {
         } else if (_symbolsLookupTable.find(name) == _symbolsLookupTable.end()) {
             _symbolsLookupTable[name] = _slotIdGenerator.generate();
 
-            std::cout << "mapping " << name << " to " << _symbolsLookupTable[name] << std::endl;
-
             if (name == "$$RESULT") {
                 _resultSlot = _symbolsLookupTable[name];
             } else if (name == "$$RID") {
@@ -120,7 +130,7 @@ class Parser {
 
     value::SlotId lookupSlotStrict(const std::string& name) {
         auto slot = lookupSlot(name);
-        uassert(ErrorCodes::InternalError,
+        uassert(ErrorCodes::FailedToParse,
                 str::stream() << "Unable lookup SlotId for [" << name << "]",
                 slot);
         return *slot;
@@ -209,17 +219,6 @@ class Parser {
                                              std::unique_ptr<PlanStage> inputStage,
                                              value::SlotVector correlated,
                                              value::SlotId outputSlot);
-
-public:
-    Parser();
-    std::unique_ptr<PlanStage> parse(OperationContext* opCtx,
-                                     std::string_view defaultDb,
-                                     std::string_view line);
-
-    std::pair<boost::optional<value::SlotId>, boost::optional<value::SlotId>> getTopLevelSlots()
-        const {
-        return {_resultSlot, _recordIdSlot};
-    }
 };
 }  // namespace sbe
 }  // namespace mongo

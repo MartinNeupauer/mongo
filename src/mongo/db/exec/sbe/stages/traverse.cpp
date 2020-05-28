@@ -56,6 +56,7 @@ TraverseStage::TraverseStage(std::unique_ptr<PlanStage> outer,
         uasserted(4822808, "in and out field must not match when folding");
     }
 }
+
 std::unique_ptr<PlanStage> TraverseStage::clone() const {
     return std::make_unique<TraverseStage>(_children[0]->clone(),
                                            _children[1]->clone(),
@@ -66,23 +67,24 @@ std::unique_ptr<PlanStage> TraverseStage::clone() const {
                                            _fold ? _fold->clone() : nullptr,
                                            _final ? _final->clone() : nullptr);
 }
+
 void TraverseStage::prepare(CompileCtx& ctx) {
-    // prepare the outer side as usual
+    // Prepare the outer side as usual.
     _children[0]->prepare(ctx);
 
-    // get the inField (incoming) accessor
+    // Get the inField (incoming) accessor.
     _inFieldAccessor = _children[0]->getAccessor(ctx, _inField);
 
-    // prepare the accessor for the correlated parameter
+    // Prepare the accessor for the correlated parameter.
     ctx.pushCorrelated(_inField, &_correlatedAccessor);
     for (auto slot : _correlatedSlots) {
         ctx.pushCorrelated(slot, _children[0]->getAccessor(ctx, slot));
     }
-    // prepare the inner side
+    // Prepare the inner side.
     _children[1]->prepare(ctx);
 
-    // get the output from the inner side
-    _outFieldInputAccessor = _children[1]->getAccessor(ctx, /*_inField*/ _outFieldInner);
+    // Get the output from the inner side.
+    _outFieldInputAccessor = _children[1]->getAccessor(ctx, _outFieldInner);
 
     if (_fold) {
         ctx.root = this;
@@ -94,7 +96,7 @@ void TraverseStage::prepare(CompileCtx& ctx) {
         _finalCode = _final->compile(ctx);
     }
 
-    // restore correlated parameters
+    // Restore correlated parameters.
     for (size_t idx = 0; idx < _correlatedSlots.size(); ++idx) {
         ctx.popCorrelated();
     }
@@ -102,32 +104,34 @@ void TraverseStage::prepare(CompileCtx& ctx) {
 
     _compiled = true;
 }
+
 value::SlotAccessor* TraverseStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_outField == slot) {
         return &_outFieldOutputAccessor;
     }
 
     if (_compiled) {
-        // after the compilation pass to the 'from' child
+        // After the compilation pass to the 'outer' child.
         return _children[0]->getAccessor(ctx, slot);
     } else {
-        // if internal expressions (fold, final) are not compiled yet then they refer to the 'in'
-        // child
+        // If internal expressions (fold, final) are not compiled yet then they refer to the 'inner'
+        // child.
         return _children[1]->getAccessor(ctx, slot);
     }
 }
+
 void TraverseStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
-    // do not open the inner child as we do not have values of correlated parameters yet.
-    // the values are available only after we call getNext on the outer side.
+    // Do not open the inner child as we do not have values of correlated parameters yet.
+    // The values are available only after we call getNext on the outer side.
 }
 
 void TraverseStage::openInner(value::TypeTags tag, value::Value val) {
-    // set the correlated value
+    // Set the correlated value.
     _correlatedAccessor.reset(tag, val);
 
-    // and (re)open the inner side as it can see the correlated value now
+    // And (re)open the inner side as it can see the correlated value now.
     _children[1]->open(_reOpenInner);
     _reOpenInner = true;
 }
@@ -147,18 +151,18 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                              value::OwnedValueAccessor* outFieldOutputAccessor,
                              size_t level) {
     auto earlyExit = false;
-    // get the value
+    // Get the value.
     auto [tag, val] = inFieldAccessor->getViewOfValue();
 
     if (value::isArray(tag)) {
-        // if it is an array then we have to traverse it
+        // If it is an array then we have to traverse it.
         value::ArrayAccessor inArrayAccessor;
         inArrayAccessor.reset(tag, val);
         value::Array* arrOut{nullptr};
 
         if (!_foldCode) {
-            // create a fresh new output array
-            // TODO if _inField == _outField then we can do implace update of the input array
+            // Create a fresh new output array.
+            // TODO if _inField == _outField then we can do implace update of the input array.
             auto [tag, val] = value::makeNewArray();
             arrOut = value::getArrayView(val);
             outFieldOutputAccessor->reset(true, tag, val);
@@ -166,7 +170,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
             outFieldOutputAccessor->reset(false, value::TypeTags::Nothing, 0);
         }
 
-        // loop over all elements of array
+        // Loop over all elements of array.
         bool firstValue = true;
         for (; !inArrayAccessor.atEnd(); inArrayAccessor.advance()) {
             auto [tag, val] = inArrayAccessor.getViewOfValue();
@@ -196,9 +200,9 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
 
                 if (state == PlanState::ADVANCED) {
                     if (!_foldCode) {
-                        // we have to copy (or move optimization) the value to the array
+                        // We have to copy (or move optimization) the value to the array
                         // as by definition all composite values (arrays, objects) own their
-                        // constituents
+                        // constituents.
                         auto [tag, val] = _outFieldInputAccessor->copyOrMoveValue();
                         arrOut->push_back(tag, val);
                     } else {
@@ -207,7 +211,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                             outFieldOutputAccessor->reset(true, tag, val);
                             firstValue = false;
                         } else {
-                            // fold
+                            // Fold
                             auto [owned, tag, val] = _bytecode.run(_foldCode.get());
                             if (!owned) {
                                 auto [copyTag, copyVal] = value::copyValue(tag, val);
@@ -218,7 +222,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
                         }
                     }
 
-                    // check early out condition
+                    // Check early out condition.
                     if (_finalCode) {
                         if (_bytecode.runPredicate(_finalCode.get())) {
                             earlyExit = true;
@@ -229,7 +233,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
             }
         }
     } else {
-        // for non-arrays we simply execute the inner side once
+        // For non-arrays we simply execute the inner side once.
         openInner(tag, val);
         auto state = _children[1]->getNext();
 
@@ -237,7 +241,7 @@ bool TraverseStage::traverse(value::SlotAccessor* inFieldAccessor,
             outFieldOutputAccessor->reset();
         } else {
             auto [tag, val] = _outFieldInputAccessor->getViewOfValue();
-            // we don't have to copy the value
+            // We don't have to copy the value.
             outFieldOutputAccessor->reset(false, tag, val);
         }
     }

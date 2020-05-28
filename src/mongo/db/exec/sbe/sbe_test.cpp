@@ -33,9 +33,9 @@
 #include "mongo/unittest/unittest.h"
 
 namespace mongo::sbe {
-using namespace std::literals;
 
 TEST(SBEValues, Basic) {
+    using namespace std::literals;
     {
         const auto [tag, val] = value::makeNewString("small"sv);
         ASSERT_EQUALS(tag, value::TypeTags::StringSmall);
@@ -161,6 +161,7 @@ TEST(SBEVM, Add) {
 }
 
 TEST(SBEParser, Basic) {
+    using namespace std::literals;
     Parser p;
     auto q = p.parse(nullptr, "nodb"sv, "mkobj $$RESULT [] limit 1 coscan"sv);
 

@@ -34,6 +34,13 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 
 namespace mongo::sbe {
+/**
+ * This is a filter plan stage. If the IsConst template parameter is true then the filter expression
+ * is 'constant' i.e. it does not depend on values coming from its input. It means that we can
+ * evaluate it in the open() call and skip getNext() calls completely if the result is false.
+ * The IsEof template parameter controls 'early out' behavior of the filter expression. Once the
+ * filter evaluates to false then the getNext() call returns EOF.
+ */
 template <bool IsConst, bool IsEof = false>
 class FilterStage final : public PlanStage {
 public:
@@ -51,7 +58,6 @@ public:
     void prepare(CompileCtx& ctx) final {
         _children[0]->prepare(ctx);
 
-        // compile filter
         ctx.root = this;
         _filterCode = _filter->compile(ctx);
     }
@@ -66,7 +72,6 @@ public:
         if constexpr (IsConst) {
             _specificStats.numTested++;
 
-            // run the filter expressions here
             auto pass = _bytecode.runPredicate(_filterCode.get());
             if (!pass) {
                 close();
@@ -96,7 +101,6 @@ public:
             if (state == PlanState::ADVANCED) {
                 _specificStats.numTested++;
 
-                // run the filter expressions here
                 pass = _bytecode.runPredicate(_filterCode.get());
 
                 if constexpr (IsEof) {
@@ -158,46 +162,6 @@ private:
     vm::ByteCode _bytecode;
 
     bool _childOpened{false};
-    FilterStats _specificStats;
-};
-
-class BranchStage final : public PlanStage {
-public:
-    BranchStage(std::unique_ptr<PlanStage> inputThen,
-                std::unique_ptr<PlanStage> inputElse,
-                std::unique_ptr<EExpression> filter,
-                value::SlotVector inputThenVals,
-                value::SlotVector inputElseVals,
-                value::SlotVector outputVals);
-
-    std::unique_ptr<PlanStage> clone() const final;
-
-    void prepare(CompileCtx& ctx) final;
-    value::SlotAccessor* getAccessor(CompileCtx& ctx, value::SlotId slot) final;
-    void open(bool reOpen) final;
-    PlanState getNext() final;
-    void close() final;
-
-    std::unique_ptr<PlanStageStats> getStats() const final;
-    const SpecificStats* getSpecificStats() const final;
-    std::vector<DebugPrinter::Block> debugPrint() const final;
-
-private:
-    const std::unique_ptr<EExpression> _filter;
-    const value::SlotVector _inputThenVals;
-    const value::SlotVector _inputElseVals;
-    const value::SlotVector _outputVals;
-    std::unique_ptr<vm::CodeFragment> _filterCode;
-
-    std::vector<value::SlotAccessor*> _inputThenAccessors;
-    std::vector<value::SlotAccessor*> _inputElseAccessors;
-    std::vector<value::ViewOfValueAccessor> _outValueAccessors;
-
-    boost::optional<int> _activeBranch;
-    bool _thenOpened{false};
-    bool _elseOpened{false};
-
-    vm::ByteCode _bytecode;
     FilterStats _specificStats;
 };
 }  // namespace mongo::sbe

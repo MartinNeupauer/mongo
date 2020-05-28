@@ -32,6 +32,7 @@
 
 #include "mongo/db/exec/sbe/parser/parser.h"
 
+#include "mongo/db/exec/sbe/stages/branch.h"
 #include "mongo/db/exec/sbe/stages/co_scan.h"
 #include "mongo/db/exec/sbe/stages/exchange.h"
 #include "mongo/db/exec/sbe/stages/filter.h"
@@ -732,7 +733,7 @@ void Parser::walkUnion(AstQuery& ast) {
         inputStages.push_back(std::move(ast.nodes[1]->nodes[idx]->stage));
     }
 
-    uassert(ErrorCodes::BadValue,
+    uassert(ErrorCodes::FailedToParse,
             "Union output values and input values mismatch",
             std::all_of(
                 inputVals.begin(), inputVals.end(), [size = outputVals.size()](const auto& slots) {
@@ -898,7 +899,7 @@ void Parser::walkExchange(AstQuery& ast) {
         if (ast.nodes[2]->identifier == "bcast") {
             return ExchangePolicy::broadcast;
         }
-        uasserted(ErrorCodes::BadValue, "unknown exchange policy");
+        uasserted(ErrorCodes::FailedToParse, "unknown exchange policy");
     }();
     ast.stage = makeS<ExchangeConsumer>(std::move(ast.nodes[3]->stage),
                                         std::stoll(ast.nodes[1]->token),
@@ -1000,15 +1001,11 @@ bool needNewObject(AstQuery& ast) {
                 // PF_DROPALL
                 return false;
             }
-            uassert(
-                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 2);
 
             // follow the action on the field
             return needNewObject(*ast.nodes[1]);
         }
         case "PF_ACTION"_: {
-            uassert(
-                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 1);
 
             return needNewObject(*ast.nodes[0]);
         }
@@ -1027,7 +1024,6 @@ bool needNewObject(AstQuery& ast) {
         }
         default:;
     }
-    uasserted(ErrorCodes::InternalError, "grammer and ast do not match");
     MONGO_UNREACHABLE;
 }
 // do we return the old object if the new one is empty?
@@ -1046,15 +1042,11 @@ bool returnOldObject(AstQuery& ast) {
                 // PF_DROPALL
                 return true;
             }
-            uassert(
-                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 2);
 
             // follow the action on the field
             return returnOldObject(*ast.nodes[1]);
         }
         case "PF_ACTION"_: {
-            uassert(
-                ErrorCodes::InternalError, "grammer and ast do not match", ast.nodes.size() == 1);
 
             return returnOldObject(*ast.nodes[0]);
         }
@@ -1072,7 +1064,6 @@ bool returnOldObject(AstQuery& ast) {
         }
         default:;
     }
-    uasserted(ErrorCodes::InternalError, "grammer and ast do not match");
     MONGO_UNREACHABLE;
 }
 std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
@@ -1170,19 +1161,6 @@ std::unique_ptr<PlanStage> Parser::walkPath(AstQuery& ast,
         fieldRestrictNames.clear();
         fieldRestrictNames.emplace_back("");
     }
-    std::cout << "newObj = " << newObj << "\n";
-    std::cout << "restrictAll = " << restrictAll << "\n";
-    std::cout << "retOldObj = " << retOldObj << "\n";
-    std::cout << "fieldNames\n";
-    for (const auto& fn : fieldNames) {
-        std::cout << "\"" << fn << "\" ";
-    }
-    std::cout << "\n";
-    std::cout << "fieldRestrictNames\n";
-    for (const auto& fn : fieldRestrictNames) {
-        std::cout << "\"" << fn << "\" ";
-    }
-    std::cout << "\n";
     stage = makeS<MakeObjStage>(std::move(stage),
                                 outputSlot,
                                 inputSlot,
@@ -1405,7 +1383,7 @@ Parser::Parser() {
     };
 
     if (!_parser.load_grammar(syntax)) {
-        uasserted(ErrorCodes::InternalError, "Invalid syntax definition.");
+        uasserted(4822858, "Invalid syntax definition.");
     }
 
     _parser.enable_packrat_parsing();

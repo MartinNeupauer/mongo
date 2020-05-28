@@ -38,7 +38,7 @@ namespace mongo::sbe {
  *
  * On its face value this does not seem to be very useful but it is handy when we have to construct
  * a data stream when there is not any physical source (i.e. no collection to read from).
- * Typical use cases are: inner side of Traverse, inner side of Nested Loops, constants, etc.
+ * Typical use cases are: inner side of Traverse, outer side of Nested Loops, constants, etc.
  */
 class CoScanStage final : public PlanStage {
 public:

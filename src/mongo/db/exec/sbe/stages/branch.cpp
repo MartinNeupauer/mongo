@@ -29,7 +29,7 @@
 
 #include "mongo/platform/basic.h"
 
-#include "mongo/db/exec/sbe/stages/filter.h"
+#include "mongo/db/exec/sbe/stages/branch.h"
 
 #include "mongo/db/exec/sbe/expressions/expression.h"
 
@@ -126,6 +126,7 @@ void BranchStage::open(bool reOpen) {
         _activeBranch = boost::none;
     }
 }
+
 PlanState BranchStage::getNext() {
     if (!_activeBranch) {
         return trackPlanState(PlanState::IS_EOF);

@@ -116,6 +116,7 @@ void CodeFragment::removeFixup(FrameId frameId) {
                                  [frameId](const auto& f) { return f.frameId == frameId; }),
                   _fixUps.end());
 }
+
 void CodeFragment::copyCodeAndFixup(const CodeFragment& from) {
     for (auto fixUp : from._fixUps) {
         fixUp.offset += _instrs.size();
@@ -146,6 +147,7 @@ void CodeFragment::append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<Cod
 
     _stackSize += lhs->_stackSize;
 }
+
 void CodeFragment::appendConstVal(value::TypeTags tag, value::Value val) {
     Instruction i;
     i.tag = Instruction::pushConstVal;
@@ -193,24 +195,31 @@ void CodeFragment::appendLocalVal(FrameId frameId, int stackOffset) {
     offset += value::writeToMemory(offset, i);
     offset += value::writeToMemory(offset, stackOffset);
 }
+
 void CodeFragment::appendAdd() {
     appendSimpleInstruction(Instruction::add);
 }
+
 void CodeFragment::appendSub() {
     appendSimpleInstruction(Instruction::sub);
 }
+
 void CodeFragment::appendMul() {
     appendSimpleInstruction(Instruction::mul);
 }
+
 void CodeFragment::appendDiv() {
     appendSimpleInstruction(Instruction::div);
 }
+
 void CodeFragment::appendNegate() {
     appendSimpleInstruction(Instruction::negate);
 }
+
 void CodeFragment::appendNot() {
     appendSimpleInstruction(Instruction::logicNot);
 }
+
 void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
     Instruction i;
     i.tag = tag;
@@ -220,42 +229,55 @@ void CodeFragment::appendSimpleInstruction(Instruction::Tags tag) {
 
     offset += value::writeToMemory(offset, i);
 }
+
 void CodeFragment::appendGetField() {
     appendSimpleInstruction(Instruction::getField);
 }
+
 void CodeFragment::appendSum() {
     appendSimpleInstruction(Instruction::aggSum);
 }
+
 void CodeFragment::appendMin() {
     appendSimpleInstruction(Instruction::aggMin);
 }
+
 void CodeFragment::appendMax() {
     appendSimpleInstruction(Instruction::aggMax);
 }
+
 void CodeFragment::appendFirst() {
     appendSimpleInstruction(Instruction::aggFirst);
 }
+
 void CodeFragment::appendLast() {
     appendSimpleInstruction(Instruction::aggLast);
 }
+
 void CodeFragment::appendExists() {
     appendSimpleInstruction(Instruction::exists);
 }
+
 void CodeFragment::appendIsNull() {
     appendSimpleInstruction(Instruction::isNull);
 }
+
 void CodeFragment::appendIsObject() {
     appendSimpleInstruction(Instruction::isObject);
 }
+
 void CodeFragment::appendIsArray() {
     appendSimpleInstruction(Instruction::isArray);
 }
+
 void CodeFragment::appendIsString() {
     appendSimpleInstruction(Instruction::isString);
 }
+
 void CodeFragment::appendIsNumber() {
     appendSimpleInstruction(Instruction::isNumber);
 }
+
 void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     Instruction i;
     i.tag = Instruction::function;
@@ -271,6 +293,7 @@ void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     offset += value::writeToMemory(offset, f);
     offset += value::writeToMemory(offset, arity);
 }
+
 void CodeFragment::appendJump(int jumpOffset) {
     Instruction i;
     i.tag = Instruction::jmp;
@@ -281,6 +304,7 @@ void CodeFragment::appendJump(int jumpOffset) {
     offset += value::writeToMemory(offset, i);
     offset += value::writeToMemory(offset, jumpOffset);
 }
+
 void CodeFragment::appendJumpTrue(int jumpOffset) {
     Instruction i;
     i.tag = Instruction::jmpTrue;
@@ -291,6 +315,7 @@ void CodeFragment::appendJumpTrue(int jumpOffset) {
     offset += value::writeToMemory(offset, i);
     offset += value::writeToMemory(offset, jumpOffset);
 }
+
 void CodeFragment::appendJumpNothing(int jumpOffset) {
     Instruction i;
     i.tag = Instruction::jmpNothing;
@@ -471,6 +496,7 @@ bool hasSeparatorAt(size_t idx, std::string_view input, std::string_view separat
 
     return input.compare(idx, separator.size(), separator) == 0;
 }
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t arity) {
     auto [ownedSeparator, tagSeparator, valSeparator] = getFromStack(1);
     auto [ownedInput, tagInput, valInput] = getFromStack(0);
@@ -505,6 +531,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t a
     guard.reset();
     return {true, tag, val};
 }
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint8_t arity) {
     auto [ownedSeparator, tagInObj, valInObj] = getFromStack(0);
 
@@ -562,6 +589,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint
     guard.reset();
     return {true, tag, val};
 }
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t arity) {
     std::vector<value::TypeTags> typeTags;
     std::vector<value::Value> values;
@@ -596,6 +624,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t 
     guard.reset();
     return {true, tag, val};
 }
+
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinKeyStringToString(uint8_t arity) {
     auto [owned, tagInKey, valInKey] = getFromStack(0);
 
@@ -1337,6 +1366,7 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
 
     return {owned, tag, val};
 }
+
 bool ByteCode::runPredicate(CodeFragment* code) {
     auto [owned, tag, val] = run(code);
 

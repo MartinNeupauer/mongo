@@ -46,6 +46,7 @@ LoopJoinStage::LoopJoinStage(std::unique_ptr<PlanStage> outer,
     _children.emplace_back(std::move(outer));
     _children.emplace_back(std::move(inner));
 }
+
 std::unique_ptr<PlanStage> LoopJoinStage::clone() const {
     return std::make_unique<LoopJoinStage>(_children[0]->clone(),
                                            _children[1]->clone(),
@@ -53,6 +54,7 @@ std::unique_ptr<PlanStage> LoopJoinStage::clone() const {
                                            _outerCorrelated,
                                            _predicate ? _predicate->clone() : nullptr);
 }
+
 void LoopJoinStage::prepare(CompileCtx& ctx) {
     for (auto& f : _outerProjects) {
         auto [it, inserted] = _outerRefs.emplace(f);
@@ -74,6 +76,7 @@ void LoopJoinStage::prepare(CompileCtx& ctx) {
         _predicateCode = _predicate->compile(ctx);
     }
 }
+
 value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_outerRefs.count(slot)) {
         return _children[0]->getAccessor(ctx, slot);
@@ -81,6 +84,7 @@ value::SlotAccessor* LoopJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
 
     return _children[1]->getAccessor(ctx, slot);
 }
+
 void LoopJoinStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -88,11 +92,13 @@ void LoopJoinStage::open(bool reOpen) {
     // do not open the inner child as we do not have values of correlated parameters yet.
     // the values are available only after we call getNext on the outer side.
 }
+
 void LoopJoinStage::openInner() {
     // (re)open the inner side as it can see the correlated value now
     _children[1]->open(_reOpenInner);
     _reOpenInner = true;
 }
+
 PlanState LoopJoinStage::getNext() {
     if (_outerGetNext) {
         auto state = _children[0]->getNext();
@@ -133,6 +139,7 @@ PlanState LoopJoinStage::getNext() {
         openInner();
     }
 }
+
 void LoopJoinStage::close() {
     _commonStats.closes++;
 

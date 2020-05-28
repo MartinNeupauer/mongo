@@ -29,20 +29,23 @@
 
 #pragma once
 
-#include <vector>
-
+#include "mongo/db/exec/sbe/expressions/expression.h"
 #include "mongo/db/exec/sbe/stages/stages.h"
 #include "mongo/db/exec/sbe/vm/vm.h"
 
 namespace mongo::sbe {
-class HashJoinStage final : public PlanStage {
+/**
+ * This stage delivers results from either 'then' or 'else' branch depending on the value of the
+ * 'filer' expression as evaluated during the open() call.
+ */
+class BranchStage final : public PlanStage {
 public:
-    HashJoinStage(std::unique_ptr<PlanStage> outer,
-                  std::unique_ptr<PlanStage> inner,
-                  value::SlotVector outerCond,
-                  value::SlotVector outerProjects,
-                  value::SlotVector innerCond,
-                  value::SlotVector innerProjects);
+    BranchStage(std::unique_ptr<PlanStage> inputThen,
+                std::unique_ptr<PlanStage> inputElse,
+                std::unique_ptr<EExpression> filter,
+                value::SlotVector inputThenVals,
+                value::SlotVector inputElseVals,
+                value::SlotVector outputVals);
 
     std::unique_ptr<PlanStage> clone() const final;
 
@@ -57,43 +60,21 @@ public:
     std::vector<DebugPrinter::Block> debugPrint() const final;
 
 private:
-    using TableType = std::unordered_multimap<value::MaterializedRow,
-                                              value::MaterializedRow,
-                                              value::MaterializedRowHasher>;  // NOLINT
+    const std::unique_ptr<EExpression> _filter;
+    const value::SlotVector _inputThenVals;
+    const value::SlotVector _inputElseVals;
+    const value::SlotVector _outputVals;
+    std::unique_ptr<vm::CodeFragment> _filterCode;
 
-    using HashKeyAccessor = value::MaterializedRowKeyAccessor<TableType::iterator>;
-    using HashProjectAccessor = value::MaterializedRowValueAccessor<TableType::iterator>;
+    std::vector<value::SlotAccessor*> _inputThenAccessors;
+    std::vector<value::SlotAccessor*> _inputElseAccessors;
+    std::vector<value::ViewOfValueAccessor> _outValueAccessors;
 
-    const value::SlotVector _outerCond;
-    const value::SlotVector _outerProjects;
-    const value::SlotVector _innerCond;
-    const value::SlotVector _innerProjects;
-
-    // All defined values from the outer side (i.e. they come from the hash table).
-    value::SlotAccessorMap _outOuterAccessors;
-
-    // Accessors of input codition values (keys) that are being inserted into the hash table.
-    std::vector<value::SlotAccessor*> _inOuterKeyAccessors;
-    // Accessors of output keys.
-    std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
-
-    // Accessors of input projection values that are build inserted into the hash table.
-    std::vector<value::SlotAccessor*> _inOuterProjectAccessors;
-    // Accessors of output projections.
-    std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
-
-    // Accessors of input codition values (keys) that are being inserted into the hash table.
-    std::vector<value::SlotAccessor*> _inInnerKeyAccessors;
-
-    // Key used to probe inside the hash table.
-    value::MaterializedRow _probeKey;
-
-    TableType _ht;
-    TableType::iterator _htIt;
-    TableType::iterator _htItEnd;
+    boost::optional<int> _activeBranch;
+    bool _thenOpened{false};
+    bool _elseOpened{false};
 
     vm::ByteCode _bytecode;
-
-    bool _compiled{false};
+    FilterStats _specificStats;
 };
 }  // namespace mongo::sbe

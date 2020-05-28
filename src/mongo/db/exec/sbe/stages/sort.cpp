@@ -51,9 +51,11 @@ SortStage::SortStage(std::unique_ptr<PlanStage> input,
 
     invariant(_obs.size() == _dirs.size());
 }
+
 std::unique_ptr<PlanStage> SortStage::clone() const {
     return std::make_unique<SortStage>(_children[0]->clone(), _obs, _dirs, _vals, _limit);
 }
+
 void SortStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
@@ -79,6 +81,7 @@ void SortStage::prepare(CompileCtx& ctx) {
         _outAccessors.emplace(slot, std::make_unique<SortValueAccessor>(_stIt, counter++));
     }
 }
+
 value::SlotAccessor* SortStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (auto it = _outAccessors.find(slot); it != _outAccessors.end()) {
         return it->second.get();
@@ -86,6 +89,7 @@ value::SlotAccessor* SortStage::getAccessor(CompileCtx& ctx, value::SlotId slot)
 
     return ctx.getAccessor(slot);
 }
+
 void SortStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
@@ -132,6 +136,7 @@ void SortStage::open(bool reOpen) {
 
     _stIt = _st.end();
 }
+
 PlanState SortStage::getNext() {
     if (_stIt == _st.end()) {
         _stIt = _st.begin();
@@ -145,6 +150,7 @@ PlanState SortStage::getNext() {
 
     return trackPlanState(PlanState::ADVANCED);
 }
+
 void SortStage::close() {
     _commonStats.closes++;
     _st.clear();

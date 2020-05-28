@@ -57,6 +57,7 @@ void LimitSkipStage::prepare(CompileCtx& ctx) {
 value::SlotAccessor* LimitSkipStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     return _children[0]->getAccessor(ctx, slot);
 }
+
 void LimitSkipStage::open(bool reOpen) {
     _commonStats.opens++;
     _isEOF = false;

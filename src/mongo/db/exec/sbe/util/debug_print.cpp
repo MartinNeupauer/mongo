@@ -115,6 +115,7 @@ std::string DebugPrinter::print(std::vector<Block> blocks) {
 
     return ret;
 }
+
 std::string DebugPrinter::print(PlanStage* s) {
     return print(s->debugPrint());
 }

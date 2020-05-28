@@ -54,6 +54,7 @@ MakeObjStage::MakeObjStage(std::unique_ptr<PlanStage> input,
     _children.emplace_back(std::move(input));
     invariant(_projectVars.size() == _projectFields.size());
 }
+
 std::unique_ptr<PlanStage> MakeObjStage::clone() const {
     return std::make_unique<MakeObjStage>(_children[0]->clone(),
                                           _objSlot,
@@ -64,6 +65,7 @@ std::unique_ptr<PlanStage> MakeObjStage::clone() const {
                                           _forceNewObject,
                                           _returnOldObject);
 }
+
 void MakeObjStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
@@ -87,6 +89,7 @@ void MakeObjStage::prepare(CompileCtx& ctx) {
     }
     _compiled = true;
 }
+
 value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     if (_compiled && slot == _objSlot) {
         return &_obj;
@@ -94,6 +97,7 @@ value::SlotAccessor* MakeObjStage::getAccessor(CompileCtx& ctx, value::SlotId sl
         return _children[0]->getAccessor(ctx, slot);
     }
 }
+
 void MakeObjStage::projectField(value::Object* obj, size_t idx) {
     const auto& p = _projects[idx];
 
@@ -108,6 +112,7 @@ void MakeObjStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
 }
+
 PlanState MakeObjStage::getNext() {
     auto state = _children[0]->getNext();
 
@@ -189,6 +194,7 @@ PlanState MakeObjStage::getNext() {
     }
     return trackPlanState(state);
 }
+
 void MakeObjStage::close() {
     _commonStats.closes++;
     _children[0]->close();

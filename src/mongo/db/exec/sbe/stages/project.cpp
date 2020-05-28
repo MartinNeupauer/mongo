@@ -70,6 +70,7 @@ void ProjectStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
 }
+
 PlanState ProjectStage::getNext() {
     auto state = _children[0]->getNext();
 
@@ -85,6 +86,7 @@ PlanState ProjectStage::getNext() {
 
     return trackPlanState(state);
 }
+
 void ProjectStage::close() {
     _commonStats.closes++;
     _children[0]->close();

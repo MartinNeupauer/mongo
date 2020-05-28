@@ -47,6 +47,7 @@ UnionStage::UnionStage(std::vector<std::unique_ptr<PlanStage>> inputStages,
             return slots.size() == size;
         }));
 }
+
 std::unique_ptr<PlanStage> UnionStage::clone() const {
     std::vector<std::unique_ptr<PlanStage>> inputStages;
     for (auto& child : _children) {
@@ -54,6 +55,7 @@ std::unique_ptr<PlanStage> UnionStage::clone() const {
     }
     return std::make_unique<UnionStage>(std::move(inputStages), _inputVals, _outputVals);
 }
+
 void UnionStage::prepare(CompileCtx& ctx) {
     value::SlotSet dupCheck;
 
@@ -76,6 +78,7 @@ void UnionStage::prepare(CompileCtx& ctx) {
         _outValueAccessors.emplace_back(value::ViewOfValueAccessor{});
     }
 }
+
 value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot) {
     for (size_t idx = 0; idx < _outputVals.size(); idx++) {
         if (_outputVals[idx] == slot) {
@@ -85,6 +88,7 @@ value::SlotAccessor* UnionStage::getAccessor(CompileCtx& ctx, value::SlotId slot
 
     return ctx.getAccessor(slot);
 }
+
 void UnionStage::open(bool reOpen) {
     _commonStats.opens++;
     if (reOpen) {
@@ -99,6 +103,7 @@ void UnionStage::open(bool reOpen) {
     _remainingBranchesToDrain.front().open();
     _currentStage = _remainingBranchesToDrain.front().stage;
 }
+
 PlanState UnionStage::getNext() {
     auto state = PlanState::IS_EOF;
 
@@ -126,6 +131,7 @@ PlanState UnionStage::getNext() {
 
     return trackPlanState(state);
 }
+
 void UnionStage::close() {
     _commonStats.closes++;
     _currentStage = nullptr;

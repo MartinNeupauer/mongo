@@ -115,6 +115,7 @@ void ScanStage::doSaveState() {
 
     _coll.reset();
 }
+
 void ScanStage::doRestoreState() {
     invariant(_opCtx);
     invariant(!_coll);
@@ -140,6 +141,7 @@ void ScanStage::doDetachFromOperationContext() {
         _cursor->detachFromOperationContext();
     }
 }
+
 void ScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
     if (_cursor) {
         _cursor->reattachToOperationContext(opCtx);
@@ -333,6 +335,7 @@ ParallelScanStage::ParallelScanStage(const std::shared_ptr<ParallelState>& state
       _state(state) {
     invariant(_fields.size() == _vars.size());
 }
+
 std::unique_ptr<PlanStage> ParallelScanStage::clone() const {
     return std::make_unique<ParallelScanStage>(
         _state, _name, _recordSlot, _recordIdSlot, _fields, _vars, _yieldPolicy);
@@ -379,6 +382,7 @@ void ParallelScanStage::doSaveState() {
 
     _coll.reset();
 }
+
 void ParallelScanStage::doRestoreState() {
     invariant(_opCtx);
     invariant(!_coll);
@@ -404,6 +408,7 @@ void ParallelScanStage::doDetachFromOperationContext() {
         _cursor->detachFromOperationContext();
     }
 }
+
 void ParallelScanStage::doAttachFromOperationContext(OperationContext* opCtx) {
     if (_cursor) {
         _cursor->reattachToOperationContext(opCtx);

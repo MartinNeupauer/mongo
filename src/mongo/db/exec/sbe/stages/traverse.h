@@ -34,6 +34,17 @@
 #include "mongo/db/exec/sbe/vm/vm.h"
 
 namespace mongo::sbe {
+/**
+ * This is an array traversal operator. If the input value coming from the 'outer' side is an array
+ * then we execute the 'inner' side exactly once for every element of the array. The results from
+ * the 'inner' side are then collected into the output array value. The traversal is recursive and
+ * the structure of nested arrays is preserved (up to optional depth). If the input value is not an
+ * array then we execute the inner side just once and return the result.
+ *
+ * If an optional 'fold' expression is provided then instead of the output array we combine
+ * individual results into a single output value. Another expression 'final' controls optional
+ * short-circuiting (a.k.a. early out) logic.
+ */
 class TraverseStage final : public PlanStage {
 public:
     TraverseStage(std::unique_ptr<PlanStage> outer,
@@ -64,12 +75,25 @@ private:
                   value::OwnedValueAccessor* outFieldOutputAccessor,
                   size_t level);
 
+    // The input slot holding value being traversed.
     const value::SlotId _inField;
+
+    // The output slot holding result of the traversal.
     const value::SlotId _outField;
+
+    // The result of a single iteration of the traversal.
     const value::SlotId _outFieldInner;
+
+    // Slots from the 'outer' side that are explicitly accessible on the 'inner' side.
     const value::SlotVector _correlatedSlots;
+
+    // Optional folding expression for combining array elements.
     const std::unique_ptr<EExpression> _fold;
+
+    // Optional boolean expression controlling short-circuiting of the fold.
     const std::unique_ptr<EExpression> _final;
+
+    // Optional nested arrays recursion depth.
     const boost::optional<size_t> _nestedArraysDepth;
 
     value::SlotAccessor* _inFieldAccessor{nullptr};
