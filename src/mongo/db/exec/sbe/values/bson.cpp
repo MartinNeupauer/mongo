@@ -93,7 +93,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
                                                      const char* end,
                                                      size_t fieldNameSize) {
     auto type = static_cast<BSONType>(*be);
-    // advance be
+    // Advance the 'be' pointer;
     be += 1 + fieldNameSize + 1;
 
     switch (type) {
@@ -116,12 +116,12 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             if (view) {
                 return {value::TypeTags::bsonString, value::bitcastFrom(be)};
             }
-            // len includes trailing zero
+            // len includes trailing zero.
             auto len = ConstDataView(be).read<LittleEndian<uint32_t>>();
             be += sizeof(len);
             if (len < value::kSmallStringThreshold) {
                 value::Value smallString;
-                // copy fast 8 bytes if we have space
+                // Copy 8 bytes fast if we have space.
                 if (be + 8 < end) {
                     memcpy(&smallString, be, 8);
                 } else {
@@ -138,7 +138,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             if (view) {
                 return {value::TypeTags::bsonObject, value::bitcastFrom(be)};
             }
-            // skip document length
+            // Skip document length.
             be += 4;
             auto [tag, val] = value::makeNewObject();
             auto obj = value::getObjectView(val);
@@ -149,7 +149,6 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
                 auto [tag, val] = convertFrom(false, be, end, sv.size());
                 obj->push_back(sv, tag, val);
 
-                // advance
                 be = advance(be, sv.size());
             }
             return {tag, val};
@@ -158,7 +157,7 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
             if (view) {
                 return {value::TypeTags::bsonArray, value::bitcastFrom(be)};
             }
-            // skip array length
+            // Skip array length.
             be += 4;
             auto [tag, val] = value::makeNewArray();
             auto arr = value::getArrayView(val);
@@ -169,7 +168,6 @@ std::pair<value::TypeTags, value::Value> convertFrom(bool view,
                 auto [tag, val] = convertFrom(false, be, end, sv.size());
                 arr->push_back(tag, val);
 
-                // advance
                 be = advance(be, sv.size());
             }
             return {tag, val};

@@ -55,7 +55,7 @@ void HashAggStage::prepare(CompileCtx& ctx) {
 
     value::SlotSet dupCheck;
     size_t counter = 0;
-    // process group by columns
+    // Process group by columns.
     for (auto& slot : _gbs) {
         auto [it, inserted] = dupCheck.emplace(slot);
         uassert(4822827, str::stream() << "duplicate field: " << slot, inserted);
@@ -106,7 +106,7 @@ void HashAggStage::open(bool reOpen) {
     value::MaterializedRow key;
     while (_children[0]->getNext() == PlanState::ADVANCED) {
         key._fields.resize(_inKeyAccessors.size());
-        // copy keys in order to do the lookup
+        // Copy keys in order to do the lookup.
         size_t idx = 0;
         for (auto& p : _inKeyAccessors) {
             auto [tag, val] = p->getViewOfValue();
@@ -115,12 +115,13 @@ void HashAggStage::open(bool reOpen) {
 
         auto [it, inserted] = _ht.emplace(std::move(key), value::MaterializedRow{});
         if (inserted) {
-            // copy keys
+            // Copy keys.
             const_cast<value::MaterializedRow&>(it->first).makeOwned();
-            // initialize accumulators
+            // Initialize accumulators.
             it->second._fields.resize(_outAggAccessors.size());
         }
-        // accumulate
+
+        // Accumulate.
         _htIt = it;
         for (size_t idx = 0; idx < _outAggAccessors.size(); ++idx) {
             auto [owned, tag, val] = _bytecode.run(_aggCodes[idx].get());

@@ -62,7 +62,7 @@ void SortStage::prepare(CompileCtx& ctx) {
     value::SlotSet dupCheck;
 
     size_t counter = 0;
-    // process order by fields
+    // Process order by fields.
     for (auto& slot : _obs) {
         auto [it, inserted] = dupCheck.insert(slot);
         uassert(4822812, str::stream() << "duplicate field: " << slot, inserted);
@@ -72,7 +72,7 @@ void SortStage::prepare(CompileCtx& ctx) {
     }
 
     counter = 0;
-    // process value fields
+    // Process value fields.
     for (auto& slot : _vals) {
         auto [it, inserted] = dupCheck.insert(slot);
         uassert(4822813, str::stream() << "duplicate field: " << slot, inserted);

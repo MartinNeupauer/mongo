@@ -74,11 +74,13 @@ private:
 
     // Accessors of input codition values (keys) that are being inserted into the hash table.
     std::vector<value::SlotAccessor*> _inOuterKeyAccessors;
+
     // Accessors of output keys.
     std::vector<std::unique_ptr<HashKeyAccessor>> _outOuterKeyAccessors;
 
     // Accessors of input projection values that are build inserted into the hash table.
     std::vector<value::SlotAccessor*> _inOuterProjectAccessors;
+
     // Accessors of output projections.
     std::vector<std::unique_ptr<HashProjectAccessor>> _outOuterProjectAccessors;
 

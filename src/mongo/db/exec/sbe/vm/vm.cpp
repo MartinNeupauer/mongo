@@ -127,7 +127,7 @@ void CodeFragment::copyCodeAndFixup(const CodeFragment& from) {
 }
 
 void CodeFragment::append(std::unique_ptr<CodeFragment> code) {
-    // fixup before copying
+    // Fixup before copying.
     code->fixup(_stackSize);
 
     copyCodeAndFixup(*code);
@@ -138,7 +138,7 @@ void CodeFragment::append(std::unique_ptr<CodeFragment> code) {
 void CodeFragment::append(std::unique_ptr<CodeFragment> lhs, std::unique_ptr<CodeFragment> rhs) {
     invariant(lhs->stackSize() == rhs->stackSize());
 
-    // fixup before copying
+    // Fixup before copying.
     lhs->fixup(_stackSize);
     rhs->fixup(_stackSize);
 
@@ -282,9 +282,9 @@ void CodeFragment::appendFunction(Builtin f, uint8_t arity) {
     Instruction i;
     i.tag = Instruction::function;
 
-    // account for consumed arguments
+    // Account for consumed arguments
     _stackSize -= arity;
-    // and the return value;
+    // and the return value.
     _stackSize += 1;
 
     auto offset = allocateSpace(sizeof(Instruction) + sizeof(f) + sizeof(arity));
@@ -357,8 +357,9 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTa
         return {false, tag, val};
     } else if (objTag == value::TypeTags::bsonObject) {
         auto be = value::bitcastTo<const char*>(objValue);
-        auto end = be + value::readFromMemory<uint32_t>(be);
-        // skip document length
+        auto end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
+        ;
+        // Skip document length.
         be += 4;
         while (*be != 0) {
             auto sv = bson::fieldNameView(be);
@@ -368,7 +369,6 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::getField(value::TypeTa
                 return {false, tag, val};
             }
 
-            // advance
             be = bson::advance(be, sv.size());
         }
     }
@@ -522,7 +522,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t a
         splitStart = splitPos;
     }
 
-    // the last string
+    // This is the last string.
     {
         auto [tag, val] = value::makeNewString(input.substr(splitStart, input.size() - splitStart));
         arr->push_back(tag, val);
@@ -535,12 +535,12 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinSplit(uint8_t a
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint8_t arity) {
     auto [ownedSeparator, tagInObj, valInObj] = getFromStack(0);
 
-    // we operate only on objects
+    // We operate only on objects.
     if (!value::isObject(tagInObj)) {
         return {false, value::TypeTags::Nothing, 0};
     }
 
-    // build the set of fields to drop
+    // Build the set of fields to drop.
     std::set<std::string, std::less<>> restrictFieldsSet;
     for (uint8_t idx = 1; idx < arity; ++idx) {
         auto [owned, tag, val] = getFromStack(idx);
@@ -558,8 +558,9 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint
 
     if (tagInObj == value::TypeTags::bsonObject) {
         auto be = value::bitcastTo<const char*>(valInObj);
-        auto end = be + value::readFromMemory<uint32_t>(be);
-        // skip document length
+        auto end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
+        ;
+        // Skip document length.
         be += 4;
         while (*be != 0) {
             auto sv = bson::fieldNameView(be);
@@ -569,7 +570,6 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinDropFields(uint
                 obj->push_back(sv, tag, val);
             }
 
-            // advance
             be = bson::advance(be, sv.size());
         }
     } else if (tagInObj == value::TypeTags::Object) {
@@ -628,7 +628,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinNewObj(uint8_t 
 std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinKeyStringToString(uint8_t arity) {
     auto [owned, tagInKey, valInKey] = getFromStack(0);
 
-    // we operate only on keys
+    // We operate only on keys.
     if (tagInKey != value::TypeTags::ksValue) {
         return {false, value::TypeTags::Nothing, 0};
     }
@@ -709,7 +709,7 @@ std::tuple<bool, value::TypeTags, value::Value> ByteCode::builtinAddToArray(uint
         tagAgg = tagNewAgg;
         valAgg = valNewAgg;
     } else {
-        // Take ownership of the accumulator
+        // Take ownership of the accumulator.
         topStack(false, value::TypeTags::Nothing, 0);
     }
     value::ValueGuard guard{tagAgg, valAgg};
@@ -860,15 +860,15 @@ std::tuple<uint8_t, value::TypeTags, value::Value> ByteCode::run(CodeFragment* c
                     auto [rhsOwned, rhsTag, rhsVal] = getFromStack(0);
                     auto [lhsOwned, lhsTag, lhsVal] = getFromStack(1);
 
-                    // swap values only if they are not physically same.
-                    // note - this has huge consequences for the memory management, it allows to
-                    // return owned values from the let expressions
+                    // Swap values only if they are not physically same.
+                    // Note - this has huge consequences for the memory management, it allows to
+                    // return owned values from the let expressions.
                     if (!(rhsTag == lhsTag && rhsVal == lhsVal)) {
                         setStack(0, lhsOwned, lhsTag, lhsVal);
                         setStack(1, rhsOwned, rhsTag, rhsVal);
                     } else {
-                        // the values are physically same then the top of the stack must never ever
-                        // be owned
+                        // The values are physically same then the top of the stack must never ever
+                        // be owned.
                         invariant(!rhsOwned);
                     }
 

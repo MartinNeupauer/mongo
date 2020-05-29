@@ -118,7 +118,7 @@ value::SlotAccessor* HashJoinStage::getAccessor(CompileCtx& ctx, value::SlotId s
 void HashJoinStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
-    // insert the outer side into the hash table
+    // Insert the outer side into the hash table.
     value::MaterializedRow key;
     value::MaterializedRow project;
 
@@ -126,14 +126,14 @@ void HashJoinStage::open(bool reOpen) {
         key._fields.reserve(_inOuterKeyAccessors.size());
         project._fields.reserve(_inOuterProjectAccessors.size());
 
-        // copy keys in order to do the lookup
+        // Copy keys in order to do the lookup.
         for (auto& p : _inOuterKeyAccessors) {
             key._fields.push_back(value::OwnedValueAccessor{});
             auto [tag, val] = p->copyOrMoveValue();
             key._fields.back().reset(true, tag, val);
         }
 
-        // copy projects
+        // Copy projects.
         for (auto& p : _inOuterProjectAccessors) {
             project._fields.push_back(value::OwnedValueAccessor{});
             auto [tag, val] = p->copyOrMoveValue();
@@ -160,11 +160,11 @@ PlanState HashJoinStage::getNext() {
         while (_htIt == _htItEnd) {
             auto state = _children[1]->getNext();
             if (state == PlanState::IS_EOF) {
-                // LEFT and OUTER joins should enumerate "non-returned" rows here
+                // LEFT and OUTER joins should enumerate "non-returned" rows here.
                 return trackPlanState(state);
             }
 
-            // copy keys in order to do the lookup
+            // Copy keys in order to do the lookup.
             size_t idx = 0;
             for (auto& p : _inInnerKeyAccessors) {
                 auto [tag, val] = p->getViewOfValue();
@@ -174,8 +174,8 @@ PlanState HashJoinStage::getNext() {
             auto [low, hi] = _ht.equal_range(_probeKey);
             _htIt = low;
             _htItEnd = hi;
-            // if _htIt == _htItEnd (i.e. no match) then RIGHT and OUTER joins
-            // should enumerate "non-returned" rows here
+            // If _htIt == _htItEnd (i.e. no match) then RIGHT and OUTER joins
+            // should enumerate "non-returned" rows here.
         }
     }
 

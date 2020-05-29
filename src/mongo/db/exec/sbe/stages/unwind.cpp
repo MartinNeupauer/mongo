@@ -59,13 +59,13 @@ std::unique_ptr<PlanStage> UnwindStage::clone() const {
 void UnwindStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    // get the inField (incoming) accessor
+    // Get the inField (incoming) accessor.
     _inFieldAccessor = _children[0]->getAccessor(ctx, _inField);
 
-    // prepare the outField output accessor
+    // Prepare the outField output accessor.
     _outFieldOutputAccessor = std::make_unique<value::ViewOfValueAccessor>();
 
-    // prepare the outIndex output accessor
+    // Prepare the outIndex output accessor.
     _outIndexOutputAccessor = std::make_unique<value::ViewOfValueAccessor>();
 }
 
@@ -97,7 +97,7 @@ PlanState UnwindStage::getNext() {
                 return trackPlanState(state);
             }
 
-            // get the value
+            // Get the value.
             auto [tag, val] = _inFieldAccessor->getViewOfValue();
 
             if (value::isArray(tag)) {
@@ -105,7 +105,7 @@ PlanState UnwindStage::getNext() {
                 _index = 0;
                 _inArray = true;
 
-                // empty input array
+                // Empty input array.
                 if (_inArrayAccessor.atEnd()) {
                     _inArray = false;
                     if (_preserveNullAndEmptyArrays) {
@@ -127,7 +127,7 @@ PlanState UnwindStage::getNext() {
         } while (!_inArray);
     }
 
-    // in array
+    // We are inside the array so pull out the current element and advance.
     auto [tagElem, valElem] = _inArrayAccessor.getViewOfValue();
 
     _outFieldOutputAccessor->reset(tagElem, valElem);

@@ -232,7 +232,7 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             const char* be = getRawPointerView(val);
             const char* end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
             bool first = true;
-            // skip document length
+            // Skip document length.
             be += 4;
             os << '[';
             while (*be != 0) {
@@ -246,7 +246,6 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
                 auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
                 printValue(os, tag, val);
 
-                // advance
                 be = bson::advance(be, sv.size());
             }
             os << ']';
@@ -256,7 +255,7 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
             const char* be = getRawPointerView(val);
             const char* end = be + ConstDataView(be).read<LittleEndian<uint32_t>>();
             bool first = true;
-            // skip document length
+            // Skip document length.
             be += 4;
             os << '{';
             while (*be != 0) {
@@ -272,7 +271,6 @@ void printValue(std::ostream& os, TypeTags tag, Value val) {
                 auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
                 printValue(os, tag, val);
 
-                // advance
                 be = bson::advance(be, sv.size());
             }
             os << '}';
@@ -515,7 +513,7 @@ std::pair<TypeTags, Value> compareValue(TypeTags lhsTag,
         auto result = getKeyStringView(lhsValue)->compare(*getKeyStringView(lhsValue));
         return {TypeTags::NumberInt32, bitcastFrom(result)};
     } else if (lhsTag == TypeTags::Nothing && rhsTag == TypeTags::Nothing) {
-        // special case for Nothing in a hash table (group) and sort comparison.
+        // Special case for Nothing in a hash table (group) and sort comparison.
         return {TypeTags::NumberInt32, 0};
     } else {
         // Different types.

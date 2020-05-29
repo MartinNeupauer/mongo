@@ -50,7 +50,7 @@ MONGO_INITIALIZER(s_globalThreadPool)(InitializerContext* context) {
 }
 
 ExchangePipe::ExchangePipe(size_t size) {
-    // all buffers start empty
+    // All buffers start empty.
     _fullCount = 0;
     _emptyCount = size;
     for (size_t i = 0; i < _emptyCount; ++i) {
@@ -58,7 +58,7 @@ ExchangePipe::ExchangePipe(size_t size) {
         _emptyBuffers.emplace_back(std::make_unique<ExchangeBuffer>());
     }
 
-    // add a sentinel
+    // Add a sentinel.
     _fullBuffers.emplace_back(nullptr);
 }
 
@@ -149,7 +149,7 @@ void ExchangeConsumer::putBuffer(size_t producerId) {
         uasserted(4822832, "get not called before put");
     }
 
-    // clear the buffer before putting it back on the empty (free) list
+    // Clear the buffer before putting it back on the empty (free) list.
     _fullBuffers[producerId]->clear();
 
     _pipes[producerId]->putEmptyBuffer(std::move(_fullBuffers[producerId]));
@@ -181,17 +181,16 @@ void ExchangeConsumer::prepare(CompileCtx& ctx) {
     for (size_t idx = 0; idx < _state->fields().size(); ++idx) {
         _outgoing.emplace_back(ExchangeBuffer::Accessor{});
     }
-    // compile '<' function
+    // Compile '<' function once we implement order preserving exchange.
 }
 value::SlotAccessor* ExchangeConsumer::getAccessor(CompileCtx& ctx, value::SlotId slot) {
-    // accessors to pipes
+    // Accessors to pipes.
     for (size_t idx = 0; idx < _state->fields().size(); ++idx) {
         if (_state->fields()[idx] == slot) {
             return &_outgoing[idx];
         }
     }
 
-    // correlated values and stuff
     return ctx.getAccessor(slot);
 }
 void ExchangeConsumer::open(bool reOpen) {
@@ -205,7 +204,7 @@ void ExchangeConsumer::open(bool reOpen) {
         std::unique_lock lock(_state->consumerOpenMutex());
         bool allConsumers = (++_state->consumerOpen()) == _state->numOfConsumers();
 
-        // create all pipes
+        // Create all pipes.
         if (_orderPreserving) {
             for (size_t idx = 0; idx < _state->numOfProducers(); ++idx) {
                 _pipes.emplace_back(std::make_unique<ExchangePipe>(2));
@@ -222,13 +221,13 @@ void ExchangeConsumer::open(bool reOpen) {
         if (_tid == 0) {
             // Consumer ID 0
 
-            // wait for all other consumers to show up
+            // Wait for all other consumers to show up.
             if (!allConsumers) {
                 _state->consumerOpenCond().wait(
                     lock, [this]() { return _state->consumerOpen() == _state->numOfConsumers(); });
             }
 
-            // clone n copies of the subtree for every producer
+            // Clone n copies of the subtree for every producer.
 
             PlanStage* masterSubTree = _children[0].get();
             masterSubTree->detachFromOperationContext();
@@ -245,7 +244,7 @@ void ExchangeConsumer::open(bool reOpen) {
                 }
             }
 
-            // start n producers
+            // Start n producers.
             for (size_t idx = 0; idx < _state->numOfProducers(); ++idx) {
                 auto pf = makePromiseFuture<void>();
                 s_globalThreadPool->schedule(
@@ -264,7 +263,7 @@ void ExchangeConsumer::open(bool reOpen) {
         } else {
             // Consumer ID >0
 
-            // make consumer 0 know that this consumer has shown up
+            // Make consumer 0 know that this consumer has shown up.
             if (allConsumers) {
                 _state->consumerOpenCond().notify_all();
             }
@@ -274,11 +273,11 @@ void ExchangeConsumer::open(bool reOpen) {
     {
         std::unique_lock lock(_state->consumerOpenMutex());
         if (_tid == 0) {
-            // signal all other consumers that the open is done
+            // Signal all other consumers that the open is done.
             _state->consumerOpen() = 0;
             _state->consumerOpenCond().notify_all();
         } else {
-            // wait for the open to be done
+            // Wait for the open to be done.
             _state->consumerOpenCond().wait(lock, [this]() { return _state->consumerOpen() == 0; });
         }
     }
@@ -286,7 +285,7 @@ void ExchangeConsumer::open(bool reOpen) {
 
 PlanState ExchangeConsumer::getNext() {
     if (_orderPreserving) {
-        // build a heap and return min element
+        // Build a heap and return min element.
         uasserted(4822834, "ordere exchange not yet implemented");
     } else {
         while (_eofs < _state->numOfProducers()) {
@@ -296,7 +295,7 @@ PlanState ExchangeConsumer::getNext() {
                 return trackPlanState(PlanState::IS_EOF);
             }
             if (_bufferPos[0] < buffer->count()) {
-                // we still return from the current buffer
+                // We still return from the current buffer.
                 for (size_t idx = 0; idx < _outgoing.size(); ++idx) {
                     _outgoing[idx].setBuffer(buffer);
                     _outgoing[idx].setIndex(_bufferPos[0] * _state->fields().size() + idx);
@@ -323,30 +322,30 @@ void ExchangeConsumer::close() {
         std::unique_lock lock(_state->consumerCloseMutex());
         ++_state->consumerClose();
 
-        // signal early out
+        // Signal early out.
         for (auto& p : _pipes) {
             p->close();
         }
 
         if (_tid == 0) {
             // Consumer ID 0
-            // wait for n producers to finish
+            // Wait for n producers to finish.
             for (size_t idx = 0; idx < _state->numOfProducers(); ++idx) {
                 _state->producerResults()[idx].wait();
             }
         }
 
         if (_state->consumerClose() == _state->numOfConsumers()) {
-            // signal all other consumers that the close is done
+            // Signal all other consumers that the close is done.
             _state->consumerCloseCond().notify_all();
         } else {
-            // wait for the close to be done
+            // Wait for the close to be done.
             _state->consumerCloseCond().wait(
                 lock, [this]() { return _state->consumerClose() == _state->numOfConsumers(); });
         }
     }
-    // rethrow the first stored exception from producers
-    // we can do it outside of the lock as everybody else is gone by now
+    // Rethrow the first stored exception from producers.
+    // We can do it outside of the lock as everybody else is gone by now.
     if (_tid == 0) {
         // Consumer ID 0
         for (size_t idx = 0; idx < _state->numOfProducers(); ++idx) {
@@ -440,7 +439,7 @@ ExchangeProducer::ExchangeProducer(std::unique_ptr<PlanStage> input,
 
     _tid = _state->addProducer(this);
 
-    // retrieve the correct pipes
+    // Retrieve the correct pipes.
     for (size_t idx = 0; idx < _state->numOfConsumers(); ++idx) {
         _pipes.emplace_back(_state->pipe(idx, _tid));
         _emptyBuffers.emplace_back(nullptr);
@@ -464,7 +463,7 @@ void ExchangeProducer::start(OperationContext* opCtx, std::unique_ptr<PlanStage>
 
         p->close();
     } catch (...) {
-        // this is sketchy but close the pipes as minimum
+        // This is a bit sketchy but close the pipes as minimum.
         p->closePipes();
         throw;
     }
@@ -492,13 +491,14 @@ void ExchangeProducer::open(bool reOpen) {
 }
 bool ExchangeProducer::appendData(size_t consumerId) {
     auto buffer = getBuffer(consumerId);
-    // detect early out
+    // Detect early out.
     if (!buffer) {
         return false;
     }
-    // copy data to buffer
+
+    // Copy data to buffer.
     if (buffer->appendData(_incoming)) {
-        // send it off to consumer when full
+        // Send it off to consumer when full.
         putBuffer(consumerId);
     }
 
@@ -507,18 +507,18 @@ bool ExchangeProducer::appendData(size_t consumerId) {
 
 PlanState ExchangeProducer::getNext() {
     while (_children[0]->getNext() == PlanState::ADVANCED) {
-        // push to the correct pipe
+        // Push to the correct pipe.
         switch (_state->policy()) {
             case ExchangePolicy::broadcast: {
                 for (size_t idx = 0; idx < _pipes.size(); ++idx) {
-                    // detect early out in the loop
+                    // Detect early out in the loop.
                     if (!appendData(idx)) {
                         return trackPlanState(PlanState::IS_EOF);
                     }
                 }
             } break;
             case ExchangePolicy::roundrobin: {
-                // detect early out in the loop
+                // Detect early out.
                 if (!appendData(_roundRobinCounter)) {
                     return trackPlanState(PlanState::IS_EOF);
                 }
@@ -533,15 +533,15 @@ PlanState ExchangeProducer::getNext() {
         }
     }
 
-    // send off partially filled buffers and eof marker
+    // Send off partially filled buffers and the eof marker.
     for (size_t idx = 0; idx < _pipes.size(); ++idx) {
         auto buffer = getBuffer(idx);
-        // detect early out in the loop
+        // Detect early out in the loop.
         if (!buffer) {
             return trackPlanState(PlanState::IS_EOF);
         }
         buffer->markEof();
-        // send it off to consumer
+        // Send it off to consumer.
         putBuffer(idx);
     }
     return trackPlanState(PlanState::IS_EOF);
@@ -574,7 +574,7 @@ bool ExchangeBuffer::appendData(std::vector<value::SlotAccessor*>& data) {
         guard.reset();
     }
 
-    // a simply heuristic for now
+    // A simply heuristic for now.
     return isFull();
 }
 }  // namespace mongo::sbe

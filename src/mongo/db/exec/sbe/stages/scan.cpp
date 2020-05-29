@@ -216,25 +216,24 @@ PlanState ScanStage::getNext() {
         auto fieldsToMatch = _fieldAccessors.size();
         auto rawBson = nextRecord->data.data();
         auto be = rawBson + 4;
-        auto end = rawBson + value::readFromMemory<uint32_t>(rawBson);
+        auto end = rawBson + ConstDataView(rawBson).read<LittleEndian<uint32_t>>();
         for (auto& [name, accessor] : _fieldAccessors) {
             accessor->reset();
         }
         while (*be != 0) {
             auto sv = bson::fieldNameView(be);
             if (auto it = _fieldAccessors.find(sv); it != _fieldAccessors.end()) {
-                // found the field so convert it to Value
+                // Found the field so convert it to Value.
                 auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
 
                 it->second->reset(tag, val);
 
                 if ((--fieldsToMatch) == 0) {
-                    // not need to scan any further so bail out early
+                    // No need to scan any further so bail out early.
                     break;
                 }
             }
 
-            // advance
             be = bson::advance(be, sv.size());
         }
     }
@@ -510,25 +509,24 @@ PlanState ParallelScanStage::getNext() {
         auto fieldsToMatch = _fieldAccessors.size();
         auto rawBson = nextRecord->data.data();
         auto be = rawBson + 4;
-        auto end = rawBson + value::readFromMemory<uint32_t>(rawBson);
+        auto end = rawBson + ConstDataView(rawBson).read<LittleEndian<uint32_t>>();
         for (auto& [name, accessor] : _fieldAccessors) {
             accessor->reset();
         }
         while (*be != 0) {
             auto sv = bson::fieldNameView(be);
             if (auto it = _fieldAccessors.find(sv); it != _fieldAccessors.end()) {
-                // found the field so convert it to Value
+                // Found the field so convert it to Value.
                 auto [tag, val] = bson::convertFrom(true, be, end, sv.size());
 
                 it->second->reset(tag, val);
 
                 if ((--fieldsToMatch) == 0) {
-                    // not need to scan any further so bail out early
+                    // No need to scan any further so bail out early.
                     break;
                 }
             }
 
-            // advance
             be = bson::advance(be, sv.size());
         }
     }

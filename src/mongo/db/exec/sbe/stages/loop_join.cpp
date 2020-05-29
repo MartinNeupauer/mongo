@@ -89,12 +89,12 @@ void LoopJoinStage::open(bool reOpen) {
     _commonStats.opens++;
     _children[0]->open(reOpen);
     _outerGetNext = true;
-    // do not open the inner child as we do not have values of correlated parameters yet.
-    // the values are available only after we call getNext on the outer side.
+    // Do not open the inner child as we do not have values of correlated parameters yet.
+    // The values are available only after we call getNext on the outer side.
 }
 
 void LoopJoinStage::openInner() {
-    // (re)open the inner side as it can see the correlated value now
+    // (re)open the inner side as it can see the correlated value now.
     _children[1]->open(_reOpenInner);
     _reOpenInner = true;
 }

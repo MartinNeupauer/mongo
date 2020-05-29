@@ -128,11 +128,11 @@ PlanState MakeObjStage::getNext() {
 
             if (tag == value::TypeTags::bsonObject) {
                 auto be = value::bitcastTo<const char*>(val);
-                auto size = value::readFromMemory<uint32_t>(be);
+                auto size = ConstDataView(be).read<LittleEndian<uint32_t>>();
                 auto end = be + size;
-                // simple heuristic
+                // Simple heuristic to determine number of fields.
                 obj->reserve(size / 16);
-                // skip document length
+                // Skip document length.
                 be += 4;
                 while (*be != 0) {
                     auto sv = bson::fieldNameView(be);
@@ -147,7 +147,6 @@ PlanState MakeObjStage::getNext() {
                         alreadyProjected.insert(it->second);
                     }
 
-                    // advance
                     be = bson::advance(be, sv.size());
                 }
             } else if (tag == value::TypeTags::Object) {
@@ -172,15 +171,15 @@ PlanState MakeObjStage::getNext() {
                         projectField(obj, idx);
                     }
                 }
-                // if the result is non empty object return it
+                // If the result is non empty object return it.
                 if (obj->size() || _forceNewObject) {
                     return trackPlanState(state);
                 }
-                // now we have to make a decision - return Nothing or the original _root
+                // Now we have to make a decision - return Nothing or the original _root.
                 if (!_returnOldObject) {
                     _obj.reset(false, value::TypeTags::Nothing, 0);
                 } else {
-                    // _root is not an object return it unmodified
+                    // _root is not an object return it unmodified.
                     _obj.reset(false, tag, val);
                 }
                 return trackPlanState(state);

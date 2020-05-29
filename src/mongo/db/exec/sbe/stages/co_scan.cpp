@@ -50,7 +50,7 @@ void CoScanStage::open(bool reOpen) {
 PlanState CoScanStage::getNext() {
     checkForInterrupt(_opCtx);
 
-    // run forever
+    // Run forever.
     _commonStats.advances++;
     return PlanState::ADVANCED;
 }

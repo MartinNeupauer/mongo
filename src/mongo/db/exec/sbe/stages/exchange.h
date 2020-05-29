@@ -85,7 +85,7 @@ public:
             _index = index;
         }
 
-        // Return non-owning view of the value
+        // Return non-owning view of the value.
         std::pair<value::TypeTags, value::Value> getViewOfValue() const final {
             return {_buffer->_typeTags[_index], _buffer->_values[_index]};
         }
@@ -107,14 +107,16 @@ private:
     std::vector<value::TypeTags> _typeTags;
     std::vector<value::Value> _values;
 
-    // mark that this is the last buffer
+    // Mark that this is the last buffer.
     bool _eof{false};
     size_t _count{0};
 
     friend class Accessor;
 };
 
-// A connection that moves data between a consumer and a producer
+/**
+ * A connection that moves data between a consumer and a producer.
+ */
 class ExchangePipe {
 public:
     ExchangePipe(size_t size);
@@ -139,7 +141,9 @@ private:
     bool _closed{false};
 };
 
-// Common shared state between all consumers and producers of a single exchange
+/**
+ * Common shared state between all consumers and producers of a single exchange.
+ */
 class ExchangeState {
 public:
     ExchangeState(size_t numOfProducers,
@@ -216,13 +220,13 @@ private:
     std::vector<std::unique_ptr<PlanStage>> _producerPlans;
     std::vector<Future<void>> _producerResults;
 
-    // variables (fields) that pass through the exchange
+    // Variables (fields) that pass through the exchange.
     const value::SlotVector _fields;
 
-    // partitioning function
+    // Partitioning function.
     const std::unique_ptr<EExpression> _partition;
 
-    // the '<' function for order preserving exchange
+    // The '<' function for order preserving exchange.
     const std::unique_ptr<EExpression> _orderLess;
 
     // This is verbose and heavyweight. Recondsider something lighter
@@ -268,16 +272,19 @@ private:
     std::shared_ptr<ExchangeState> _state;
     size_t _tid{0};
 
-    // accessors for the outgoing values (from the exchange buffers)
+    // Accessors for the outgoing values (from the exchange buffers).
     std::vector<ExchangeBuffer::Accessor> _outgoing;
 
-    // pipes to producers (if order preserving) or a single pipe shared by all producers
+    // Pipes to producers (if order preserving) or a single pipe shared by all producers.
     std::vector<std::unique_ptr<ExchangePipe>> _pipes;
-    // current full buffers that this consumer is processing
+
+    // Current full buffers that this consumer is processing.
     std::vector<std::unique_ptr<ExchangeBuffer>> _fullBuffers;
-    // current position in buffers that this consumer is processing
+
+    // Current position in buffers that this consumer is processing.
     std::vector<size_t> _bufferPos;
-    // count how may EOFs we have seen so far
+
+    // Count how may EOFs we have seen so far.
     size_t _eofs{0};
 
     bool _orderPreserving{false};
@@ -318,7 +325,7 @@ private:
 
     std::vector<ExchangePipe*> _pipes;
 
-    // current empty buffers that this producer is processing
+    // Current empty buffers that this producer is processing.
     std::vector<std::unique_ptr<ExchangeBuffer>> _emptyBuffers;
 };
 }  // namespace mongo::sbe

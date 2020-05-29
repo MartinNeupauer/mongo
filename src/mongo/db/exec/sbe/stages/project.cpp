@@ -50,7 +50,7 @@ std::unique_ptr<PlanStage> ProjectStage::clone() const {
 void ProjectStage::prepare(CompileCtx& ctx) {
     _children[0]->prepare(ctx);
 
-    // compile project expressions here
+    // Compile project expressions here.
     for (auto& [slot, expr] : _projects) {
         ctx.root = this;
         auto code = expr->compile(ctx);
@@ -75,11 +75,11 @@ PlanState ProjectStage::getNext() {
     auto state = _children[0]->getNext();
 
     if (state == PlanState::ADVANCED) {
-        // run the project expressions here
+        // Run the project expressions here.
         for (auto& p : _fields) {
             auto [owned, tag, val] = _bytecode.run(p.second.first.get());
 
-            // set the accessors
+            // Set the accessors.
             p.second.second.reset(owned, tag, val);
         }
     }
