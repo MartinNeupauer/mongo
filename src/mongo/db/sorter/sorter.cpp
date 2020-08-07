@@ -592,7 +592,7 @@ public:
             spill();
     }
 
-    void addDirect(Key&& key, Value&& val) override {
+    void emplace(Key&& key, Value&& val) override {
         invariant(!_done);
 
         _memUsed += key.memUsageForSorter();

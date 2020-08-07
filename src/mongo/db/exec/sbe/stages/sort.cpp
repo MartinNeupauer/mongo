@@ -161,7 +161,7 @@ void SortStage::open(bool reOpen) {
             vals.reset(idx++, true, tag, val);
         }
 
-        _sorter->addDirect(std::move(keys), std::move(vals));
+        _sorter->emplace(std::move(keys), std::move(vals));
 
         if (_tracker && _tracker->trackProgress<TrialRunProgressTracker::kNumResults>(1)) {
             // If we either hit the maximum number of document to return during the trial run, or

@@ -240,7 +240,7 @@ public:
                                           const Settings& settings = Settings());
 
     virtual void add(const Key&, const Value&) = 0;
-    virtual void addDirect(Key&& k, Value&& v) {
+    virtual void emplace(Key&& k, Value&& v) {
         add(k, v);
     }
     /**
